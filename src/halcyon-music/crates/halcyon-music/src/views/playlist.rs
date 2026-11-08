@@ -262,7 +262,7 @@ fn song_row<'a, M: Clone + 'a>(
             }
             .into(),
         ),
-        border: iced::Border { radius: 20.0.into(), ..Default::default() },
+        border: iced::Border { radius: 26.0.into(), ..Default::default() },
         ..Default::default()
     });
 

@@ -1001,6 +1001,10 @@ impl SpotifyClient {
 
     /// Get artists the user follows.
     pub async fn get_followed_artists(&self, limit: u32) -> Result<Vec<Artist>, ApiError> {
+        if self.auth_mode() == AuthMode::Librespot {
+            // The session list is not paged, so the library asks for everything (50 and up).
+            return self.browse.get_followed_artists(if limit >= 50 { 1000 } else { limit }).await;
+        }
         let limit_str = limit.to_string();
         let json = self
             .request(
@@ -1034,6 +1038,27 @@ impl SpotifyClient {
             .map_err(|e| ApiError::Serialization(format!("parse artist albums: {e}")))?;
 
         Ok(parsed.items.into_iter().map(convert_spotify_album).collect())
+    }
+
+    /// Spotify's own list of the newest album and single releases (`/browse/new-releases`).
+    /// Spotify refuses this endpoint for some apps; callers fall back to other sources on error.
+    pub async fn get_new_releases(&self, limit: u32) -> Result<Vec<Album>, ApiError> {
+        #[derive(Deserialize)]
+        struct NewReleases {
+            albums: SpotifyPaging<SpotifyAlbumItem>,
+        }
+        let limit_str = limit.to_string();
+        let json = self
+            .request(
+                EndpointFamily::Browse,
+                reqwest::Method::GET,
+                "/browse/new-releases",
+                &[("limit", &limit_str)],
+            )
+            .await?;
+        let parsed: NewReleases = serde_json::from_str(&json)
+            .map_err(|e| ApiError::Serialization(format!("parse new releases: {e}")))?;
+        Ok(parsed.albums.items.into_iter().map(convert_spotify_album).collect())
     }
 
     /// Get tracks of a specific album.

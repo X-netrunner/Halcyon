@@ -23,6 +23,7 @@ pub fn view<'a, Message: Clone + 'static>(
     _on_toggle_lyrics: Message,
     on_toggle_fullscreen: Message,
     on_toggle_like: Message,
+    liked: bool,
     _lyrics_open: bool,
     queue_open: bool,
 ) -> Element<'a, Message> {
@@ -38,7 +39,7 @@ pub fn view<'a, Message: Clone + 'static>(
             track.and_then(|t| t.art_url.as_deref()),
             halcyon_music_core::art::ArtSize::Small,
             52.0,
-            12.0,
+            18.0,
             Icon::Music,
             title,
             palette,
@@ -49,7 +50,7 @@ pub fn view<'a, Message: Clone + 'static>(
     .style(move |_theme, status| button::Style {
         background: None,
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             width: if status == button::Status::Hovered { 1.5 } else { 0.0 },
             color: crate::theme::alpha(palette.accent, 0.6),
         },
@@ -67,7 +68,11 @@ pub fn view<'a, Message: Clone + 'static>(
     ]
     .spacing(2);
 
-    let like_btn = button(icon(Icon::Heart, 16.0, palette.text_muted))
+    let like_btn = button(if liked {
+        icon(Icon::HeartFilled, 16.0, palette.accent)
+    } else {
+        icon(Icon::Heart, 16.0, palette.text_muted)
+    })
         .on_press(on_toggle_like)
         .padding(4)
         .style(crate::views::ghost(palette));
@@ -107,7 +112,7 @@ pub fn view<'a, Message: Clone + 'static>(
     .style(move |_t, s| button::Style {
         background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 20.0.into(),
+            radius: 26.0.into(),
             ..Default::default()
         },
         // Glows a little more while music plays and when hovered.

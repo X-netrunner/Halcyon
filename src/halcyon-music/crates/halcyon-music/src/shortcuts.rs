@@ -23,7 +23,7 @@ pub enum ShortcutAction {
     OpenSearch,        // / or Ctrl+K
     ToggleLyrics,      // Ctrl+L
     ToggleQueue,       // Q
-    NavigatePage(usize), // 1..=6
+    NavigatePage(usize), // 1..=6 (the sidebar rows, in order)
     BackOrClose,       // Esc
     PlaySelected,      // Enter
     PlayNextSelected,  // Shift+Enter

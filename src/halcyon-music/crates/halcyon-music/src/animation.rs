@@ -90,6 +90,11 @@ impl Animation {
         !self.completed && self.started_at.elapsed() < self.duration
     }
 
+    /// Where the animation is heading (or rests).
+    pub fn target(&self) -> f32 {
+        self.target_value
+    }
+
     /// The current value without advancing any state (usable from `view`).
     pub fn peek(&self) -> f32 {
         if self.completed {
@@ -125,6 +130,8 @@ pub struct AnimationManager {
     pub shimmer_phase: f32,
     // Toast entrance animation
     pub toast_slide: Animation,
+    // Search notch: 1.0 fully out, 0.0 retracted into the title bar
+    pub search_reveal: Animation,
 }
 
 impl Default for AnimationManager {
@@ -145,6 +152,7 @@ impl Default for AnimationManager {
             queue_expand: Animation::instant(0.0),
             shimmer_phase: 0.0,
             toast_slide: Animation::instant(0.0),
+            search_reveal: Animation::instant(1.0),
         }
     }
 }
@@ -161,6 +169,7 @@ impl AnimationManager {
             || self.sidebar_expand.is_active()
             || self.queue_expand.is_active()
             || self.toast_slide.is_active()
+            || self.search_reveal.is_active()
     }
 
     /// Trigger a page switch transition: the new page floats up into place.
@@ -249,6 +258,24 @@ impl AnimationManager {
         self.queue_expand.peek().clamp(0.0, 1.0)
     }
 
+    /// Slide the search notch out of (or back into) the title bar, from wherever it is now.
+    pub fn animate_search(&mut self, show: bool) {
+        let from = self.search_reveal.peek();
+        let target = if show { 1.0 } else { 0.0 };
+        if self.reduce_motion {
+            self.search_reveal = Animation::instant(target);
+        } else if show {
+            self.search_reveal = Animation::new(from, target, 320, Easing::EaseOutCubic);
+        } else {
+            self.search_reveal = Animation::new(from, target, 240, Easing::EaseInOut);
+        }
+    }
+
+    /// 0.0 (retracted) to 1.0 (fully out). Drives the search notch.
+    pub fn search_progress(&self) -> f32 {
+        self.search_reveal.peek().clamp(0.0, 1.0)
+    }
+
     /// Show toast slide-in.
     pub fn animate_toast_show(&mut self) {
         if self.reduce_motion {
@@ -297,6 +324,17 @@ mod tests {
         assert_eq!(m.sidebar_progress(), 1.0);
         m.animate_sidebar(false);
         assert_eq!(m.sidebar_progress(), 0.0);
+    }
+
+    #[test]
+    fn search_starts_out_and_retracts() {
+        let mut m = AnimationManager::default();
+        assert_eq!(m.search_progress(), 1.0);
+        m.reduce_motion = true;
+        m.animate_search(false);
+        assert_eq!(m.search_progress(), 0.0);
+        m.animate_search(true);
+        assert_eq!(m.search_progress(), 1.0);
     }
 
     #[test]

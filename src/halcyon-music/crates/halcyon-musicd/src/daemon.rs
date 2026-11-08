@@ -34,6 +34,34 @@ const EVENT_CHANNEL_CAP: usize = 256;
 
 const KV_SAVED_ALBUMS: &str = "library.saved_albums";
 const KV_FOLLOWED_ARTISTS: &str = "library.followed_artists";
+const KV_DISCOVER: &str = "discover.feed";
+const KV_HOME: &str = "home.feed";
+
+/// True while a Discover build runs; a second request waits for that one instead of starting
+/// another round of Spotify lookups.
+static DISCOVER_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Clears `DISCOVER_RUNNING` when the build ends, even if it panics.
+struct DiscoverGuard;
+
+impl Drop for DiscoverGuard {
+    fn drop(&mut self) {
+        DISCOVER_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+/// True while the background matching of the big lists (All-Time Best, Top 100, Top 200) runs,
+/// so two Home loads do not start two rounds of Spotify lookups.
+static HOME_WARMING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Clears `HOME_WARMING` when the matching ends, even if it panics.
+struct WarmGuard;
+
+impl Drop for WarmGuard {
+    fn drop(&mut self) {
+        HOME_WARMING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Kept for a month; the copy is served even when stale.
 const LIBRARY_KV_TTL_SECS: u64 = 30 * 24 * 3600;
 
@@ -78,6 +106,70 @@ async fn refresh_account(ctx: Arc<DaemonContext>) {
         }
         Err(e) => warn!("could not read the account name ({e}); the app shows \"Signed in\""),
     }
+}
+
+/// Combine the last Home feed with a fresh build: a section the build left empty keeps its
+/// old content, and mixes from outside sources that did not come back this time are kept.
+fn merge_home_feed(
+    old: halcyon_music_core::models::HomeFeed,
+    mut new: halcyon_music_core::models::HomeFeed,
+) -> halcyon_music_core::models::HomeFeed {
+    macro_rules! keep_if_empty {
+        ($($f:ident),*) => { $( if new.$f.is_empty() { new.$f = old.$f.clone(); } )* };
+    }
+    keep_if_empty!(quick_picks, jump_back_in, new_releases, fresh_releases, popular_charts, playlists, saved_albums);
+    if new.capsule_preview.is_none() {
+        new.capsule_preview = old.capsule_preview.clone();
+    }
+    // "Halcyon" (All-Time Best) is built from a fixed list, so it does not show that the
+    // outside services answered; only Deezer / ListenBrainz mixes do.
+    let from_outside = |m: &halcyon_music_core::models::MusicMix| m.source != "Halcyon Local" && m.source != "Halcyon";
+    let new_has_outside = new.made_for_you.iter().any(from_outside);
+    if !new_has_outside {
+        for mix in old.made_for_you.into_iter().filter(|m| m.source != "Halcyon Local") {
+            if !new.made_for_you.iter().any(|m| m.id == mix.id) {
+                new.made_for_you.push(mix);
+            }
+        }
+    }
+    new
+}
+
+/// How long a stored page of songs is trusted before Spotify is asked again.
+const TRACKS_FRESH_SECS: u64 = 600;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SyncStamp {
+    total: usize,
+    at: u64,
+}
+
+fn sync_key(list_id: &str) -> String {
+    format!("sync.tracks.{list_id}")
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Remember that a list was just read from Spotify, and how long it was.
+fn mark_synced(cache: &crate::cache::Cache, list_id: &str, total: usize) {
+    kv_store(cache, &sync_key(list_id), &SyncStamp { total, at: unix_now() });
+}
+
+/// True when the stored copy of this page was read recently and is complete, so Spotify
+/// does not need to be asked again (opening the app no longer re-reads every song).
+fn page_is_fresh(cache: &crate::cache::Cache, list_id: &str, offset: usize, limit: usize, have: usize) -> bool {
+    let Some(stamp) = kv_load::<SyncStamp>(cache, &sync_key(list_id)) else {
+        return false;
+    };
+    if stamp.total == 0 || unix_now().saturating_sub(stamp.at) > TRACKS_FRESH_SECS {
+        return false;
+    }
+    have >= limit.min(stamp.total.saturating_sub(offset)) && have > 0
 }
 
 /// Save a JSON value in the cache. Failing to cache is only worth a log line.
@@ -378,6 +470,9 @@ async fn handle_client(
     });
     writer.write_all(&protocol::encode_line(&streaming_status)?).await?;
 
+    // Live audio frames are opt-in per connection (`SetAudioStream`), on their own channel.
+    let mut audio_rx: Option<broadcast::Receiver<protocol::Event>> = None;
+
     loop {
         tokio::select! {
             line = lines.next_line() => {
@@ -393,8 +488,25 @@ async fn handle_client(
                 if cmd.version > protocol::PROTOCOL_VERSION {
                     warn!(version = cmd.version, "client speaks a newer protocol; ignoring unknown fields");
                 }
+                if let CommandBody::SetAudioStream { enabled } = &cmd.body {
+                    audio_rx = enabled.then(|| crate::tap::audio_bus().subscribe());
+                    continue;
+                }
                 if let Some(response) = apply_command(&ctx, cmd.body).await {
                     writer.write_all(&protocol::encode_line(&response)?).await?;
+                }
+            }
+            ev = async {
+                match audio_rx.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match ev {
+                    Ok(ev) => writer.write_all(&protocol::encode_line(&ev)?).await?,
+                    // A late frame is worth nothing: skip ahead.
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => audio_rx = None,
                 }
             }
             ev = events.recv() => {
@@ -729,7 +841,15 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             let ctx_c = ctx.clone();
             tokio::spawn(async move {
                 match ctx_c.spotify.get_playlists(limit_val as u32, offset_val as u32).await {
-                    Ok(page) => {
+                    Ok(mut page) => {
+                        // A playlist the list call reports with 0 songs keeps the count already
+                        // known for it (read when its songs were last loaded).
+                        let known = ctx_c.cache.get_playlists(500, 0).map(|(l, _)| l).unwrap_or_default();
+                        for p in page.items.iter_mut().filter(|p| p.total_tracks == 0) {
+                            if let Some(k) = known.iter().find(|k| k.id == p.id) {
+                                p.total_tracks = k.total_tracks;
+                            }
+                        }
                         let _ = ctx_c.cache.put_playlists(&page.items);
                         let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistsResult {
                             playlists: page.items,
@@ -767,6 +887,17 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 .get_playlist_tracks(&id, limit_val, offset_val)
                 .unwrap_or_default();
 
+            // Read recently and fully stored: answer from the stored copy and stop there.
+            if page_is_fresh(&ctx.cache, &id, offset_val, limit_val, cached_tracks.len()) {
+                return Some(protocol::event(EventBody::PlaylistTracksResult {
+                    playlist_id: id,
+                    tracks: cached_tracks,
+                    total: cached_total,
+                    offset: offset_val,
+                    is_cached: false,
+                }));
+            }
+
             if !cached_tracks.is_empty() {
                 let _ = ctx.events_tx.send(protocol::event(EventBody::PlaylistTracksResult {
                     playlist_id: id.clone(),
@@ -786,7 +917,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     .await
                 {
                     Ok(page) => {
-                        let _ = ctx_c.cache.set_playlist_tracks(&pid, &page.items);
+                        let _ = ctx_c.cache.set_playlist_tracks_page(&pid, &page.items, page.offset, page.total);
+                        let _ = ctx_c.cache.set_playlist_total(&pid, page.total);
+                        mark_synced(&ctx_c.cache, &pid, page.total);
                         let _ = ctx_c.events_tx.send(protocol::event(EventBody::PlaylistTracksResult {
                             playlist_id: pid,
                             tracks: page.items,
@@ -803,27 +936,28 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     }
                 }
             });
-
-            if !cached_tracks.is_empty() {
-                return Some(protocol::event(EventBody::PlaylistTracksResult {
-                    playlist_id: id,
-                    tracks: cached_tracks,
-                    total: cached_total,
-                    offset: offset_val,
-                    is_cached: true,
-                }));
-            }
             return None;
         }
 
         GetLikedTracks { limit, offset } => {
             let limit_val = limit.unwrap_or(50) as usize;
             let offset_val = offset.unwrap_or(0) as usize;
+            let liked_id = crate::cache::Cache::LIKED_PLAYLIST_ID;
 
             let (cached_tracks, cached_total) = ctx
                 .cache
                 .get_liked_tracks(limit_val, offset_val)
                 .unwrap_or_default();
+
+            // Read recently and fully stored: answer from the stored copy and stop there.
+            if page_is_fresh(&ctx.cache, liked_id, offset_val, limit_val, cached_tracks.len()) {
+                return Some(protocol::event(EventBody::LikedTracksResult {
+                    tracks: cached_tracks,
+                    total: cached_total,
+                    offset: offset_val,
+                    is_cached: false,
+                }));
+            }
 
             if !cached_tracks.is_empty() {
                 let _ = ctx.events_tx.send(protocol::event(EventBody::LikedTracksResult {
@@ -842,7 +976,8 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     .await
                 {
                     Ok(page) => {
-                        let _ = ctx_c.cache.set_liked_tracks(&page.items);
+                        let _ = ctx_c.cache.set_liked_tracks_page(&page.items, page.offset, page.total);
+                        mark_synced(&ctx_c.cache, crate::cache::Cache::LIKED_PLAYLIST_ID, page.total);
                         let _ = ctx_c.events_tx.send(protocol::event(EventBody::LikedTracksResult {
                             tracks: page.items,
                             total: page.total,
@@ -858,15 +993,6 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     }
                 }
             });
-
-            if !cached_tracks.is_empty() {
-                return Some(protocol::event(EventBody::LikedTracksResult {
-                    tracks: cached_tracks,
-                    total: cached_total,
-                    offset: offset_val,
-                    is_cached: true,
-                }));
-            }
             return None;
         }
 
@@ -961,10 +1087,91 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
         }
 
         GetHomeFeed => {
+            // Show the last finished Home page at once, then rebuild it.
+            let previous = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME);
+            if let Some(seed) = previous.clone() {
+                let _ = ctx.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(seed))));
+            }
             let ctx_c = ctx.clone();
             tokio::spawn(async move {
-                let feed = crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
-                let _ = ctx_c.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(feed))));
+                let built = crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
+                // A rebuild that came back thinner (Spotify rate limit, a feed that did not
+                // answer) must not wipe what was already on the page.
+                let feed = match previous {
+                    Some(old) => merge_home_feed(old, built),
+                    None => built,
+                };
+                kv_store(&ctx_c.cache, KV_HOME, &feed);
+                let _ = ctx_c.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(feed.clone()))));
+
+                // The big lists (All-Time Best, Top 100, Top 200) hold hundreds of songs that
+                // each need a Spotify match. Home shows what is matched already; the rest is
+                // matched here in steps, and Home is sent again after each step that found
+                // something new, so a list appears as soon as it has a few songs.
+                if !HOME_WARMING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    let _guard = WarmGuard;
+                    let mut current = feed;
+                    // Spotify may pause lookups (rate limit). A round that gets stuck waits the
+                    // pause out and tries again, so the lists keep filling up instead of
+                    // stopping at the few songs that were already matched.
+                    for round in 0..20 {
+                        for step in 0..crate::suggestions::WARM_STEPS {
+                            let did_work = crate::suggestions::warm_big_lists_step(
+                                &ctx_c.spotify,
+                                &ctx_c.cache,
+                                &ctx_c.http,
+                                step,
+                            )
+                            .await;
+                            if !did_work {
+                                continue;
+                            }
+                            let rebuilt =
+                                crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
+                            current = merge_home_feed(current, rebuilt);
+                            kv_store(&ctx_c.cache, KV_HOME, &current);
+                            let _ = ctx_c
+                                .events_tx
+                                .send(protocol::event(EventBody::HomeFeedResult(Box::new(current.clone()))));
+                        }
+                        if !crate::suggestions::big_lists_incomplete(&ctx_c.cache, &ctx_c.http).await {
+                            break;
+                        }
+                        let wait = crate::suggestions::search_pause_remaining().clamp(45, 900);
+                        tracing::info!("big lists not complete after round {round}; trying again in {wait}s");
+                        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                    }
+                }
+            });
+            return None;
+        }
+
+        GetDiscover => {
+            // Show the last finished page at once, then rebuild it.
+            let mut seed = kv_load::<halcyon_music_core::models::DiscoverFeed>(&ctx.cache, KV_DISCOVER)
+                .unwrap_or_default();
+            seed.complete = false;
+            if seed != halcyon_music_core::models::DiscoverFeed::default() {
+                let _ = ctx.events_tx.send(protocol::event(EventBody::DiscoverResult(Box::new(seed.clone()))));
+            }
+            if DISCOVER_RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return None;
+            }
+            let ctx_c = ctx.clone();
+            tokio::spawn(async move {
+                let _guard = DiscoverGuard;
+                let tx = ctx_c.events_tx.clone();
+                let feed = crate::suggestions::build_discover_feed(
+                    &ctx_c.spotify,
+                    &ctx_c.cache,
+                    &ctx_c.http,
+                    seed,
+                    move |f| {
+                        let _ = tx.send(protocol::event(EventBody::DiscoverResult(Box::new(f.clone()))));
+                    },
+                )
+                .await;
+                kv_store(&ctx_c.cache, KV_DISCOVER, &feed);
             });
             return None;
         }
@@ -1328,6 +1535,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             art::spawn_request(ctx.art.clone(), ctx.events_tx.clone(), url, size);
             return None;
         }
+
+        // Per connection, so `handle_client` takes it before it gets here.
+        SetAudioStream { .. } => {}
 
         Unknown => {
             return Some(protocol::event(EventBody::Error {

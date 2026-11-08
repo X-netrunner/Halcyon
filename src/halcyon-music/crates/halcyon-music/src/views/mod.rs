@@ -1,13 +1,17 @@
 pub mod capsule;
+pub mod crossfade;
 pub mod detail;
 pub mod account;
 pub mod diagnostics;
+pub mod discover;
 pub mod fullscreen;
 pub mod help_modal;
 pub mod home;
 pub mod library;
 pub mod lyrics;
+pub mod notch;
 pub mod now_playing_bar;
+pub mod orbit;
 pub mod playlist;
 pub mod queue_drawer;
 pub mod recent;
@@ -15,6 +19,7 @@ pub mod search;
 pub mod search_dropdown;
 pub mod settings;
 pub mod sidebar;
+pub mod slide;
 pub mod track_menu;
 pub mod titlebar;
 
@@ -108,7 +113,7 @@ pub fn chip(
         border: iced::Border {
             color: theme::alpha(palette.accent, 0.30),
             width: 1.0,
-            radius: 10.0.into(),
+            radius: 14.0.into(),
         },
         ..Default::default()
     }
@@ -233,7 +238,7 @@ pub fn icon_action<'a, M: Clone + 'a>(
             ),
             text_color: tint,
             border: iced::Border {
-                radius: 20.0.into(),
+                radius: 26.0.into(),
                 color: if hot { theme::alpha(palette.accent, 0.35) } else { iced::Color::TRANSPARENT },
                 width: 1.0,
             },

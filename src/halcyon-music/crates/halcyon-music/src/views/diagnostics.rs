@@ -70,7 +70,7 @@ pub fn view<'a, Message: Clone + 'static>(
         .style(move |_t| container::Style {
             background: Some(iced::Color { a: 0.1, ..palette.danger }.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 color: palette.danger,
                 width: 1.0,
             },
@@ -93,7 +93,7 @@ pub fn view<'a, Message: Clone + 'static>(
         .style(move |_t| container::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 color: palette.soft_border(),
                 width: 0.5,
             },
@@ -147,7 +147,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -162,7 +162,7 @@ pub fn view<'a, Message: Clone + 'static>(
                         .into(),
                     ),
                     border: iced::Border {
-                        radius: 12.0.into(),
+                        radius: 18.0.into(),
                         color: palette.soft_border(),
                         width: 0.5,
                     },
@@ -180,7 +180,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 20.0.into(),
+                    radius: 26.0.into(),
                     color: palette.soft_border(),
                     width: 1.0,
                 },

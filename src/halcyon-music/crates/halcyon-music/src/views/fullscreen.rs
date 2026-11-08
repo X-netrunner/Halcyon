@@ -188,7 +188,7 @@ pub fn view<'a, Message: Clone + 'static>(
         pal,
     );
     let halo = container(big_art).style(move |_t| container::Style {
-        border: iced::Border { radius: 28.0.into(), ..Default::default() },
+        border: iced::Border { radius: 36.0.into(), ..Default::default() },
         shadow: iced::Shadow {
             color: theme::alpha(pal.glow, 0.22 + 0.22 * breath + 0.12 * bass),
             offset: iced::Vector::new(0.0, 0.0),

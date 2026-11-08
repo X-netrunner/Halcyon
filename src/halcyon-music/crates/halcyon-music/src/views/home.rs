@@ -57,6 +57,7 @@ pub fn view<'a, Message: Clone + 'static>(
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
     shimmer: f32,
     progress: f32,
+    clock: f32,
     status: HomeStatus,
     on_refresh: Message,
 ) -> Element<'a, Message> {
@@ -137,13 +138,14 @@ pub fn view<'a, Message: Clone + 'static>(
             personal,
             "Made for you",
             "by Halcyon",
-            "What you keep on loop, forgotten favourites, hidden gems and fresh draws from your library",
+            "Picked by Halcyon from what you really play, blended with new music in your sound",
             palette,
             density,
             on_play_mix,
             on_save_mix,
             on_open_mix,
             progress,
+            clock,
         ));
     }
 
@@ -157,13 +159,14 @@ pub fn view<'a, Message: Clone + 'static>(
             outside,
             "Discover",
             "new and famous",
-            "Trending this week, chart toppers and the freshest releases",
+            "Trending this week, chart toppers, all-time greats and the freshest releases",
             palette,
             density,
             on_play_mix,
             on_save_mix,
             on_open_mix,
             progress,
+            clock,
         ));
     } else if !feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty() {
         // Nothing from outside yet: say so, so the gap does not look like a bug.
@@ -314,7 +317,7 @@ fn view_liked_pin<'a, Message: Clone + 'static>(
             border: iced::Border {
                 color: crate::theme::alpha(palette.accent, 0.30),
                 width: 1.0,
-                radius: 24.0.into(),
+                radius: 30.0.into(),
             },
             shadow: palette.glow_shadow(0.16, 24.0),
             ..Default::default()
@@ -413,7 +416,7 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
 
             let body_btn = button(
                 row![
-                    crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 52.0, 8.0, Icon::Music, &item.title, palette),
+                    crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 52.0, 12.0, Icon::Music, &item.title, palette),
                     Space::with_width(12),
                     column![
                         text(super::ellipsize(&item.title, 30))
@@ -443,7 +446,7 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             .on_press(play_msg)
             .style(move |_t, s| button::Style {
                 background: Some(palette.accent_background()),
-                border: iced::Border { radius: 17.0.into(), ..Default::default() },
+                border: iced::Border { radius: 15.0.into(), ..Default::default() },
                 ..Default::default()
             });
 
@@ -453,7 +456,7 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             .width(Length::FillPortion(1))
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
-                border: iced::Border { radius: 12.0.into(), ..Default::default() },
+                border: iced::Border { radius: 18.0.into(), ..Default::default() },
                 ..Default::default()
             });
 
@@ -493,7 +496,7 @@ fn view_shelf<'a, Message: Clone + 'static>(
         let card_btn = button(
             column![
                 // Artwork card
-                crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 10.0, Icon::Music, &item.title, palette),
+                crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 14.0, Icon::Music, &item.title, palette),
                 Space::with_height(8),
                 text(super::ellipsize(&item.title, 17))
                     .size(13)
@@ -520,7 +523,7 @@ fn view_shelf<'a, Message: Clone + 'static>(
                 .into(),
             ),
             border: iced::Border {
-                radius: 18.0.into(),
+                radius: 24.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -542,13 +545,14 @@ fn view_shelf<'a, Message: Clone + 'static>(
                 border: iced::Border { radius: 17.0.into(), ..Default::default() },
                 ..Default::default()
             });
-            cards_row = cards_row.push(iced::widget::stack![
+            // Not a stacked overlay (those are not clipped by the scroll area and can draw over
+            // the player bar): the button sits in its own strip under the card.
+            cards_row = cards_row.push(column![
                 card_btn,
                 container(play_btn)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
+                    .width(Length::Fixed(156.0))
                     .align_x(iced::alignment::Horizontal::Right)
-                    .padding(iced::Padding { top: 104.0, right: 16.0, bottom: 0.0, left: 0.0 }),
+                    .padding(iced::Padding { top: 6.0, right: 8.0, bottom: 0.0, left: 0.0 }),
             ]);
         } else {
             cards_row = cards_row.push(card_btn);
@@ -567,52 +571,85 @@ fn view_shelf<'a, Message: Clone + 'static>(
 /// Width of one Made-for-you card, and the padding inside it.
 const MIX_W: f32 = 196.0;
 const MIX_PAD: f32 = 10.0;
+/// Height of the text strip under a mix cover, and the width kept free in it for the buttons.
+const MIX_INFO_H: f32 = 64.0;
+const MIX_BTN_ZONE: f32 = 78.0;
 
-/// The picture of a mix: a 2x2 mosaic of its first four different covers, or the mix's own
-/// cover when there are fewer than four.
-fn mix_cover<'a, Message: 'a>(mix: &MusicMix, px: f32, palette: HalcyonPalette) -> Element<'a, Message> {
-    let mut uniq: Vec<&str> = Vec::new();
-    for u in mix.tracks.iter().filter_map(|t| t.art_url.as_deref()) {
-        if !uniq.contains(&u) {
-            uniq.push(u);
-        }
-        if uniq.len() == 4 {
-            break;
+/// Covers a mix cycles through at most (each one is a download, so not the whole playlist).
+pub const MIX_SLIDES: usize = 8;
+/// How long a cover stays, how long the cross-fade takes, and how far apart neighbouring cards
+/// run, so the shelf ripples instead of everything changing at once.
+const SLIDE_HOLD: f32 = 8.0;
+const SLIDE_FADE: f32 = 2.4;
+const SLIDE_STAGGER: f32 = 2.1;
+
+/// Which cover of `count` card number `index` shows at `clock` seconds, and how far (0.0 ..= 1.0)
+/// the cross-fade to the next one has got.
+fn slide_at(clock: f32, index: usize, count: usize) -> (usize, f32) {
+    if count < 2 {
+        return (0, 0.0);
+    }
+    let step_len = SLIDE_HOLD + SLIDE_FADE;
+    let t = (clock + index as f32 * SLIDE_STAGGER).max(0.0);
+    let step = (t / step_len).floor();
+    let within = t - step * step_len;
+    let fade = if within > SLIDE_HOLD { ((within - SLIDE_HOLD) / SLIDE_FADE).clamp(0.0, 1.0) } else { 0.0 };
+    // Ease in and out so the change is soft at both ends.
+    let fade = fade * fade * (3.0 - 2.0 * fade);
+    ((step as usize) % count, fade)
+}
+
+/// The two shelves Home draws, in the order the cards appear (the same split `view` makes).
+fn shelves(feed: &HomeFeed) -> [Vec<&MusicMix>; 2] {
+    [
+        feed.made_for_you.iter().filter(|m| m.source == "Halcyon Local").collect(),
+        feed.made_for_you.iter().filter(|m| m.source != "Halcyon Local").collect(),
+    ]
+}
+
+/// `None` when no card on Home has more than one cover (nothing moves, no timer needed);
+/// otherwise whether any card is mid-fade right now (the app then redraws at full rate).
+pub fn slideshow_state(feed: &HomeFeed, clock: f32) -> Option<bool> {
+    let mut any = false;
+    let mut fading = false;
+    for shelf in shelves(feed) {
+        for (i, mix) in shelf.into_iter().enumerate() {
+            let n = crate::art::unique_covers(mix, MIX_SLIDES).len();
+            if n >= 2 {
+                any = true;
+                fading |= slide_at(clock, i, n).1 > 0.0;
+            }
         }
     }
-    let (a, b, c, d) = match uniq.as_slice() {
-        [a, b, c, d, ..] => (*a, *b, *c, *d),
-        _ => {
-            return crate::art::cover(
-                mix.art_url.as_deref(),
-                halcyon_music_core::art::ArtSize::Small,
-                px,
-                14.0,
-                Icon::Music,
-                &mix.title,
-                palette,
-            );
-        }
+    any.then_some(fading)
+}
+
+/// The picture of a mix: its songs' covers one after another, each fading into the next. A mix
+/// with a single cover just shows it.
+fn mix_cover<'a, Message: 'a>(
+    mix: &MusicMix,
+    index: usize,
+    clock: f32,
+    px: f32,
+    palette: HalcyonPalette,
+) -> Element<'a, Message> {
+    const RADIUS: f32 = 20.0;
+    let covers = crate::art::unique_covers(mix, MIX_SLIDES);
+    let size = halcyon_music_core::art::ArtSize::Medium;
+    let Some(&first) = covers.first() else {
+        return crate::art::cover(mix.art_url.as_deref(), size, px, RADIUS, Icon::Music, &mix.title, palette);
     };
-    let gap = 4.0;
-    let tile = (px - gap) / 2.0;
-    let one = |u: &str| -> Element<'a, Message> {
-        crate::art::cover(
-            Some(u),
-            halcyon_music_core::art::ArtSize::Small,
-            tile,
-            8.0,
-            Icon::Music,
-            &mix.title,
-            palette,
-        )
-    };
-    column![
-        row![one(a), one(b)].spacing(gap),
-        row![one(c), one(d)].spacing(gap),
-    ]
-    .spacing(gap)
-    .into()
+    let (now, fade) = slide_at(clock, index, covers.len());
+    let current = covers.get(now).copied().unwrap_or(first);
+    let base = crate::art::cover(Some(current), size, px, RADIUS, Icon::Music, &mix.title, palette);
+    if fade <= 0.0 {
+        return base;
+    }
+    let next = covers.get((now + 1) % covers.len()).copied().unwrap_or(first);
+    match crate::art::cover_overlay(next, size, px, RADIUS, fade) {
+        Some(over) => crate::views::crossfade::Crossfade::new(base, over).into(),
+        None => base,
+    }
 }
 
 /// "Made for you by Halcyon": a shelf of cover cards. Each card has a Play button and a Save
@@ -630,6 +667,7 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
     on_open_mix: impl Fn(String) -> Message + 'a + Copy,
     progress: f32,
+    clock: f32,
 ) -> Element<'a, Message> {
     let header = column![
         row![
@@ -667,38 +705,47 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             ..Default::default()
         });
 
+        // No overlay layers: a stacked layer is not clipped by the scroll area and draws its
+        // buttons over the player bar when the card is scrolled out of view. Everything here
+        // is a plain sibling in one column: cover button, then a strip with the title (also a
+        // button), the source line, and the Save and Play buttons on the right.
+        let text_w = cover_px - MIX_BTN_ZONE;
+        let cover_btn = button(mix_cover(mix, i, clock, cover_px, palette))
+            .padding(0)
+            .on_press(on_open_mix(mix.id.clone()))
+            .style(crate::views::ghost(palette));
+        let title_btn = button(text(super::ellipsize(&mix.title, 18)).size(14).color(palette.text))
+            .padding(0)
+            .on_press(on_open_mix(mix.id.clone()))
+            .style(|_t, _s| button::Style::default());
         let info = column![
-            Space::with_height(10),
-            text(super::ellipsize(&mix.title, 22)).size(14).color(palette.text),
+            title_btn,
             row![
                 dot,
                 Space::with_width(6),
-                text(format!("{} · {} songs", mix.source, track_count))
+                text(format!(
+                        "{} · {} songs",
+                        if mix.source == "Halcyon Local" { "Halcyon" } else { mix.source.as_str() },
+                        track_count
+                    ))
                     .size(11)
                     .color(palette.text_muted),
             ]
             .align_y(Alignment::Center),
-            text(super::ellipsize(&mix.description, 54))
+            text(super::ellipsize(&mix.description, 30))
                 .size(11)
-                .color(crate::theme::alpha(palette.text_muted, 0.85))
-                .width(Length::Fill),
+                .color(crate::theme::alpha(palette.text_muted, 0.85)),
         ]
         .spacing(3)
-        .width(Length::Fixed(cover_px));
+        .width(Length::Fixed(text_w));
 
-        let card_btn = button(column![mix_cover(mix, cover_px, palette), info])
-            .width(MIX_W)
-            .padding(MIX_PAD)
-            .on_press(on_open_mix(mix.id.clone()))
-            .style(crate::views::tile(palette, 18.0));
-
-        // Round Save and Play buttons sit on the corner of the cover.
+        // Round Save and Play buttons beside the text.
         let save_btn = button(
-            container(icon(Icon::Plus, 16.0, Color::WHITE))
-                .width(34)
-                .height(34)
-                .center_x(34)
-                .center_y(34),
+            container(icon(Icon::Plus, 14.0, Color::WHITE))
+                .width(30)
+                .height(30)
+                .center_x(30)
+                .center_y(30),
         )
         .padding(0)
         .on_press(on_save_mix(mix.title.clone(), uris))
@@ -709,24 +756,27 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
                 border: iced::Border {
                     color: Color { a: 0.28, ..Color::WHITE },
                     width: 1.0,
-                    radius: 17.0.into(),
+                    radius: 15.0.into(),
                 },
                 ..Default::default()
             }
         });
-        let play_btn = crate::views::play_orb(Icon::Play, 40.0, palette, Some(on_play_mix(tracks, mix.title.clone())));
+        let play_btn = crate::views::play_orb(Icon::Play, 34.0, palette, Some(on_play_mix(tracks, mix.title.clone())));
+        let actions = row![save_btn, play_btn].spacing(6).align_y(Alignment::Center);
 
-        let overlay = container(row![save_btn, play_btn].spacing(8).align_y(Alignment::Center))
-            .width(Length::Fixed(MIX_W))
-            .height(Length::Fixed(MIX_PAD * 2.0 + cover_px))
-            .align_x(iced::alignment::Horizontal::Right)
-            .padding(iced::Padding {
-                top: MIX_PAD + cover_px - 40.0 - 8.0,
-                right: MIX_PAD + 8.0,
-                bottom: 0.0,
-                left: 0.0,
+        let strip = row![info, Space::with_width(Length::Fill), actions]
+            .align_y(Alignment::Start)
+            .width(Length::Fixed(cover_px))
+            .height(Length::Fixed(MIX_INFO_H));
+
+        let card = container(column![cover_btn, Space::with_height(10), strip])
+            .padding(MIX_PAD)
+            .width(MIX_W)
+            .style(move |_t| container::Style {
+                background: Some(crate::theme::alpha(palette.surface, 0.55).into()),
+                border: iced::Border { radius: 24.0.into(), ..Default::default() },
+                ..Default::default()
             });
-        let card = iced::widget::stack![card_btn, overlay];
 
         // Cards rise into place one after another while the page settles.
         let p = ((progress * 1.6) - i as f32 * 0.12).clamp(0.0, 1.0);
@@ -775,7 +825,7 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
                 .style(move |_t| container::Style {
                     background: Some(palette.surface_variant.into()),
                     border: iced::Border {
-                        radius: 18.0.into(),
+                        radius: 24.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -816,7 +866,7 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
     .style(move |_t| container::Style {
         background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 20.0.into(),
+            radius: 26.0.into(),
             width: 1.0,
             color: palette.soft_border(),
         },
@@ -826,3 +876,33 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
 }
 
 use iced::Color;
+
+#[cfg(test)]
+mod slideshow_tests {
+    use super::*;
+
+    #[test]
+    fn a_single_cover_never_moves() {
+        assert_eq!(slide_at(123.0, 2, 1), (0, 0.0));
+    }
+
+    #[test]
+    fn covers_advance_one_after_another_and_wrap() {
+        let step = SLIDE_HOLD + SLIDE_FADE;
+        let seen: Vec<usize> = (0..6).map(|k| slide_at(k as f32 * step + 0.1, 0, 4).0).collect();
+        assert_eq!(seen, vec![0, 1, 2, 3, 0, 1]);
+    }
+
+    #[test]
+    fn fade_happens_only_at_the_end_of_each_hold() {
+        assert_eq!(slide_at(1.0, 0, 3).1, 0.0);
+        let mid = slide_at(SLIDE_HOLD + SLIDE_FADE / 2.0, 0, 3).1;
+        assert!((mid - 0.5).abs() < 0.01, "{mid}");
+        assert!(slide_at(SLIDE_HOLD + SLIDE_FADE - 0.001, 0, 3).1 > 0.99);
+    }
+
+    #[test]
+    fn neighbouring_cards_are_out_of_step() {
+        assert_ne!(slide_at(9.0, 0, 4), slide_at(9.0, 1, 4));
+    }
+}

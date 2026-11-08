@@ -17,6 +17,7 @@ pub mod art;
 pub mod audio;
 pub mod auth;
 pub mod auth_mode;
+pub mod beat;
 pub mod cache;
 pub mod daemon;
 pub mod doctor;
@@ -32,6 +33,7 @@ pub mod state_store;
 pub mod stream_auth;
 pub mod suggestions;
 pub mod supervisor;
+pub mod tap;
 pub mod token_store;
 
 /// Entry point used by both the real `main` and the socket integration test.

@@ -63,7 +63,7 @@ pub fn view<'a, Message: Clone + 'static>(
                         item.art_url.as_deref(),
                         ArtSize::Medium,
                         COVER,
-                        10.0,
+                        14.0,
                         Icon::Music,
                         &item.title,
                         palette,
@@ -90,7 +90,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 18.0.into(),
+                    radius: 24.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
