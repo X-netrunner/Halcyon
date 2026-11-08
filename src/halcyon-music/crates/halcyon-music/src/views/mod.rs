@@ -8,6 +8,7 @@ pub mod fullscreen;
 pub mod help_modal;
 pub mod home;
 pub mod library;
+pub mod llm_settings;
 pub mod lyrics;
 pub mod notch;
 pub mod now_playing_bar;

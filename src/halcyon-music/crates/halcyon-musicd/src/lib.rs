@@ -22,6 +22,7 @@ pub mod cache;
 pub mod daemon;
 pub mod doctor;
 pub mod faults;
+pub mod llm;
 pub mod lyrics;
 pub mod mpris;
 pub mod panic_hook;

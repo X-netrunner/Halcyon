@@ -38,7 +38,7 @@ use halcyon_music_core::models::{
     Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, FullCapsule, HomeFeed, Lyrics, Playlist, Track,
 };
 use halcyon_music_core::protocol::{CommandBody, EventBody};
-use halcyon_music_core::state::PlayerState;
+use halcyon_music_core::state::{Bitrate, PlayerState};
 use shortcuts::ShortcutAction;
 use theme::{Density, HalcyonPalette, Mood};
 use views::library::{LibraryTab, LikedSort};
@@ -51,6 +51,9 @@ use std::time::{Duration, Instant};
 
 /// Space between the page card and the right edge of the window.
 const PAGE_MARGIN: f32 = 12.0;
+/// Corner radius of the window itself. The window is transparent and the frame draws its own
+/// rounded corners; a maximised window is square because it fills the screen.
+const WINDOW_RADIUS: f32 = 16.0;
 
 /// Height of the search strip that floats over the top of the page (16 px, the 44 px search
 /// box, 16 px). The page's content starts below it; the strip's fade lives in `view`.
@@ -85,6 +88,8 @@ pub fn main() -> iced::Result {
         min_size: Some(WINDOW_MIN),
         // Our own slim title bar replaces the system one.
         decorations: false,
+        // Transparent, so the frame's rounded corners show the desktop behind them.
+        transparent: true,
         ..Default::default()
     };
 
@@ -92,6 +97,11 @@ pub fn main() -> iced::Result {
         .window(window_settings)
         .subscription(HalcyonApp::subscription)
         .theme(|_| Theme::Dark)
+        // No window fill of its own: the frame in `view` paints the (rounded) background.
+        .style(|_state, _theme| iced::application::Appearance {
+            background_color: iced::Color::TRANSPARENT,
+            text_color: iced::Color::WHITE,
+        })
         .run_with(move || HalcyonApp::new(perf_flag))
 }
 
@@ -142,6 +152,18 @@ struct HalcyonApp {
     search_query: String,
     perf_overlay: bool,
     home_feed: HomeFeed,
+    /// Smart suggestions (optional LLM layer): what the daemon last said about it. Off until the
+    /// user turns it on in Settings.
+    llm_enabled: bool,
+    llm_model: String,
+    llm_reach: views::llm_settings::Reach,
+    llm_hint: Option<String>,
+    /// True once the model name has been taken from the daemon, so a later status never
+    /// overwrites a name the user is typing.
+    llm_model_synced: bool,
+    /// Better titles and one-line reasons the daemon sent, by mix id. Re-applied whenever the
+    /// Home feed is replaced, so a rebuild does not wipe them.
+    mix_notes: std::collections::HashMap<String, (String, String)>,
     discover_feed: DiscoverFeed,
     /// Set while a Discover build is on its way (until its last, complete copy arrives).
     discover_loading_since: Option<Instant>,
@@ -184,6 +206,8 @@ struct HalcyonApp {
     // Shell
     window_id: Option<iced::window::Id>,
     window_size: iced::Size,
+    /// A maximised window has square corners; a floating one is rounded.
+    window_maximized: bool,
     cursor: iced::Point,
     scroll: ScrollInfo,
     /// Live spectrum and beat pulse from the daemon (drives the queue drawer's cover).
@@ -213,6 +237,7 @@ enum Message {
     // Window / shell
     WindowId(Option<iced::window::Id>),
     WindowResized(iced::Size),
+    WindowMaximized(bool),
     CursorMoved(iced::Point),
     TitleBarPress,
     WindowMinimize,
@@ -268,6 +293,14 @@ enum Message {
     ToggleMute,
     ToggleShuffle,
     CycleRepeat,
+    /// Audio quality chosen in Settings.
+    SetBitrate(Bitrate),
+    ToggleNormalisation,
+    /// Smart suggestions (optional LLM layer) controls in Settings.
+    ToggleLlm,
+    LlmModelChanged(String),
+    LlmModelSubmit,
+    TestLlm,
     ToggleLike,
     Dequeue(usize),
     DismissError,
@@ -532,6 +565,12 @@ impl HalcyonApp {
             search_query: String::new(),
             perf_overlay: perf_flag,
             home_feed: HomeFeed::default(),
+            llm_enabled: false,
+            llm_model: String::new(),
+            llm_reach: views::llm_settings::Reach::Unknown,
+            llm_hint: None,
+            llm_model_synced: false,
+            mix_notes: std::collections::HashMap::new(),
             discover_feed: DiscoverFeed::default(),
             discover_loading_since: None,
             discover_return: false,
@@ -564,6 +603,7 @@ impl HalcyonApp {
             last_fetched_lyrics_track_id: None,
             window_id: None,
             window_size: WINDOW_DEFAULT,
+            window_maximized: false,
             cursor: iced::Point::ORIGIN,
             scroll: ScrollInfo::default(),
             viz: viz::AudioViz::new(),
@@ -586,6 +626,29 @@ impl HalcyonApp {
 
     fn send(&self, body: CommandBody) {
         let _ = self.commands.try_send(body);
+    }
+
+    /// Tell the daemon the Smart suggestions settings as they are on screen.
+    fn send_llm_settings(&self) {
+        self.send(CommandBody::SetLlmSettings {
+            enabled: self.llm_enabled,
+            backend: "ollama".to_string(),
+            model: self.llm_model.clone(),
+        });
+    }
+
+    /// Put the daemon's better titles and reasons on the matching Home mixes. A mix keeps its own
+    /// title and description until its words have arrived, so nothing moves or flickers.
+    fn apply_mix_notes(&mut self) {
+        if self.mix_notes.is_empty() {
+            return;
+        }
+        for mix in self.home_feed.made_for_you.iter_mut() {
+            if let Some((title, reason)) = self.mix_notes.get(&mix.id) {
+                mix.title = title.clone();
+                mix.description = reason.clone();
+            }
+        }
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
@@ -1012,6 +1075,8 @@ impl HalcyonApp {
                     EventBody::Hello { daemon_version, .. } => {
                         // A new connection starts with the audio stream off; `update` asks again.
                         self.audio_stream_on = false;
+                        // Cheap and local: is Smart suggestions on, and with which model?
+                        self.send(CommandBody::GetLlmStatus);
                         if daemon_version != halcyon_music_core::CORE_VERSION {
                             self.notify(
                                 format!(
@@ -1067,8 +1132,34 @@ impl HalcyonApp {
                         self.animations.animate_toast_show();
                         Task::none()
                     }
+                    EventBody::LlmStatus { enabled, model, reachable, hint, .. } => {
+                        self.llm_enabled = enabled;
+                        if !self.llm_model_synced {
+                            self.llm_model = model;
+                            self.llm_model_synced = true;
+                        }
+                        self.llm_reach = if reachable {
+                            views::llm_settings::Reach::Ready
+                        } else if hint.is_some() {
+                            views::llm_settings::Reach::Trouble
+                        } else {
+                            views::llm_settings::Reach::Unknown
+                        };
+                        self.llm_hint = hint;
+                        if !enabled {
+                            // The words go away at the next refresh; the mixes keep working.
+                            self.mix_notes.clear();
+                        }
+                        Task::none()
+                    }
+                    EventBody::MixEnriched { mix_id, title, reason } => {
+                        self.mix_notes.insert(mix_id, (title, reason));
+                        self.apply_mix_notes();
+                        Task::none()
+                    }
                     EventBody::HomeFeedResult(feed) => {
                         self.home_feed = *feed;
+                        self.apply_mix_notes();
                         self.home_loading_since = None;
                         // Mixes from outside sources (Deezer, ListenBrainz) need Spotify lookups, which
                         // Spotify may rate limit. While they are missing, try again now and then.
@@ -1284,6 +1375,14 @@ impl HalcyonApp {
             }
             Message::WindowResized(size) => {
                 self.window_size = size;
+                // Maximising and un-maximising both resize the window; ask which one it is now.
+                match self.window_id {
+                    Some(id) => iced::window::get_maximized(id).map(Message::WindowMaximized),
+                    None => Task::none(),
+                }
+            }
+            Message::WindowMaximized(maximized) => {
+                self.window_maximized = maximized;
                 Task::none()
             }
             Message::CursorMoved(p) => {
@@ -1690,6 +1789,53 @@ impl HalcyonApp {
             }
             Message::CycleRepeat => {
                 self.send(CommandBody::CycleRepeat);
+                Task::none()
+            }
+            Message::SetBitrate(bitrate) => {
+                if bitrate != self.state.bitrate {
+                    self.send(CommandBody::SetBitrate { bitrate });
+                    // Show it at once; the daemon's next state broadcast confirms it.
+                    self.state.bitrate = bitrate;
+                    let name = match bitrate {
+                        Bitrate::Bitrate96 => "Low (96 kbps)",
+                        Bitrate::Bitrate160 => "Normal (160 kbps)",
+                        Bitrate::Bitrate320 => "Very high (320 kbps)",
+                    };
+                    self.notify(format!("Audio quality: {name}"), true);
+                }
+                Task::none()
+            }
+            Message::ToggleLlm => {
+                self.llm_enabled = !self.llm_enabled;
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                if !self.llm_enabled {
+                    self.mix_notes.clear();
+                }
+                self.send_llm_settings();
+                Task::none()
+            }
+            Message::LlmModelChanged(name) => {
+                self.llm_model = name;
+                Task::none()
+            }
+            Message::LlmModelSubmit => {
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                self.send_llm_settings();
+                Task::none()
+            }
+            Message::TestLlm => {
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                self.send_llm_settings();
+                self.send(CommandBody::TestLlmConnection);
+                Task::none()
+            }
+            Message::ToggleNormalisation => {
+                let enabled = !self.state.normalisation;
+                self.send(CommandBody::SetNormalisation { enabled });
+                self.state.normalisation = enabled;
                 Task::none()
             }
             Message::ToggleLike => {
@@ -2411,11 +2557,22 @@ impl HalcyonApp {
 
         // One frame under the title bar, the sidebar and the player bar, so they are a single
         // surface (not separate islands). Its colours come from the wallpaper palette.
+        let window_radius = if self.window_maximized { 0.0 } else { WINDOW_RADIUS };
         let base = container(layout)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_t| container::Style {
                 background: Some(self.palette.chrome_background()),
+                // Rounded, with a hairline so the edge reads as a clean, smooth line.
+                border: iced::Border {
+                    color: if window_radius > 0.0 {
+                        theme::alpha(self.palette.border, 0.45)
+                    } else {
+                        iced::Color::TRANSPARENT
+                    },
+                    width: if window_radius > 0.0 { 1.0 } else { 0.0 },
+                    radius: window_radius.into(),
+                },
                 ..Default::default()
             });
 
@@ -2653,7 +2810,10 @@ impl HalcyonApp {
                 .on_input(on_input)
                 .on_submit_maybe(on_submit)
                 .size(theme::type_size::BODY + 1.0)
-                .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: theme::space::LG })
+                // Equal room left and right (the magnifier sits in the left one), so the
+                // placeholder and the typed text are centred in the pill.
+                .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: 46.0 })
+                .align_x(iced::alignment::Horizontal::Center)
                 .width(Length::Fill);
             // The notch is the window frame reaching down into the page: same colour as the
             // title bar above it, joined to the page's top edge by curves, with the search box
@@ -2686,7 +2846,9 @@ impl HalcyonApp {
                     .padding([0.0, theme::space::LG])
                     .align_y(iced::alignment::Vertical::Center),
             ])
-            .width(views::search_dropdown::WIDTH)
+            // As wide as the notch behind it (the padding is the notch's side walls and ears), so
+            // the box ends up exactly in the middle of the notch.
+            .width(notch_w)
             .padding(iced::Padding { top: 10.0, right: 22.0 + ear, bottom: 14.0, left: 22.0 + ear });
             let notch = iced::widget::stack![
                 views::notch::view(notch_w, notch_h, frame_colour, pal.soft_border()),
@@ -2968,14 +3130,29 @@ impl HalcyonApp {
                 account_label.clone(),
                 self.density,
                 self.mood,
+                self.state.bitrate,
+                self.state.normalisation,
                 self.palette,
                 Message::ToggleDensity,
                 Message::SetMood,
+                Message::SetBitrate,
+                Message::ToggleNormalisation,
                 Message::Logout,
                 Message::OpenSpotifyAccount,
                 self.last_error.is_some(),
                 Message::ToggleDiagnostics,
                 Message::CopyDiagnostics,
+                views::llm_settings::view(
+                    self.llm_enabled,
+                    &self.llm_model,
+                    self.llm_reach,
+                    self.llm_hint.as_deref(),
+                    self.palette,
+                    Message::ToggleLlm,
+                    Message::LlmModelChanged,
+                    Message::LlmModelSubmit,
+                    Message::TestLlm,
+                ),
             ),
             NavPage::Lyrics => views::lyrics::view(
                 self.state.track.as_ref(),

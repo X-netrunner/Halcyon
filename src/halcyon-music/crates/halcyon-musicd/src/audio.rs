@@ -130,6 +130,12 @@ pub fn describe_engine_start_error(err: &str) -> &'static str {
     }
 }
 
+/// True when the quality the user asked for differs from what the running player was built
+/// with. librespot cannot change bitrate or normalisation on a live player.
+fn quality_changed(built_with: (Bitrate, bool), wanted: (Bitrate, bool)) -> bool {
+    built_with != wanted
+}
+
 /// True when the state's position moved away from what the engine last reported.
 fn is_user_seek(state_pos_ms: u64, last_reported_ms: u64) -> bool {
     state_pos_ms.abs_diff(last_reported_ms) > SEEK_JUMP_MS
@@ -174,6 +180,9 @@ struct Rt {
     last_lyric_idx: Option<usize>,
     /// The last transport request we sent the engine (true = play).
     native_wants_play: bool,
+    /// Audio quality the running librespot player was built with. librespot fixes the bitrate
+    /// and normalisation when a player is created, so a change means building a new player.
+    engine_quality: (Bitrate, bool),
 }
 
 impl Rt {
@@ -194,6 +203,7 @@ impl Rt {
             last_progress_broadcast: now,
             last_lyric_idx: None,
             native_wants_play: false,
+            engine_quality: (Bitrate::default(), true),
         }
     }
 
@@ -499,6 +509,8 @@ impl AudioEngine {
                 self.fail_or_park(rt, state.playing, cur_id, msg).await;
                 return;
             }
+            // The new player was built from the state as it is right now.
+            rt.engine_quality = (state.bitrate, state.normalisation);
         }
         let Some(native) = self.native().await else {
             return;
@@ -563,6 +575,20 @@ impl AudioEngine {
             } else {
                 rt.failed_track_id = None; // the user moved to another track
             }
+        }
+
+        // Audio quality (bitrate, volume normalisation) was changed in Settings: the player is
+        // rebuilt with it and the current track is loaded again at the same position, so the
+        // change is heard within a moment instead of at the next app start.
+        if self.native().await.is_some()
+            && quality_changed(rt.engine_quality, (state.bitrate, state.normalisation))
+        {
+            info!(
+                bitrate = ?state.bitrate,
+                normalisation = state.normalisation,
+                "audio quality changed: rebuilding the engine"
+            );
+            self.drop_native(rt).await;
         }
 
         // The engine has nothing playing (track ended, queue finished) but playback is wanted.
@@ -859,6 +885,14 @@ impl AudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quality_change_is_detected() {
+        let built = (Bitrate::Bitrate160, true);
+        assert!(!quality_changed(built, (Bitrate::Bitrate160, true)));
+        assert!(quality_changed(built, (Bitrate::Bitrate320, true)));
+        assert!(quality_changed(built, (Bitrate::Bitrate160, false)));
+    }
 
     #[test]
     fn user_seek_needs_a_real_jump() {

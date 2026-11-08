@@ -12,6 +12,10 @@ use iced::{Alignment, Element, Length};
 
 pub const HEIGHT: f32 = 36.0;
 const BUTTON_WIDTH: f32 = 46.0;
+/// Room right of the window buttons and above/below them, so a lit button stays inside the
+/// window's rounded corner instead of poking out of it.
+const CONTROLS_INSET: f32 = 8.0;
+const BUTTON_HEIGHT: f32 = HEIGHT - 2.0 * 4.0;
 
 /// The tooltip text for the star.
 pub fn connection_label(connected: bool) -> &'static str {
@@ -53,7 +57,7 @@ fn window_button<'a, M: Clone + 'a>(
     )
     .on_press(msg)
     .width(BUTTON_WIDTH)
-    .height(HEIGHT)
+    .height(BUTTON_HEIGHT)
     .padding(0)
     .style(move |_t, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
@@ -112,7 +116,8 @@ pub fn view<'a, M: Clone + 'a>(
     // buttons on the left keeps it centred on the window rather than on the free space.
     let drag_area = mouse_area(
         row![
-            Space::with_width(BUTTON_WIDTH * 3.0),
+            // As wide as the window buttons and their inset on the right.
+            Space::with_width(BUTTON_WIDTH * 3.0 + CONTROLS_INSET),
             container(brand)
                 .width(Length::Fill)
                 .height(HEIGHT)
@@ -127,6 +132,13 @@ pub fn view<'a, M: Clone + 'a>(
         window_button(Icon::Square, palette, false, on_toggle_maximize),
         window_button(Icon::Close, palette, true, on_close),
     ];
+
+    let controls = container(controls).padding(iced::Padding {
+        top: 0.0,
+        right: CONTROLS_INSET,
+        bottom: 0.0,
+        left: 0.0,
+    });
 
     container(row![drag_area, controls].align_y(Alignment::Center))
         .width(Length::Fill)

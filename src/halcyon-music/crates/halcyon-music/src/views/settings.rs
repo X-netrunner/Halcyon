@@ -3,10 +3,11 @@
 use crate::icons::{icon, Icon};
 use crate::shortcuts::SHORTCUT_HELP;
 use crate::theme::{radius, space, type_size, Density, HalcyonPalette, Mood};
+use halcyon_music_core::state::Bitrate;
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
-fn card<'a, M: 'a>(title: &'static str, body: Element<'a, M>, palette: HalcyonPalette) -> Element<'a, M> {
+pub(crate) fn card<'a, M: 'a>(title: &'static str, body: Element<'a, M>, palette: HalcyonPalette) -> Element<'a, M> {
     container(
         column![
             text(title).size(type_size::TITLE).color(palette.text),
@@ -20,7 +21,7 @@ fn card<'a, M: 'a>(title: &'static str, body: Element<'a, M>, palette: HalcyonPa
     .into()
 }
 
-fn action<'a, M: Clone + 'a>(label: &'static str, trailing: Option<Icon>, palette: HalcyonPalette, msg: M) -> Element<'a, M> {
+pub(crate) fn action<'a, M: Clone + 'a>(label: &'static str, trailing: Option<Icon>, palette: HalcyonPalette, msg: M) -> Element<'a, M> {
     let mut r = row![text(label).size(type_size::BODY).color(palette.text)].align_y(Alignment::Center);
     if let Some(t) = trailing {
         r = r.push(Space::with_width(space::SM));
@@ -98,14 +99,19 @@ pub fn view<'a, M: Clone + 'a>(
     account_label: String,
     density: Density,
     mood: Mood,
+    bitrate: Bitrate,
+    normalisation: bool,
     palette: HalcyonPalette,
     on_toggle_density: M,
     on_set_mood: impl Fn(Mood) -> M + 'a + Copy,
+    on_set_bitrate: impl Fn(Bitrate) -> M + 'a + Copy,
+    on_toggle_normalisation: M,
     on_sign_out: M,
     on_spotify_settings: M,
     has_error: bool,
     on_open_diagnostics: M,
     on_copy_diagnostics: M,
+    llm_card: Element<'a, M>,
 ) -> Element<'a, M> {
     let account = card(
         "Account",
@@ -182,6 +188,58 @@ pub fn view<'a, M: Clone + 'a>(
         palette,
     );
 
+    // Audio quality, like Spotify's: the daemon rebuilds its player with the new bitrate and
+    // carries on from the same spot, so the change is heard right away.
+    let audio = card(
+        "Audio quality",
+        column![
+            text("Streaming quality").size(type_size::BODY).color(palette.text),
+            text("Higher quality sounds better and uses more data.")
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
+            Space::with_height(space::MD),
+            row![
+                choice(
+                    "Low",
+                    "96 kbps. Saves data.",
+                    bitrate == Bitrate::Bitrate96,
+                    palette,
+                    on_set_bitrate(Bitrate::Bitrate96),
+                ),
+                choice(
+                    "Normal",
+                    "160 kbps. Good for everyday listening.",
+                    bitrate == Bitrate::Bitrate160,
+                    palette,
+                    on_set_bitrate(Bitrate::Bitrate160),
+                ),
+                choice(
+                    "Very high",
+                    "320 kbps. The best Spotify streams.",
+                    bitrate == Bitrate::Bitrate320,
+                    palette,
+                    on_set_bitrate(Bitrate::Bitrate320),
+                ),
+            ]
+            .spacing(space::MD),
+            Space::with_height(space::XL),
+            row![
+                column![
+                    text("Normalise volume").size(type_size::BODY).color(palette.text),
+                    text("Plays every song at about the same loudness.")
+                        .size(type_size::SMALL)
+                        .color(palette.text_muted),
+                ]
+                .spacing(2),
+                Space::with_width(Length::Fill),
+                action(if normalisation { "On" } else { "Off" }, None, palette, on_toggle_normalisation),
+            ]
+            .align_y(Alignment::Center),
+        ]
+        .into(),
+        palette,
+    );
+
     let status_line = if has_error {
         "Something went wrong recently. Open the report to see what."
     } else {
@@ -228,6 +286,8 @@ pub fn view<'a, M: Clone + 'a>(
         text("Settings").size(type_size::HEADING + 6.0).color(palette.text),
         account,
         appearance,
+        audio,
+        llm_card,
         diagnostics,
         shortcuts,
     ]

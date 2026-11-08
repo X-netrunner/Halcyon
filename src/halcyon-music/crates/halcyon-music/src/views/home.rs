@@ -718,8 +718,23 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             .padding(0)
             .on_press(on_open_mix(mix.id.clone()))
             .style(|_t, _s| button::Style::default());
+        // The card has room for about 30 characters of the description (its words from the LLM
+        // layer, when on). The whole sentence is one hover away, so nothing is lost and the card
+        // never changes size.
+        let title_el: Element<'a, Message> = if mix.description.chars().count() > 30 {
+            iced::widget::tooltip(
+                title_btn,
+                container(text(mix.description.clone()).size(12).color(palette.text)).padding(8).max_width(240),
+                iced::widget::tooltip::Position::Top,
+            )
+            .gap(6)
+            .style(crate::views::card(palette))
+            .into()
+        } else {
+            title_btn.into()
+        };
         let info = column![
-            title_btn,
+            title_el,
             row![
                 dot,
                 Space::with_width(6),

@@ -120,6 +120,20 @@ where
     })
 }
 
+/// Run a one-shot background job in a task of its own: a panic inside it is caught at the join
+/// handle and logged, and never unwinds into the caller. Unlike [`supervise`] the job is not
+/// restarted; background jobs that fail simply try again the next time they are asked for.
+pub fn run_guarded<Fut>(name: &'static str, job: Fut) -> tokio::task::JoinHandle<()>
+where
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(async move {
+        if let Err(join_err) = tokio::spawn(job).await {
+            error!(component = name, panic = join_err.to_string(), "background job failed; skipped");
+        }
+    })
+}
+
 /// A shared monotonic attempt counter used in tests.
 pub static ATTEMPT_COUNTER: AtomicU32 = AtomicU32::new(0);
 

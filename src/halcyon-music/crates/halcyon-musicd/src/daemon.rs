@@ -1090,6 +1090,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             // Show the last finished Home page at once, then rebuild it.
             let previous = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME);
             if let Some(seed) = previous.clone() {
+                // The words for these mixes (if the LLM layer is on) usually come from the cache
+                // and are sent now, so a returning visit shows them with the page, not after it.
+                crate::llm::spawn_enrichment(ctx.clone(), seed.made_for_you.clone());
                 let _ = ctx.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(seed))));
             }
             let ctx_c = ctx.clone();
@@ -1103,6 +1106,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 };
                 kv_store(&ctx_c.cache, KV_HOME, &feed);
                 let _ = ctx_c.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(feed.clone()))));
+                // Optional LLM layer: words for the mixes just built. Background, off by default,
+                // never waited for; the page above is already on screen.
+                crate::llm::spawn_enrichment(ctx_c.clone(), feed.made_for_you.clone());
 
                 // The big lists (All-Time Best, Top 100, Top 200) hold hundreds of songs that
                 // each need a Spotify match. Home shows what is matched already; the rest is
@@ -1134,6 +1140,8 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                                 .events_tx
                                 .send(protocol::event(EventBody::HomeFeedResult(Box::new(current.clone()))));
                         }
+                        // Chart mixes that were matched in this round get their words too.
+                        crate::llm::spawn_enrichment(ctx_c.clone(), current.made_for_you.clone());
                         if !crate::suggestions::big_lists_incomplete(&ctx_c.cache, &ctx_c.http).await {
                             break;
                         }
@@ -1533,6 +1541,29 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
         GetArt { url, size } => {
             // Answered asynchronously on the event stream (ArtReady / ArtFailed).
             art::spawn_request(ctx.art.clone(), ctx.events_tx.clone(), url, size);
+            return None;
+        }
+
+        // --- Optional LLM layer (off by default; nothing is sent anywhere until it is turned on) ---
+
+        GetLlmStatus => {
+            crate::llm::announce_status(ctx);
+            return None;
+        }
+
+        SetLlmSettings { enabled, backend: _, model } => {
+            let home = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME)
+                .map(|f| f.made_for_you)
+                .unwrap_or_default();
+            crate::llm::apply_settings(ctx, enabled, model, home);
+            return None;
+        }
+
+        TestLlmConnection => {
+            let home = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME)
+                .map(|f| f.made_for_you)
+                .unwrap_or_default();
+            crate::llm::spawn_connection_test(ctx.clone(), home);
             return None;
         }
 
