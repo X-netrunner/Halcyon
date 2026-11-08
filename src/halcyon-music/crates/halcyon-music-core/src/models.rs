@@ -202,6 +202,7 @@ pub struct CapsuleSummary {
 
 /// Complete aggregated Home feed loaded independently.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct HomeFeed {
     pub greeting: String,
     pub quick_picks: Vec<QuickPick>,
@@ -213,6 +214,29 @@ pub struct HomeFeed {
     pub playlists: Vec<Playlist>,
     pub saved_albums: Vec<Album>,
     pub capsule_preview: Option<CapsuleSummary>,
+}
+
+/// The Discover page: new music, from outside sources and from artists the user follows.
+/// Built in stages, so an early copy may have empty sections (`complete` is false until the last).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiscoverFeed {
+    /// Latest album and single releases, newest first. A card opens its album.
+    pub new_albums: Vec<ShelfItem>,
+    /// New songs: the lead song of each fresh album.
+    pub new_songs: Vec<Track>,
+    /// Recent releases by the artists the user listens to most, newest first.
+    pub from_artists: Vec<ShelfItem>,
+    /// What listeners are playing most this week.
+    pub trending: Vec<Track>,
+    /// "If you like ..." mixes: an artist's songs and songs of similar artists.
+    pub mixes: Vec<MusicMix>,
+    /// Mood and genre sections ("Calm", "Hip-Hop", ...): the best songs of each.
+    pub genres: Vec<MusicMix>,
+    /// False while later sections are still being fetched.
+    pub complete: bool,
+    /// Unix seconds when this feed was last built.
+    pub built_at: u64,
 }
 
 /// Comprehensive monthly Sound Capsule computed from local play log.

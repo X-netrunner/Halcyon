@@ -98,3 +98,22 @@ album cover. Motion is slow and soft; set `GTK_ENABLE_ANIMATIONS=0` to turn it o
 
 The sidebar, the title bar and the player bar are one frame around the page. The sidebar opens under the
 pointer and pushes the page aside; its icons stay where they are and the labels fade in on the same line.
+
+## Discover and All-Time Best
+
+- **Discover** (sidebar, second row): new music, built without the Spotify Web API (the default
+  sign-in is rate limited there, and cannot read the followed-artists list). It starts from the
+  artists you listen to, taken from your play log and liked songs. *New from your artists* is what
+  they released lately (iTunes Search, no key); *Latest releases* are the newest popular albums
+  (Apple Music's most played, Deezer's editorial releases, ListenBrainz fresh releases; Spotify's
+  own list too when you use your own Client ID); *New songs* is a song from each; *Trending this
+  week* is what ListenBrainz listeners play; *If you like ...* are two mixes a day made from one of
+  your artists and similar artists (Deezer). Everything is matched on Spotify through the session
+  search, which has no Web API quota. A source that fails is skipped and logged
+  (`journalctl --user -u halcyon-musicd | grep -i "discover\|itunes\|apple\|deezer"`).
+  The daemon answers `get_discover` at once with the last finished page, then again as each part
+  is fetched (`discover_result`, the last one has `complete: true`).
+- **All-Time Best** (a Home mix) blends the greatest English-language songs of all time (a
+  built-in list, a different slice each day, matched on Spotify) with your own most played songs,
+  two of the first for every one of yours. Matches are cached, so it fills in over a few loads;
+  with no match yet it shows your own top songs, as before.

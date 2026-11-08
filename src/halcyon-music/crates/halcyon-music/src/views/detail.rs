@@ -51,14 +51,14 @@ pub fn view_album<'a, Message: Clone + 'static>(
     .style(move |_t, _s| button::Style {
         background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             ..Default::default()
         },
         ..Default::default()
     });
 
     let header_card = row![
-        crate::art::cover(album.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 12.0, Icon::Album, &album.title, palette),
+        crate::art::cover(album.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 18.0, Icon::Album, &album.title, palette),
         Space::with_width(20),
         column![
             text("ALBUM").size(11).color(palette.accent),
@@ -123,7 +123,7 @@ pub fn view_album<'a, Message: Clone + 'static>(
                 .into(),
             ),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -181,7 +181,7 @@ pub fn view_artist<'a, Message: Clone + 'static>(
     .style(move |_t, _s| button::Style {
         background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -245,7 +245,7 @@ pub fn view_artist<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -271,7 +271,7 @@ pub fn view_artist<'a, Message: Clone + 'static>(
                 let alb_id = alb.id.clone();
                 let card = button(
                     column![
-                        crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 8.0, Icon::Album, &alb.title, palette),
+                        crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 12.0, Icon::Album, &alb.title, palette),
                         Space::with_height(8),
                         text(super::ellipsize(&alb.title, 56)).size(13).color(palette.text),
                         text(alb.release_date.as_deref().unwrap_or("Album"))
@@ -289,7 +289,7 @@ pub fn view_artist<'a, Message: Clone + 'static>(
                         .into(),
                     ),
                     border: iced::Border {
-                        radius: 14.0.into(),
+                        radius: 20.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -350,7 +350,7 @@ pub fn view_playlist<'a, Message: Clone + 'static>(
     .style(move |_t, _s| button::Style {
         background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -369,7 +369,7 @@ pub fn view_playlist<'a, Message: Clone + 'static>(
     .style(|_t, _s| button::Style::default());
 
     let header_card = row![
-        crate::art::cover(playlist.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 12.0, Icon::Playlist, &playlist.name, palette),
+        crate::art::cover(playlist.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 18.0, Icon::Playlist, &playlist.name, palette),
         Space::with_width(20),
         column![
             text("PLAYLIST").size(11).color(palette.accent),
@@ -432,7 +432,7 @@ pub fn view_playlist<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()

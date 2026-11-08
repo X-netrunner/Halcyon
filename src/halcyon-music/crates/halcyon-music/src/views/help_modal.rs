@@ -50,7 +50,7 @@ pub fn view<'a, Message: Clone + 'static>(
         row_item("/ or Ctrl + K", "Search library & Spotify"),
         row_item("Ctrl + L", "Toggle Lyrics view"),
         row_item("Q", "Toggle Queue panel"),
-        row_item("1 - 6", "Jump to Page (Home, Search, Library, Liked, Capsule, Settings)"),
+        row_item("1 - 5", "Jump to page (Home, Discover, Library, Recently played, Capsule)"),
         row_item("F", "Toggle Full-screen Now Playing"),
         row_item("Ctrl + R", "Refresh library and probes"),
         row_item("Esc", "Close overlay / Exit full-screen"),
@@ -65,7 +65,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 18.0.into(),
+                    radius: 24.0.into(),
                     color: palette.soft_border(),
                     width: 1.5,
                 },

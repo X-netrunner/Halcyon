@@ -7,7 +7,7 @@
 
 use crate::art::ArtSize;
 use crate::models::{
-    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, EndpointProbe, FullCapsule, HomeFeed,
+    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, EndpointProbe, FullCapsule, HomeFeed,
     Lyrics, MusicMix, Playlist,
 };
 use crate::state::{Bitrate, PlayerState, RepeatMode, Track};
@@ -117,6 +117,8 @@ pub enum CommandBody {
     SetNormalisation { enabled: bool },
     /// Request the aggregated Home page feed.
     GetHomeFeed,
+    /// Request the Discover page (new releases and new songs).
+    GetDiscover,
     /// Request generated mixes from the suggestion engine.
     GetSuggestions,
     /// Play a generated mix immediately.
@@ -163,6 +165,10 @@ pub enum CommandBody {
     /// [`EventBody::ArtReady`] or [`EventBody::ArtFailed`]; repeating a request
     /// is cheap, the daemon de-duplicates in-flight downloads.
     GetArt { url: String, size: ArtSize },
+    /// Start or stop the live audio frames ([`EventBody::AudioLevels`]) for *this* connection.
+    /// Off by default: the GUI turns them on only while something that dances is on screen
+    /// (the queue drawer, the full-screen player), so nothing is sent or analysed otherwise.
+    SetAudioStream { enabled: bool },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -250,6 +256,8 @@ pub enum EventBody {
     },
     /// Home feed response (stale-while-revalidate).
     HomeFeedResult(Box<HomeFeed>),
+    /// Discover page: sent as soon as something is known, then again when it is complete.
+    DiscoverResult(Box<DiscoverFeed>),
     /// Suggestions response.
     SuggestionsResult { mixes: Vec<MusicMix> },
     /// Confirmation that a mix was saved as a real playlist.
@@ -285,6 +293,13 @@ pub enum EventBody {
     ArtReady { url: String, size: ArtSize, path: String },
     /// A cover could not be fetched (offline, 404, too big, not an image).
     ArtFailed { url: String, size: ArtSize, reason: String },
+    /// One frame of live analysis of what is coming out of the speakers, about 43 a second
+    /// while [`CommandBody::SetAudioStream`] is on. `bands` is a log-spaced spectrum (low to
+    /// high, 0..=255 each), `bass` the average of the lowest bands, `beat` 0 or, when a kick or
+    /// snare just hit, its strength 1..=255. The frames are timed to the sound: the daemon
+    /// holds each one back until it is due at the speakers. One all-zero frame is sent when
+    /// playback stops.
+    AudioLevels { bands: Vec<u8>, bass: u8, beat: u8 },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -324,6 +339,26 @@ mod tests {
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn discover_command_and_event_round_trip() {
+        let cmd = command(CommandBody::GetDiscover);
+        let back: Command = decode_line(&encode_line(&cmd).unwrap()).unwrap();
+        assert_eq!(cmd, back);
+        let feed = DiscoverFeed { complete: true, built_at: 7, ..Default::default() };
+        let ev = event(EventBody::DiscoverResult(Box::new(feed)));
+        let back: Event = decode_line(&encode_line(&ev).unwrap()).unwrap();
+        assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn discover_feed_decodes_with_missing_sections() {
+        // A feed saved by an older build, or cut short, must still load.
+        let line = br#"{"version":1,"type":"discover_result","new_songs":[]}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::DiscoverResult(_)));
     }
 
     #[test]
@@ -404,6 +439,20 @@ mod tests {
         let ev = event(EventBody::AuthModeChanged { mode: AuthMode::Librespot });
         let line = encode_line(&ev).expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"librespot\""));
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn audio_stream_messages_round_trip() {
+        let cmd = command(CommandBody::SetAudioStream { enabled: true });
+        let line = encode_line(&cmd).expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"set_audio_stream\""));
+        let back: Command = decode_line(&line).expect("decode");
+        assert_eq!(cmd, back);
+
+        let ev = event(EventBody::AudioLevels { bands: vec![0, 128, 255], bass: 90, beat: 200 });
+        let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
     }

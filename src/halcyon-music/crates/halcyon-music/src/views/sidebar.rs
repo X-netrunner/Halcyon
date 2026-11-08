@@ -40,12 +40,14 @@ pub enum NavPage {
     PlaylistDetail = 8,
     Lyrics = 9,
     Recent = 10,
+    Discover = 11,
 }
 
 impl NavPage {
     pub fn all() -> &'static [NavPage] {
         &[
             NavPage::Home,
+            NavPage::Discover,
             NavPage::Library,
             NavPage::Recent,
             NavPage::Capsule,
@@ -72,6 +74,7 @@ impl NavPage {
             NavPage::PlaylistDetail => "Playlist",
             NavPage::Lyrics => "Lyrics",
             NavPage::Recent => "Recently played",
+            NavPage::Discover => "Discover",
         }
     }
 
@@ -88,6 +91,7 @@ impl NavPage {
             NavPage::PlaylistDetail => Icon::Playlist,
             NavPage::Lyrics => Icon::Lyrics,
             NavPage::Recent => Icon::Clock,
+            NavPage::Discover => Icon::Sparkles,
         }
     }
 }

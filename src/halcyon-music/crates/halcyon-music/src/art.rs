@@ -204,11 +204,42 @@ pub fn home_items(feed: &HomeFeed) -> Vec<(Option<&str>, ArtSize)> {
     for shelf in [&feed.jump_back_in, &feed.new_releases, &feed.fresh_releases, &feed.popular_charts] {
         v.extend(shelf.iter().map(|i| (i.art_url.as_deref(), ArtSize::Medium)));
     }
-    // Made-for-you cards draw a 2x2 mosaic of their first songs' covers (or one cover).
+    // Made-for-you cards cross-fade through their songs' covers, one after the other.
     for mix in &feed.made_for_you {
         v.push((mix.art_url.as_deref(), ArtSize::Small));
-        v.extend(mix.tracks.iter().take(4).map(|t| (t.art_url.as_deref(), ArtSize::Small)));
+        v.extend(unique_covers(mix, crate::views::home::MIX_SLIDES).into_iter().map(|u| (Some(u), ArtSize::Medium)));
     }
+    v
+}
+
+/// The first `max` different covers among a mix's songs, in order.
+pub fn unique_covers(mix: &halcyon_music_core::models::MusicMix, max: usize) -> Vec<&str> {
+    let mut uniq: Vec<&str> = Vec::new();
+    for u in mix.tracks.iter().filter_map(|t| t.art_url.as_deref()).filter(|u| !u.is_empty()) {
+        if !uniq.contains(&u) {
+            uniq.push(u);
+        }
+        if uniq.len() == max {
+            break;
+        }
+    }
+    uniq
+}
+
+/// Every cover the Discover page draws.
+pub fn discover_items(feed: &halcyon_music_core::models::DiscoverFeed) -> Vec<(Option<&str>, ArtSize)> {
+    let mut v = Vec::new();
+    for shelf in [&feed.new_albums, &feed.from_artists] {
+        v.extend(shelf.iter().map(|i| (i.art_url.as_deref(), ArtSize::Medium)));
+    }
+    for list in [&feed.new_songs, &feed.trending] {
+        v.extend(list.iter().map(|t| (t.art_url.as_deref(), ArtSize::Small)));
+    }
+    for mix in &feed.mixes {
+        v.extend(mix.tracks.iter().map(|t| (t.art_url.as_deref(), ArtSize::Small)));
+    }
+    // Genre playlists are cards: one cover each (their songs load when a playlist is opened).
+    v.extend(feed.genres.iter().map(|m| (m.art_url.as_deref(), ArtSize::Medium)));
     v
 }
 
@@ -438,6 +469,32 @@ pub fn cover<'a, M: 'a>(
             let (bg, fg) = tile_colors(label);
             block(px, radius, bg, Some(icon(fallback, (px * 0.42).max(10.0), fg)))
         }
+    }
+}
+
+/// The cover drawn at `opacity` (0.0 ..= 1.0) with no shadow, for laying one cover over another
+/// to cross-fade. `None` when the picture is not decoded yet: the caller then just keeps
+/// showing what it has, so a slideshow never fades to a grey placeholder.
+pub fn cover_overlay<'a, M: 'a>(url: &str, size: ArtSize, px: f32, radius: f32, opacity: f32) -> Option<Element<'a, M>> {
+    match with_store(|s| s.lookup(url, size)) {
+        Lookup::Ready { handle, .. } => {
+            let pic: iced::widget::Image<Handle> = image_widget(handle)
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px))
+                .content_fit(ContentFit::Cover)
+                .opacity(opacity.clamp(0.0, 1.0));
+            Some(
+                container(pic)
+                    .width(Length::Fixed(px))
+                    .height(Length::Fixed(px))
+                    .style(move |_t| container::Style {
+                        border: iced::Border { radius: radius.into(), ..Default::default() },
+                        ..Default::default()
+                    })
+                    .into(),
+            )
+        }
+        _ => None,
     }
 }
 

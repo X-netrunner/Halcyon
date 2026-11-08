@@ -44,7 +44,7 @@ pub fn view<'a, Message: Clone + 'static>(
             border: iced::Border {
                 color: crate::theme::alpha(palette.accent, 0.55),
                 width: 1.5,
-                radius: 30.0.into(),
+                radius: 36.0.into(),
             },
             shadow: palette.glow_shadow(0.35, 18.0),
             ..Default::default()
@@ -96,7 +96,7 @@ pub fn view<'a, Message: Clone + 'static>(
         border: iced::Border {
             color: palette.accent,
             width: 1.0,
-            radius: 12.0.into(),
+            radius: 18.0.into(),
         },
         ..Default::default()
     });
@@ -196,7 +196,7 @@ pub fn view<'a, Message: Clone + 'static>(
                         track.art_url.as_deref(),
                         halcyon_music_core::art::ArtSize::Small,
                         36.0,
-                        6.0,
+                        9.0,
                         Icon::Music,
                         &track.title,
                         palette,
@@ -224,7 +224,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -267,7 +267,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -284,7 +284,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 14.0.into(),
+                    radius: 20.0.into(),
                     color: palette.soft_border(),
                     width: 0.5,
                 },
@@ -297,7 +297,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 14.0.into(),
+                    radius: 20.0.into(),
                     color: palette.soft_border(),
                     width: 0.5,
                 },
@@ -332,7 +332,7 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(move |_t| container::Style {
                 background: Some(palette.surface_variant.into()),
                 border: iced::Border {
-                    radius: 20.0.into(),
+                    radius: 26.0.into(),
                     color: palette.soft_border(),
                     width: 0.5,
                 },
@@ -414,7 +414,7 @@ fn view_metric_card<'a, Message: 'static>(
     .style(move |_t| container::Style {
         background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 14.0.into(),
+            radius: 20.0.into(),
             color: palette.soft_border(),
             width: 0.5,
         },
@@ -499,7 +499,7 @@ fn view_hourly_chart<'a, Message: 'static>(
     .style(move |_t| container::Style {
         background: Some(palette.card_background()),
         border: iced::Border {
-            radius: 14.0.into(),
+            radius: 20.0.into(),
             color: palette.soft_border(),
             width: 0.5,
         },

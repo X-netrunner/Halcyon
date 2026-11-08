@@ -95,7 +95,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     border: iced::Border {
                         color: palette.soft_border(),
                         width: 0.5,
-                        radius: 18.0.into(),
+                        radius: 24.0.into(),
                     },
                     ..Default::default()
                 });
@@ -140,7 +140,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     palette.border
                 },
                 width: 0.5,
-                radius: 20.0.into(),
+                radius: 26.0.into(),
             },
             ..Default::default()
         });
@@ -278,7 +278,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
                 row![
                     text(format!("{}", i + 1)).size(12).color(palette.text_muted),
                     Space::with_width(12),
-                    crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 6.0, Icon::Music, &t.title, palette),
+                    crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 9.0, Icon::Music, &t.title, palette),
                     Space::with_width(12),
                     column![
                         text(super::ellipsize(&t.title, 56)).size(13).color(palette.text),
@@ -304,7 +304,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -343,7 +343,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 14.0.into(),
+                    radius: 20.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -367,7 +367,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
             let id = alb.id.clone();
             let card = button(
                 column![
-                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 84.0, 8.0, Icon::Album, &alb.title, palette),
+                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 84.0, 12.0, Icon::Album, &alb.title, palette),
                     Space::with_height(8),
                     text(super::ellipsize(&alb.title, 56)).size(13).color(palette.text),
                     text(super::ellipsize(&alb.artist, 44)).size(11).color(palette.text_muted),
@@ -383,7 +383,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 14.0.into(),
+                    radius: 20.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -407,7 +407,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
             let id = pl.id.clone();
             let card = button(
                 column![
-                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 84.0, 8.0, Icon::Playlist, &pl.name, palette),
+                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 84.0, 12.0, Icon::Playlist, &pl.name, palette),
                     Space::with_height(8),
                     text(super::ellipsize(&pl.name, 56)).size(13).color(palette.text),
                     text(super::ellipsize(&pl.owner, 44)).size(11).color(palette.text_muted),
@@ -423,7 +423,7 @@ fn view_top_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 14.0.into(),
+                    radius: 20.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -454,7 +454,7 @@ fn view_songs_results<'a, Message: Clone + 'static>(
             row![
                 text(format!("{}", i + 1)).size(12).color(palette.text_muted),
                 Space::with_width(12),
-                crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 6.0, Icon::Music, &t.title, palette),
+                crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 9.0, Icon::Music, &t.title, palette),
                 Space::with_width(12),
                 column![
                     text(super::ellipsize(&t.title, 56)).size(13).color(palette.text),
@@ -480,7 +480,7 @@ fn view_songs_results<'a, Message: Clone + 'static>(
                 .into(),
             ),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -503,7 +503,7 @@ fn view_songs_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -558,7 +558,7 @@ fn view_artists_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 18.0.into(),
+                    radius: 24.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -583,7 +583,7 @@ fn view_artists_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -616,7 +616,7 @@ fn view_albums_results<'a, Message: Clone + 'static>(
             let id = alb.id.clone();
             let card = button(
                 column![
-                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 8.0, Icon::Album, &alb.title, palette),
+                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 12.0, Icon::Album, &alb.title, palette),
                     Space::with_height(10),
                     text(super::ellipsize(&alb.title, 56)).size(13).color(palette.text),
                     text(super::ellipsize(&alb.artist, 44)).size(11).color(palette.text_muted),
@@ -632,7 +632,7 @@ fn view_albums_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 18.0.into(),
+                    radius: 24.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -657,7 +657,7 @@ fn view_albums_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -690,7 +690,7 @@ fn view_playlists_results<'a, Message: Clone + 'static>(
             let id = pl.id.clone();
             let card = button(
                 column![
-                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 8.0, Icon::Playlist, &pl.name, palette),
+                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 12.0, Icon::Playlist, &pl.name, palette),
                     Space::with_height(10),
                     text(super::ellipsize(&pl.name, 56)).size(13).color(palette.text),
                     text(super::ellipsize(&pl.owner, 44)).size(11).color(palette.text_muted),
@@ -706,7 +706,7 @@ fn view_playlists_results<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 18.0.into(),
+                    radius: 24.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -731,7 +731,7 @@ fn view_playlists_results<'a, Message: Clone + 'static>(
         .style(move |_t, _s| button::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()

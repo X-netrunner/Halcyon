@@ -14,7 +14,7 @@
 
 use crate::api::ApiError;
 use crate::stream_auth::fresh_streaming_token;
-use halcyon_music_core::models::{Album, DetailedSearchResults, Page, Playlist, Track};
+use halcyon_music_core::models::{Album, Artist, DetailedSearchResults, Page, Playlist, Track};
 use librespot_core::authentication::Credentials;
 use librespot_core::config::SessionConfig;
 use librespot_core::session::Session;
@@ -23,6 +23,7 @@ use librespot_metadata::image::Images;
 use librespot_metadata::{Album as LsAlbum, Metadata, Playlist as LsPlaylist, Track as LsTrack};
 use librespot_protocol::context::Context;
 use protobuf::Message;
+use reqwest::Method;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
@@ -121,7 +122,15 @@ pub fn playlist_from_librespot(p: &LsPlaylist) -> Playlist {
         owner,
         snapshot_id: if p.revision.is_empty() { None } else { Some(hex(&p.revision)) },
         art_url,
-        total_tracks: p.length.max(0) as u32,
+        // `length` is 0 on a playlist read this way, so count the songs listed in it
+        // (and trust `length` when it is the larger of the two).
+        total_tracks: p
+            .contents
+            .items
+            .iter()
+            .filter(|i| matches!(i.id, SpotifyUri::Track { .. }))
+            .count()
+            .max(p.length.max(0) as usize) as u32,
     }
 }
 
@@ -152,8 +161,22 @@ pub fn track_uris_from_context(ctx: &Context) -> Vec<String> {
 
 /// Search context URI: `spotify:search:never+gonna` (whitespace becomes `+`).
 pub fn search_context_uri(query: &str) -> String {
-    let q = query.split_whitespace().collect::<Vec<_>>().join("+");
+    let q = query.split_whitespace().map(percent_encode_non_ascii).collect::<Vec<_>>().join("+");
     format!("spotify:search:{q}")
+}
+
+/// Percent-encodes every non-ASCII byte (`É` -> `%C3%89`). Spotify answers a raw accented,
+/// Korean or Cyrillic query with "400 invalid argument"; plain ASCII is left exactly as it was.
+fn percent_encode_non_ascii(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    for b in word.bytes() {
+        if b.is_ascii() {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -319,7 +342,15 @@ impl SessionBrowse {
         let mut rows: Vec<(usize, Playlist)> = Vec::new();
         while let Some(done) = set.join_next().await {
             match done {
-                Ok((idx, Ok(p))) => rows.push((idx, playlist_from_librespot(&p))),
+                Ok((idx, Ok(p))) => {
+                    debug!(
+                        name = %p.attributes.name,
+                        listed = p.contents.items.len(),
+                        length = p.length,
+                        "playlist loaded"
+                    );
+                    rows.push((idx, playlist_from_librespot(&p)))
+                }
                 Ok((_, Err(e))) => warn!(error = %e, "skipping a playlist that failed to load"),
                 Err(_) => {}
             }
@@ -364,6 +395,33 @@ impl SessionBrowse {
         let (start, end) = page_bounds(all.len(), limit as usize, offset as usize);
         let items = self.tracks_for(&session, &all[start..end]).await;
         Ok(make_page(items, all.len(), limit as usize, offset as usize))
+    }
+
+    /// Artists the user follows, read from Spotify's profile service over the session
+    /// (the Web API's `/me/following` is what answers 429 on this sign-in). The same list
+    /// feeds Library > Artists and Home's "New from artists you follow".
+    pub async fn get_followed_artists(&self, limit: u32) -> Result<Vec<Artist>, ApiError> {
+        let session = self.session().await?;
+        let endpoint = format!(
+            "/user-profile-view/v3/profile/{}/following?market=from_token",
+            session.username()
+        );
+        let bytes = session
+            .spclient()
+            .request(&Method::GET, &endpoint, None, None)
+            .await
+            .map_err(|e| api_err("followed artists request failed", e))?;
+        let body = String::from_utf8_lossy(&bytes);
+        let artists = followed_artists_from_json(&body, limit as usize);
+        if artists.is_empty() {
+            // Spotify can change this internal format; keep the start of the answer in the
+            // log so the parser can be fixed from it.
+            let head: String = body.chars().take(400).collect();
+            warn!(bytes = bytes.len(), body_head = %head, "followed artists: no artists found in the answer");
+        } else {
+            debug!(count = artists.len(), "followed artists loaded over the session");
+        }
+        Ok(artists)
     }
 
     /// An album and its tracks, in disc order.
@@ -422,8 +480,52 @@ impl SessionBrowse {
     }
 }
 
+/// Pull the artists out of the profile service's "following" answer. It lists artists and
+/// people together (`profiles`); only `spotify:artist:` entries are kept.
+pub fn followed_artists_from_json(body: &str, limit: usize) -> Vec<Artist> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let list = ["profiles", "artists", "items"]
+        .iter()
+        .find_map(|k| v.get(*k).and_then(|x| x.as_array()))
+        .cloned()
+        .unwrap_or_default();
+    let mut out: Vec<Artist> = Vec::new();
+    for item in list {
+        let Some(uri) = item.get("uri").and_then(|u| u.as_str()) else { continue };
+        let Some(id) = uri.strip_prefix("spotify:artist:") else { continue };
+        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("").trim();
+        if name.is_empty() || out.iter().any(|a| a.id == id) {
+            continue;
+        }
+        let image_url = item
+            .get("image_url")
+            .and_then(|u| u.as_str())
+            .or_else(|| item.pointer("/images/0/url").and_then(|u| u.as_str()))
+            .map(str::to_string);
+        out.push(Artist {
+            id: id.to_string(),
+            name: name.to_string(),
+            image_url,
+            genres: Vec::new(),
+            uri: uri.to_string(),
+        });
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn search_uri_encodes_only_non_ascii() {
+        assert_eq!(search_context_uri("never gonna"), "spotify:search:never+gonna");
+        assert_eq!(search_context_uri("ADÉLA Nicole"), "spotify:search:AD%C3%89LA+Nicole");
+    }
+
     use super::*;
     use librespot_protocol::context_page::ContextPage;
     use librespot_protocol::context_track::ContextTrack;
@@ -486,5 +588,20 @@ mod tests {
     fn hex_encodes_bytes() {
         assert_eq!(hex(&[0x00, 0xab, 0xff]), "00abff");
         assert_eq!(hex(&[]), "");
+    }
+
+    #[test]
+    fn followed_artists_keep_only_artists() {
+        let body = r#"{"profiles":[
+            {"uri":"spotify:user:abc","name":"A Person"},
+            {"uri":"spotify:artist:111","name":"Band One","image_url":"https://i/1"},
+            {"uri":"spotify:artist:111","name":"Band One"},
+            {"uri":"spotify:artist:222","name":"Band Two"}]}"#;
+        let got = followed_artists_from_json(body, 10);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].id, "111");
+        assert_eq!(got[0].image_url.as_deref(), Some("https://i/1"));
+        assert_eq!(followed_artists_from_json(body, 1).len(), 1);
+        assert!(followed_artists_from_json("not json", 5).is_empty());
     }
 }

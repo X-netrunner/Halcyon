@@ -1,20 +1,25 @@
 //! Queue drawer: an open, borderless panel that dissolves into the page. The song playing now
-//! is a big glowing cover with a live equalizer under it; the songs coming up are airy rows with
+//! is a big glowing cover that swells softly on every beat, with thin ripples spreading from it
+//! and fading into curves (see `orbit` and `viz`); the songs coming up are airy rows with
 //! no boxes, stripes or outlines.
 
 use crate::icons::{icon, Icon};
 use crate::theme::{self, format_duration, HalcyonPalette};
 use halcyon_music_core::state::PlayerState;
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use crate::viz::VizFrame;
+use iced::widget::{button, column, container, row, scrollable, stack, text, Space};
 use iced::{Alignment, Element, Length};
 
 pub const QUEUE_DRAWER_WIDTH: f32 = 340.0;
+/// Edge of the cover at rest, and of the square the ring is drawn in.
+const COVER_PX: f32 = 148.0;
+const ORBIT_PX: f32 = 264.0;
 
-/// `clock` is the animation clock in seconds (drives the equalizer bars).
+/// `viz` is this frame's snapshot of the sound (beat swell and ripples).
 pub fn view<'a, Message: Clone + 'static>(
     state: &'a PlayerState,
     palette: HalcyonPalette,
-    clock: f32,
+    viz: VizFrame,
     on_close: Message,
     on_dequeue: impl Fn(usize) -> Message + 'a,
 ) -> Element<'a, Message> {
@@ -42,45 +47,53 @@ pub fn view<'a, Message: Clone + 'static>(
         .width(Length::Fill)
         .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 28.0, left: 12.0 });
 
-    // Now playing: a large cover in a halo of its own colour, no frame around it.
+    // Now playing: the cover swells on each beat inside ripples, in a halo of its own
+    // colour. No frame around it.
     if let Some(cur) = state.track.as_ref() {
-        let seed = cur.id.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32)) as f32 % 97.0;
-        let bass = crate::views::spectrum_level(1, 16, clock, seed, state.playing);
+        let cover_px = COVER_PX * (1.0 + 0.032 * viz.pulse + 0.008 * viz.bass);
+        let glow = viz.pulse;
         let cover = container(crate::art::cover(
             cur.art_url.as_deref(),
             halcyon_music_core::art::ArtSize::Large,
-            148.0 + 8.0 * bass,
-            22.0,
+            cover_px,
+            22.0 * cover_px / COVER_PX,
             Icon::Music,
             &cur.title,
             palette,
         ))
         .style(move |_t| container::Style {
-            border: iced::Border { radius: 22.0.into(), ..Default::default() },
+            border: iced::Border { radius: 28.0.into(), ..Default::default() },
             shadow: iced::Shadow {
-                color: theme::alpha(palette.glow, 0.30 + 0.20 * bass),
+                color: theme::alpha(palette.glow, 0.26 + 0.22 * glow),
                 offset: iced::Vector::new(0.0, 6.0),
-                blur_radius: 36.0,
+                blur_radius: 36.0 + 10.0 * glow,
             },
             ..Default::default()
         });
-        let eq = crate::views::equalizer(9, 3.0, 3.0, 16.0, clock, seed, state.playing, true, palette);
+        let art = stack![
+            crate::views::orbit::view(viz, cover_px, ORBIT_PX, palette),
+            container(cover)
+                .width(ORBIT_PX)
+                .height(ORBIT_PX)
+                .center_x(ORBIT_PX)
+                .center_y(ORBIT_PX),
+        ]
+        .width(ORBIT_PX)
+        .height(ORBIT_PX);
         list = list.push(
             container(
                 column![
-                    container(cover).width(164).height(164).center_x(164).center_y(164),
-                    Space::with_height(12),
+                    art,
+                    Space::with_height(4),
                     text(super::ellipsize(&cur.title, 28)).size(16).color(palette.text),
                     text(super::ellipsize(&cur.artist, 34)).size(13).color(palette.accent),
-                    Space::with_height(8),
-                    eq,
                 ]
                 .spacing(2)
                 .align_x(Alignment::Center),
             )
             .width(Length::Fill)
             .center_x(Length::Fill)
-            .padding(iced::Padding { top: 8.0, right: 0.0, bottom: 18.0, left: 0.0 }),
+            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 18.0, left: 0.0 }),
         );
     }
 
@@ -123,7 +136,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     track.art_url.as_deref(),
                     halcyon_music_core::art::ArtSize::Small,
                     42.0,
-                    12.0,
+                    18.0,
                     Icon::Music,
                     &track.title,
                     palette,

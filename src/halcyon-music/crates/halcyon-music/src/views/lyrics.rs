@@ -68,7 +68,7 @@ pub fn view<'a, Message: Clone + 'static>(
     .style(move |_t| container::Style {
         background: Some(palette.surface_variant.into()),
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             color: palette.soft_border(),
             width: 0.5,
         },
@@ -79,7 +79,7 @@ pub fn view<'a, Message: Clone + 'static>(
         track.and_then(|t| t.art_url.as_deref()),
         halcyon_music_core::art::ArtSize::Small,
         56.0,
-        8.0,
+        12.0,
         Icon::Music,
         track_title,
         palette,
@@ -213,7 +213,7 @@ fn view_synced_lines<'a, Message: Clone + 'static>(
                 .into(),
             ),
             border: iced::Border {
-                radius: 12.0.into(),
+                radius: 18.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -247,7 +247,7 @@ fn view_plain_lines<'a, Message: 'static>(
         .style(move |_t| container::Style {
             background: Some(palette.surface_variant.into()),
             border: iced::Border {
-                radius: 10.0.into(),
+                radius: 14.0.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -302,7 +302,7 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -321,7 +321,7 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .style(move |_t, _s| button::Style {
                 background: Some(palette.card_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     color: palette.soft_border(),
                     width: 0.5,
                 },
@@ -346,7 +346,7 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()

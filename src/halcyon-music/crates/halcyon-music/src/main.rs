@@ -28,13 +28,14 @@ mod icons;
 mod shortcuts;
 mod theme;
 mod views;
+mod viz;
 
 use crate::icons::{icon, Icon};
 use animation::AnimationManager;
 use client::{ConnStatus, UiEvent};
 use halcyon_music_core::art::ArtSize;
 use halcyon_music_core::models::{
-    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, FullCapsule, HomeFeed, Lyrics, Playlist, Track,
+    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, FullCapsule, HomeFeed, Lyrics, Playlist, Track,
 };
 use halcyon_music_core::protocol::{CommandBody, EventBody};
 use halcyon_music_core::state::PlayerState;
@@ -56,6 +57,8 @@ const PAGE_MARGIN: f32 = 12.0;
 const TOP_STRIP_H: f32 = 84.0;
 /// Room left at the top of pages that have no search (Capsule, Settings, details, ...).
 const TOP_STRIP_H_BARE: f32 = 16.0;
+/// Height of the search notch (10 px, the 44 px search box, 14 px).
+const NOTCH_H: f32 = 68.0;
 /// Height of the haze at the bottom edge of the page, and the room left under the last row.
 const BOTTOM_FADE_H: f32 = 24.0;
 
@@ -139,6 +142,11 @@ struct HalcyonApp {
     search_query: String,
     perf_overlay: bool,
     home_feed: HomeFeed,
+    discover_feed: DiscoverFeed,
+    /// Set while a Discover build is on its way (until its last, complete copy arrives).
+    discover_loading_since: Option<Instant>,
+    /// The open album was opened from Discover, so Back returns there.
+    discover_return: bool,
     // Part 6 State
     search_category: SearchCategory,
     search_results: Option<DetailedSearchResults>,
@@ -178,6 +186,14 @@ struct HalcyonApp {
     window_size: iced::Size,
     cursor: iced::Point,
     scroll: ScrollInfo,
+    /// Live spectrum and beat pulse from the daemon (drives the queue drawer's cover).
+    viz: viz::AudioViz,
+    /// Whether this connection has asked the daemon for audio frames.
+    audio_stream_on: bool,
+    /// Whether the search notch is meant to be out (it retracts while the page scrolls down).
+    search_visible: bool,
+    /// Scrolling since the last change of direction (down is positive); decides hide and show.
+    scroll_run: f32,
     last_click: Option<(String, Instant)>,
     last_title_press: Option<Instant>,
     account_menu_open: bool,
@@ -207,6 +223,8 @@ enum Message {
     OpenSettings,
     OpenSpotifyAccount,
     ContentScrolled(ScrollInfo),
+    /// A touchpad scroll step (pixels, as the system reports it), to be sped up.
+    TouchpadScroll(f32),
     OfflineCheck(u64),
     // Playlist page
     PlaylistRowClick(usize),
@@ -290,6 +308,8 @@ enum Message {
     RecentFilterChanged(String),
     /// The Refresh button next to the Home status chip.
     RefreshHome,
+    /// The Refresh button on the Discover page.
+    RefreshDiscover,
     /// Time to try again: outside mixes were still missing after the last build.
     HomeAutoRetry,
     LibrarySortChanged(LikedSort),
@@ -333,6 +353,24 @@ const PLAYLIST_TIMEOUT: Duration = Duration::from_secs(12);
 const PLAYLIST_PAGE: u32 = 50;
 /// Id of the scroll area around the page, so pages can be reset to the top.
 const CONTENT_SCROLL_ID: &str = "content-scroll";
+
+/// How much faster the touchpad scrolls the page than iced does by itself. A touchpad reports
+/// scrolling in exact pixels and iced moves the page by just those pixels, which feels slow
+/// next to a mouse wheel (iced multiplies wheel clicks by 60). `HALCYON_TOUCHPAD_SPEED`
+/// overrides it (1 = iced's own speed, up to 8).
+const TOUCHPAD_SPEED_DEFAULT: f32 = 3.0;
+
+fn touchpad_speed() -> f32 {
+    static SPEED: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *SPEED.get_or_init(|| {
+        std::env::var("HALCYON_TOUCHPAD_SPEED")
+            .ok()
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(1.0, 8.0))
+            .unwrap_or(TOUCHPAD_SPEED_DEFAULT)
+    })
+}
 
 /// How far the page scroll area is scrolled and how tall it is.
 #[derive(Debug, Clone, Copy, Default)]
@@ -494,6 +532,9 @@ impl HalcyonApp {
             search_query: String::new(),
             perf_overlay: perf_flag,
             home_feed: HomeFeed::default(),
+            discover_feed: DiscoverFeed::default(),
+            discover_loading_since: None,
+            discover_return: false,
             search_category: SearchCategory::Top,
             search_results: None,
             recent_searches: Vec::new(),
@@ -525,6 +566,10 @@ impl HalcyonApp {
             window_size: WINDOW_DEFAULT,
             cursor: iced::Point::ORIGIN,
             scroll: ScrollInfo::default(),
+            viz: viz::AudioViz::new(),
+            audio_stream_on: false,
+            search_visible: true,
+            scroll_run: 0.0,
             last_click: None,
             last_title_press: None,
             account_menu_open: false,
@@ -559,6 +604,14 @@ impl HalcyonApp {
             _ => None,
         });
 
+        // Touchpad scrolling arrives as pixel steps; mouse wheels arrive as lines and are left alone.
+        let touchpad_sub = iced::event::listen_with(|event, _status, _window| match event {
+            iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+                delta: iced::mouse::ScrollDelta::Pixels { y, .. },
+            }) if y != 0.0 => Some(Message::TouchpadScroll(y)),
+            _ => None,
+        });
+
         let resize_sub = iced::window::resize_events().map(|(_, size)| Message::WindowResized(size));
 
         // The cursor position is only followed on pages with right-clickable songs.
@@ -576,10 +629,26 @@ impl HalcyonApp {
         // The full-screen glow breathes slowly: 30 frames a second, only while it is visible,
         // music plays and motion is allowed. Everywhere else the app still idles at ~0% CPU.
         let ambient = self.state.playing && !self.animations.reduce_motion;
-        let anim_sub = if self.animations.is_animating() || art::is_fading() || self.skeleton_visible() {
+        // Playlist covers on Home cross-fade one after another. Full rate only while one is
+        // fading; in between a slow check catches the next change. No timer at all when no card
+        // has more than one cover, or motion is reduced.
+        let slideshow = if self.active_nav == NavPage::Home && !self.animations.reduce_motion {
+            views::home::slideshow_state(&self.home_feed, self.animations.clock())
+        } else {
+            None
+        };
+        let anim_sub = if self.animations.is_animating()
+            || art::is_fading()
+            || self.skeleton_visible()
+            || slideshow == Some(true)
+        {
             iced::time::every(Duration::from_millis(16)).map(|_| Message::AnimationTick)
         } else if ambient {
-            iced::time::every(Duration::from_millis(33)).map(|_| Message::AnimationTick)
+            // The queue drawer's cover pulses on the beat, so it gets full frame rate.
+            let ms = if self.show_queue { 16 } else { 33 };
+            iced::time::every(Duration::from_millis(ms)).map(|_| Message::AnimationTick)
+        } else if slideshow == Some(false) {
+            iced::time::every(Duration::from_millis(400)).map(|_| Message::AnimationTick)
         } else {
             iced::Subscription::none()
         };
@@ -597,7 +666,7 @@ impl HalcyonApp {
             iced::Subscription::none()
         };
 
-        iced::Subscription::batch([key_sub, resize_sub, cursor_sub, anim_sub, toast_sub, palette_sub])
+        iced::Subscription::batch([key_sub, touchpad_sub, resize_sub, cursor_sub, anim_sub, toast_sub, palette_sub])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -609,12 +678,59 @@ impl HalcyonApp {
             self.animations.animate_queue(self.show_queue);
         }
         self.follow_active_page();
+        self.sync_audio_stream();
+        self.sync_search_reveal();
         if sync_art {
             for cmd in self.art_requests() {
                 self.send(cmd);
             }
         }
         task
+    }
+
+    /// Ask the daemon for live audio frames while something that dances is on screen (the
+    /// queue drawer), and tell it to stop when that closes. The daemon analyses nothing while
+    /// no connection wants frames.
+    fn sync_audio_stream(&mut self) {
+        let want = self.show_queue;
+        if want != self.audio_stream_on {
+            self.send(CommandBody::SetAudioStream { enabled: want });
+            self.audio_stream_on = want;
+        }
+    }
+
+    /// The notch comes back whenever the person needs it: while typing in it, or after the
+    /// search shortcut. Otherwise `search_visible` follows the scrolling.
+    fn sync_search_reveal(&mut self) {
+        if self.search_dropdown_open && !self.search_visible {
+            self.search_visible = true;
+        }
+        let want = if self.search_visible { 1.0 } else { 0.0 };
+        let target_matches = (self.animations.search_reveal.target() - want).abs() < f32::EPSILON;
+        if !target_matches {
+            self.animations.animate_search(self.search_visible);
+        }
+    }
+
+    /// Hide the search notch while the page scrolls down, bring it back on the first upward
+    /// scroll or at the top. Small wobbles (a trackpad settling) change nothing.
+    fn follow_scroll_for_search(&mut self, previous_y: f32, y: f32) {
+        const NEAR_TOP: f32 = 24.0;
+        const HIDE_AFTER: f32 = 36.0;
+        const SHOW_AFTER: f32 = 18.0;
+        let dy = y - previous_y;
+        // A change of direction starts a new run.
+        if dy != 0.0 && (dy > 0.0) != (self.scroll_run > 0.0) {
+            self.scroll_run = 0.0;
+        }
+        self.scroll_run += dy;
+        if y <= NEAR_TOP {
+            self.search_visible = true;
+        } else if self.scroll_run > HIDE_AFTER && !self.search_dropdown_open {
+            self.search_visible = false;
+        } else if self.scroll_run < -SHOW_AFTER {
+            self.search_visible = true;
+        }
     }
 
     /// Keep the sidebar's active pill on the row of the page that is open. It slides between
@@ -764,6 +880,7 @@ impl HalcyonApp {
                     push(&mut cmds, search_items(r));
                 }
             }
+            NavPage::Discover => push(&mut cmds, art::discover_items(&self.discover_feed)),
             NavPage::Capsule => push(
                 &mut cmds,
                 self.capsule
@@ -781,6 +898,7 @@ impl HalcyonApp {
         // Then everything else we hold data for.
         push(&mut cmds, art::track_items(&self.state.queue));
         push(&mut cmds, art::home_items(&self.home_feed));
+        push(&mut cmds, art::discover_items(&self.discover_feed));
         push(&mut cmds, library_items(self));
         if let Some(r) = &self.search_results {
             push(&mut cmds, search_items(r));
@@ -811,6 +929,8 @@ impl HalcyonApp {
                     self.status = s;
                     if let ConnStatus::Connected { .. } = &self.status {
                         art::connection_reset();
+                        // A build the old connection was running is lost.
+                        self.discover_loading_since = None;
                         self.send(CommandBody::GetAuthStatus);
                         self.ask_profile();
                         // An older daemon answers this with "not supported by this daemon version".
@@ -859,6 +979,10 @@ impl HalcyonApp {
                         self.state.queue = tracks;
                         Task::none()
                     }
+                    EventBody::AudioLevels { bands, beat, .. } => {
+                        self.viz.push(&bands, beat, Instant::now());
+                        Task::none()
+                    }
                     EventBody::AuthStatus(status) => {
                         if let AuthStatus::LoggingIn { ref auth_url } = status {
                             let url = auth_url.clone();
@@ -886,6 +1010,8 @@ impl HalcyonApp {
                         Task::none()
                     }
                     EventBody::Hello { daemon_version, .. } => {
+                        // A new connection starts with the audio stream off; `update` asks again.
+                        self.audio_stream_on = false;
                         if daemon_version != halcyon_music_core::CORE_VERSION {
                             self.notify(
                                 format!(
@@ -962,6 +1088,13 @@ impl HalcyonApp {
                         }
                         Task::none()
                     }
+                    EventBody::DiscoverResult(feed) => {
+                        if feed.complete {
+                            self.discover_loading_since = None;
+                        }
+                        self.discover_feed = *feed;
+                        Task::none()
+                    }
                     EventBody::LikedTracksResult { tracks, offset, is_cached, total } => {
                         let page_len = tracks.len();
                         if !is_cached && page_len > 0 {
@@ -1014,6 +1147,15 @@ impl HalcyonApp {
                                 self.pending_play_playlist = None;
                                 self.notify("That playlist has no playable tracks".to_string(), false);
                                 self.animations.animate_toast_show();
+                            }
+                        }
+                        // The Library list can carry a 0 count (Spotify's list call does not always
+                        // give one); the real total is known as soon as the songs arrive.
+                        if total > 0 {
+                            if let Some(pl) = self.playlists.iter_mut().find(|p| p.id == playlist_id) {
+                                if (pl.total_tracks as usize) < total {
+                                    pl.total_tracks = total as u32;
+                                }
                             }
                         }
                         let is_open = self.active_playlist.as_ref().is_some_and(|(pl, _)| pl.id == playlist_id);
@@ -1190,8 +1332,26 @@ impl HalcyonApp {
                     .spawn();
                 Task::none()
             }
+            Message::TouchpadScroll(dy) => {
+                // iced already moved the page by `dy`; add the rest of the speed-up on top.
+                let extra = -dy * (touchpad_speed() - 1.0);
+                if extra == 0.0 {
+                    Task::none()
+                } else {
+                    // The page does not report a scroll it was told to make, so note it here
+                    // (the song table builds only the rows around this position).
+                    let max_y = (self.scroll.content_h - self.scroll.viewport_h).max(0.0);
+                    self.scroll.y = (self.scroll.y + extra).clamp(0.0, max_y);
+                    scrollable::scroll_by(
+                        scrollable::Id::new(CONTENT_SCROLL_ID),
+                        scrollable::AbsoluteOffset { x: 0.0, y: extra },
+                    )
+                }
+            }
             Message::ContentScrolled(info) => {
+                let previous_y = self.scroll.y;
                 self.scroll = info;
+                self.follow_scroll_for_search(previous_y, info.y);
                 if self.active_nav == NavPage::PlaylistDetail {
                     self.request_playlist_art();
                     return self.maybe_load_more_playlist();
@@ -1350,11 +1510,15 @@ impl HalcyonApp {
                 if !matches!(page, NavPage::Library | NavPage::Liked) {
                     self.library_filter.clear();
                 }
+                self.scroll_run = 0.0;
+                self.search_visible = true;
                 self.active_nav = page;
                 if page == NavPage::Home || page == NavPage::Recent {
                     self.request_home_feed();
                     // The pinned Liked Songs card on Home needs the songs.
                     self.send(CommandBody::GetLikedTracks { limit: Some(50), offset: Some(0) });
+                } else if page == NavPage::Discover {
+                    self.request_discover();
                 } else if page == NavPage::Search {
                     self.send(CommandBody::GetRecentSearches);
                 } else if page == NavPage::Capsule {
@@ -1480,6 +1644,7 @@ impl HalcyonApp {
             }
             Message::AnimationTick => {
                 self.animations.tick();
+                self.viz.tick(Instant::now(), self.state.playing);
                 Task::none()
             }
             Message::TogglePlay => {
@@ -1683,6 +1848,10 @@ impl HalcyonApp {
                 self.library_filter = text;
                 Task::none()
             }
+            Message::RefreshDiscover => {
+                self.refresh_discover();
+                Task::none()
+            }
             Message::RefreshHome => {
                 self.home_retries = 0;
                 self.refresh_home();
@@ -1750,6 +1919,7 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::OpenAlbum(id) => {
+                self.discover_return = self.active_nav == NavPage::Discover;
                 self.send(CommandBody::GetAlbumDetail { id });
                 Task::none()
             }
@@ -1779,9 +1949,19 @@ impl HalcyonApp {
                 ])
             }
             Message::OpenMix(id) => {
-                let Some(mix) = self.home_feed.made_for_you.iter().find(|m| m.id == id).cloned() else {
+                // A mix from Home, or a genre playlist or "If you like" mix from Discover.
+                let Some(mix) = self
+                    .home_feed
+                    .made_for_you
+                    .iter()
+                    .chain(self.discover_feed.genres.iter())
+                    .chain(self.discover_feed.mixes.iter())
+                    .find(|m| m.id == id)
+                    .cloned()
+                else {
                     return Task::none();
                 };
+                self.discover_return = self.active_nav == NavPage::Discover;
                 self.close_menus();
                 // A mix is not a Spotify playlist: its songs are already here, so the page is
                 // built from them and never asks the daemon for pages.
@@ -1807,8 +1987,10 @@ impl HalcyonApp {
                     .active_playlist
                     .as_ref()
                     .is_some_and(|(pl, _)| pl.id.starts_with("mix:"));
-                self.active_nav = if self.active_nav == NavPage::PlaylistDetail && from_mix {
-                    NavPage::Home
+                self.active_nav = if self.active_nav == NavPage::AlbumDetail && self.discover_return {
+                    NavPage::Discover
+                } else if self.active_nav == NavPage::PlaylistDetail && from_mix {
+                    if self.discover_return { NavPage::Discover } else { NavPage::Home }
                 } else {
                     NavPage::Library
                 };
@@ -1962,7 +2144,10 @@ impl HalcyonApp {
             ShortcutAction::CycleRepeat => self.update(Message::CycleRepeat),
             ShortcutAction::ToggleLike => self.update(Message::ToggleLike),
             ShortcutAction::OpenSearch => Task::batch([
-                self.update(Message::NavSelected(NavPage::Search)),
+                {
+                    self.search_visible = true;
+                    self.update(Message::NavSelected(NavPage::Search))
+                },
                 text_input::focus(text_input::Id::new(TOP_SEARCH_ID)),
             ]),
             ShortcutAction::ToggleLyrics => self.update(Message::ToggleLyrics),
@@ -2174,7 +2359,7 @@ impl HalcyonApp {
             container(views::queue_drawer::view(
                 &self.state,
                 self.palette,
-                self.animations.clock(),
+                self.viz.frame(Instant::now(), self.state.playing, self.animations.reduce_motion),
                 Message::ToggleQueue,
                 Message::Dequeue,
             ))
@@ -2212,6 +2397,10 @@ impl HalcyonApp {
             Message::ToggleLyrics,
             Message::ToggleFullscreen,
             Message::ToggleLike,
+            self.state
+                .track
+                .as_ref()
+                .is_some_and(|cur| self.liked_tracks.iter().any(|t| t.id == cur.id)),
             self.active_nav == NavPage::Lyrics,
             self.show_queue,
         );
@@ -2369,6 +2558,24 @@ impl HalcyonApp {
         self.send(CommandBody::GetHomeFeed);
     }
 
+    /// Ask the daemon for the Discover page. It answers at once with the last copy it has, then
+    /// again as each part is fetched; the last copy says it is complete.
+    fn request_discover(&mut self) {
+        // A build that has run for over two minutes is treated as lost, and may be repeated.
+        if let Some(since) = self.discover_loading_since {
+            if since.elapsed() < Duration::from_secs(120) {
+                return;
+            }
+        }
+        self.discover_loading_since = Some(Instant::now());
+        self.send(CommandBody::GetDiscover);
+    }
+
+    /// The Refresh button on Discover: same as opening the page.
+    fn refresh_discover(&mut self) {
+        self.request_discover();
+    }
+
     /// A manual refresh. Ignored while a build is under way (it would only queue more Spotify
     /// searches); a build that has run for over 90 s is treated as lost and may be repeated.
     fn refresh_home(&mut self) {
@@ -2382,7 +2589,7 @@ impl HalcyonApp {
 
     /// True while no mix from an outside source (Deezer, ListenBrainz) is on Home.
     fn home_outside_missing(&self) -> bool {
-        self.home_feed.made_for_you.iter().all(|m| m.source == "Halcyon Local")
+        self.home_feed.made_for_you.iter().all(|m| m.source == "Halcyon Local" || m.source == "Halcyon")
     }
 
     /// Height reserved at the top of the page: tall where the header search shows, slim elsewhere.
@@ -2447,56 +2654,45 @@ impl HalcyonApp {
                 .on_submit_maybe(on_submit)
                 .size(theme::type_size::BODY + 1.0)
                 .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: theme::space::LG })
-                .width(Length::Fill)
-                .style(move |_t, status| text_input::Style {
-                    background: theme::alpha(pal.surface_variant, 0.55).into(),
-                    border: iced::Border {
-                        radius: 999.0.into(),
-                        width: 1.0,
-                        color: if matches!(status, text_input::Status::Focused) {
-                            pal.accent
-                        } else {
-                            theme::alpha(pal.border, 0.45)
-                        },
-                    },
-                    icon: pal.text_muted,
-                    placeholder: pal.text_muted,
-                    value: pal.text,
-                    selection: iced::Color { a: 0.3, ..pal.accent },
-                });
-            // The notch: the frame's colour, square at the top where it joins the title bar,
-            // rounded at the bottom, with the search box inside it.
-            let notch_color = theme::mix(theme::mix(pal.background, pal.surface, 0.75), pal.glow, 0.10);
-            container(
-                container(iced::widget::stack![
-                    input,
-                    container(icon(Icon::Search, 16.0, pal.text_muted))
-                        .height(Length::Fill)
-                        .padding([0.0, theme::space::LG])
-                        .align_y(iced::alignment::Vertical::Center),
-                ])
-                .width(views::search_dropdown::WIDTH),
-            )
-            .padding(iced::Padding { top: 10.0, right: 22.0, bottom: 14.0, left: 22.0 })
-            .style(move |_t| container::Style {
-                background: Some(notch_color.into()),
+                .width(Length::Fill);
+            // The notch is the window frame reaching down into the page: same colour as the
+            // title bar above it, joined to the page's top edge by curves, with the search box
+            // inside. It slides back up into the title bar while the page scrolls down.
+            let ear = views::notch::EAR;
+            let notch_w = views::search_dropdown::WIDTH + 44.0 + 2.0 * ear;
+            let notch_h = NOTCH_H;
+            let mid = (views::titlebar::HEIGHT + notch_h / 2.0) / self.window_size.height.max(1.0);
+            let frame_colour = pal.chrome_at(mid);
+            let input = input.style(move |_t, status| text_input::Style {
+                background: theme::mix(frame_colour, pal.text, 0.07).into(),
                 border: iced::Border {
-                    radius: iced::border::Radius {
-                        top_left: 0.0,
-                        top_right: 0.0,
-                        bottom_right: 28.0,
-                        bottom_left: 28.0,
+                    radius: 999.0.into(),
+                    width: 1.0,
+                    color: if matches!(status, text_input::Status::Focused) {
+                        pal.accent
+                    } else {
+                        theme::alpha(pal.border, 0.30)
                     },
-                    ..Default::default()
                 },
-                shadow: iced::Shadow {
-                    color: theme::alpha(iced::Color::BLACK, 0.28),
-                    offset: iced::Vector::new(0.0, 6.0),
-                    blur_radius: 18.0,
-                },
-                ..Default::default()
-            })
-            .into()
+                icon: pal.text_muted,
+                placeholder: pal.text_muted,
+                value: pal.text,
+                selection: iced::Color { a: 0.3, ..pal.accent },
+            });
+            let field = container(iced::widget::stack![
+                input,
+                container(icon(Icon::Search, 16.0, pal.text_muted))
+                    .height(Length::Fill)
+                    .padding([0.0, theme::space::LG])
+                    .align_y(iced::alignment::Vertical::Center),
+            ])
+            .width(views::search_dropdown::WIDTH)
+            .padding(iced::Padding { top: 10.0, right: 22.0 + ear, bottom: 14.0, left: 22.0 + ear });
+            let notch = iced::widget::stack![
+                views::notch::view(notch_w, notch_h, frame_colour, pal.soft_border()),
+                field,
+            ];
+            views::slide::Slide::new(notch, self.animations.search_progress()).into()
         } else {
             Space::with_width(0).into()
         };
@@ -2559,6 +2755,7 @@ impl HalcyonApp {
                 Message::NavSelected,
                 self.animations.shimmer_phase,
                 self.animations.page_progress(),
+                self.animations.clock(),
                 if self.home_loading_since.is_some() {
                     views::home::HomeStatus::Loading
                 } else if self.home_outside_missing() && !self.home_feed.made_for_you.is_empty() {
@@ -2750,6 +2947,16 @@ impl HalcyonApp {
                     .into()
                 }
             }
+            NavPage::Discover => views::discover::view(
+                &self.discover_feed,
+                self.discover_loading_since.is_some(),
+                self.palette,
+                Message::PlayTrack,
+                Message::PlayContext,
+                Message::OpenAlbum,
+                Message::OpenMix,
+                Message::RefreshDiscover,
+            ),
             NavPage::Recent => views::recent::view(
                 &self.home_feed,
                 &self.recent_filter,
@@ -3038,7 +3245,9 @@ impl HalcyonApp {
 fn needs_art_sync(message: &Message) -> bool {
     match message {
         Message::UiEvent(ev) => match &**ev {
-            UiEvent::Protocol(body) => !matches!(body.body, EventBody::Progress { .. } | EventBody::Pong),
+            UiEvent::Protocol(body) => {
+                !matches!(body.body, EventBody::Progress { .. } | EventBody::Pong | EventBody::AudioLevels { .. })
+            }
             UiEvent::Status(_) => true,
             UiEvent::DaemonError(_) => false,
         },
@@ -3110,5 +3319,11 @@ mod tests {
     #[test]
     fn lyrics_is_not_in_the_sidebar() {
         assert!(!NavPage::all().contains(&NavPage::Lyrics));
+    }
+
+    #[test]
+    fn discover_is_in_the_sidebar_right_after_home() {
+        assert_eq!(NavPage::all().get(1), Some(&NavPage::Discover));
+        assert_eq!(NavPage::Discover.slot(), Some(1));
     }
 }

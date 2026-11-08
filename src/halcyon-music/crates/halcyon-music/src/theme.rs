@@ -21,10 +21,10 @@ pub mod space {
 
 /// Corner radii.
 pub mod radius {
-    pub const SM: f32 = 8.0;
-    pub const MD: f32 = 14.0;
-    pub const LG: f32 = 20.0;
-    pub const XL: f32 = 28.0;
+    pub const SM: f32 = 12.0;
+    pub const MD: f32 = 20.0;
+    pub const LG: f32 = 28.0;
+    pub const XL: f32 = 36.0;
     pub const PILL: f32 = 999.0;
 }
 
@@ -599,6 +599,16 @@ impl HalcyonPalette {
             mix(mix(self.background, self.surface, 0.75), self.glow, 0.10),
             mix(self.background, self.surface, 0.55),
             true,
+        )
+    }
+
+    /// The frame colour `t` of the way down the window (0.0 top, 1.0 bottom). The search notch
+    /// is drawn in this colour so it reads as the frame reaching into the page.
+    pub fn chrome_at(&self, t: f32) -> Color {
+        mix(
+            mix(mix(self.background, self.surface, 0.75), self.glow, 0.10),
+            mix(self.background, self.surface, 0.55),
+            t,
         )
     }
 

@@ -378,7 +378,7 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     .style(move |_t, _s| button::Style {
         background: Some(palette.accent_background()),
         border: iced::Border {
-            radius: 12.0.into(),
+            radius: 18.0.into(),
             ..Default::default()
         },
         ..Default::default()
@@ -465,7 +465,7 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
                 row![
                     text(format!("{}", i + 1)).size(12).color(palette.text_muted),
                     Space::with_width(12),
-                    crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 6.0, Icon::Music, &t.title, palette),
+                    crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 9.0, Icon::Music, &t.title, palette),
                     Space::with_width(12),
                     column![
                         text(t.title.clone()).size(13).color(palette.text),
@@ -491,7 +491,7 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
                     .into(),
                 ),
                 border: iced::Border {
-                    radius: 12.0.into(),
+                    radius: 18.0.into(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -594,7 +594,7 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
         tiles.push(
             button(
                 row![
-                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 56.0, 10.0, Icon::Playlist, &pl.name, palette),
+                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 56.0, 14.0, Icon::Playlist, &pl.name, palette),
                     Space::with_width(14),
                     column![
                         text(super::ellipsize(&pl.name, 30)).size(14).color(palette.text),
@@ -638,7 +638,7 @@ fn view_albums_tab<'a, Message: Clone + 'static>(
         tiles.push(
             button(
                 column![
-                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 120.0, 10.0, Icon::Album, &alb.title, palette),
+                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 120.0, 14.0, Icon::Album, &alb.title, palette),
                     Space::with_height(10),
                     text(super::ellipsize(&alb.title, 24)).size(13).color(palette.text),
                     text(super::ellipsize(&alb.artist, 26)).size(11).color(palette.text_muted),

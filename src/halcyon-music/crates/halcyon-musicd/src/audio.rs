@@ -339,7 +339,11 @@ impl AudioEngine {
         let config = self.make_player_config(&state);
 
         let sink_fn = audio_backend::find(None).ok_or_else(|| "No audio backend found".to_string())?;
-        let sink_builder = move || sink_fn(None, AudioFormat::F32);
+        // The real sink, wrapped so the GUI's visuals can follow the actual sound (see `tap`).
+        let bus = crate::tap::audio_bus().clone();
+        let sink_builder = move || -> Box<dyn audio_backend::Sink> {
+            Box::new(crate::tap::TapSink::new(sink_fn(None, AudioFormat::F32), bus))
+        };
         let player = LibrespotPlayer::new(config, session, Box::new(NoOpVolume), sink_builder);
 
         let mut guard = self.librespot_player.lock().await;

@@ -396,6 +396,31 @@ impl Cache {
         Ok((list, total))
     }
 
+    /// Record the real song count of a playlist once its songs have been read.
+    pub fn set_playlist_total(&self, playlist_id: &str, total: usize) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT data_json FROM playlists WHERE id = ?1",
+                params![playlist_id],
+                |row| row.get(0),
+            )
+            .ok();
+        let Some(json) = json else { return Ok(()) };
+        let Ok(mut pl) = serde_json::from_str::<Playlist>(&json) else { return Ok(()) };
+        if pl.total_tracks as usize >= total {
+            return Ok(());
+        }
+        pl.total_tracks = total as u32;
+        let json = serde_json::to_string(&pl).map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE playlists SET total_tracks = ?2, data_json = ?3 WHERE id = ?1",
+            params![playlist_id, total as i64, json],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn put_artists(&self, artists: &[Artist]) -> Result<(), String> {
         let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -501,6 +526,50 @@ impl Cache {
         Ok(())
     }
 
+    /// Store one page of a playlist at its place, keeping the pages around it. (The whole-list
+    /// `set_playlist_tracks` throws the rest away, which is wrong for a list fetched in pages.)
+    /// When the page reaches the end of the list, rows past `total` are dropped.
+    pub fn set_playlist_tracks_page(
+        &self,
+        playlist_id: &str,
+        tracks: &[Track],
+        offset: usize,
+        total: usize,
+    ) -> Result<(), String> {
+        self.put_tracks(tracks)?;
+
+        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let now = now_secs();
+        let end = offset + tracks.len();
+
+        tx.execute(
+            "DELETE FROM playlist_items WHERE playlist_id = ?1 AND position >= ?2 AND position < ?3",
+            params![playlist_id, offset as i64, end as i64],
+        )
+        .map_err(|e| e.to_string())?;
+        if end >= total {
+            tx.execute(
+                "DELETE FROM playlist_items WHERE playlist_id = ?1 AND position >= ?2",
+                params![playlist_id, end as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO playlist_items (playlist_id, position, track_id, added_at) VALUES (?1, ?2, ?3, ?4)",
+                )
+                .map_err(|e| e.to_string())?;
+            for (i, t) in tracks.iter().enumerate() {
+                stmt.execute(params![playlist_id, (offset + i) as i64, t.id, now as i64])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_playlist_tracks(
         &self,
         playlist_id: &str,
@@ -551,6 +620,11 @@ impl Cache {
 
     pub fn set_liked_tracks(&self, tracks: &[Track]) -> Result<(), String> {
         self.set_playlist_tracks(Self::LIKED_PLAYLIST_ID, tracks)
+    }
+
+    /// One fetched page of Liked Songs, stored in place.
+    pub fn set_liked_tracks_page(&self, tracks: &[Track], offset: usize, total: usize) -> Result<(), String> {
+        self.set_playlist_tracks_page(Self::LIKED_PLAYLIST_ID, tracks, offset, total)
     }
 
     pub fn get_liked_tracks(&self, limit: usize, offset: usize) -> Result<(Vec<Track>, usize), String> {
@@ -949,9 +1023,57 @@ impl Cache {
         Ok(())
     }
 
+    /// Forget every cached "no match" so those songs are looked up again. Matches are kept.
+    /// Returns how many misses were dropped.
+    pub fn purge_resolution_misses(&self) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM resolved_tracks WHERE spotify_track_id IS NULL", [])
+            .map_err(|e| e.to_string())
+    }
+
     // --- Tier 3 Local Mix Generation from Play Log ---
 
     /// "On Repeat": Top played tracks in the last 30 days.
+    /// Songs played at least twice that have not been played for `quiet_days` days, most
+    /// played first ("Remember the Past").
+    pub fn get_past_favorites(&self, limit: usize, quiet_days: u64) -> Result<Vec<Track>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let cutoff = now_secs().saturating_sub(quiet_days * 86_400);
+
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT p.track_id, p.title, p.artist, p.album, p.ms_played, t.data_json, COUNT(*) as play_count
+                FROM play_log p
+                LEFT JOIN tracks t ON p.track_id = t.id
+                GROUP BY p.track_id
+                HAVING play_count >= 2 AND MAX(p.started_at) < ?1
+                ORDER BY play_count DESC, MAX(p.started_at) DESC
+                LIMIT ?2
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![cutoff as i64, limit as i64], |row| {
+                let track_id: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let artist: String = row.get(2)?;
+                let album: String = row.get(3)?;
+                let ms_played: i64 = row.get(4)?;
+                let data_json: Option<String> = row.get(5)?;
+
+                if let Some(json_str) = data_json {
+                    if let Ok(track) = serde_json::from_str::<Track>(&json_str) {
+                        return Ok(track);
+                    }
+                }
+                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(rows.flatten().collect())
+    }
     pub fn get_on_repeat(&self, limit: usize) -> Result<Vec<Track>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let thirty_days_ago = now_secs().saturating_sub(30 * 86_400);
