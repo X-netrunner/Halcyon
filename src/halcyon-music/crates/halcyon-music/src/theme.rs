@@ -81,6 +81,9 @@ impl Density {
 /// the album cover still tints the accent and the background glow on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mood {
+    /// Follows the desktop: the colours the rice writes to `palette.toml` whenever the
+    /// wallpaper or theme changes. Falls back to Dusk when that file is missing.
+    Wallpaper,
     /// Warm plum-indigo evening with peach light.
     Dusk,
     /// Cream and rose morning light.
@@ -94,6 +97,7 @@ pub enum Mood {
 impl Mood {
     pub fn label(&self) -> &'static str {
         match self {
+            Mood::Wallpaper => "Wallpaper",
             Mood::Dusk => "Dusk",
             Mood::Dawn => "Dawn",
             Mood::Forest => "Forest",
@@ -103,15 +107,17 @@ impl Mood {
 
     pub fn next(&self) -> Mood {
         match self {
+            Mood::Wallpaper => Mood::Dusk,
             Mood::Dusk => Mood::Dawn,
             Mood::Dawn => Mood::Forest,
             Mood::Forest => Mood::Ocean,
-            Mood::Ocean => Mood::Dusk,
+            Mood::Ocean => Mood::Wallpaper,
         }
     }
 
     pub fn key(&self) -> &'static str {
         match self {
+            Mood::Wallpaper => "wallpaper",
             Mood::Dusk => "dusk",
             Mood::Dawn => "dawn",
             Mood::Forest => "forest",
@@ -121,6 +127,7 @@ impl Mood {
 
     pub fn from_key(key: &str) -> Option<Mood> {
         match key.trim() {
+            "wallpaper" => Some(Mood::Wallpaper),
             "dusk" => Some(Mood::Dusk),
             "dawn" => Some(Mood::Dawn),
             "forest" => Some(Mood::Forest),
@@ -134,12 +141,19 @@ impl Mood {
         Path::new(&home).join(".local/state/halcyon-music/mood")
     }
 
-    /// The mood saved last time, or Dusk.
+    /// The mood saved last time. With nothing saved the app follows the wallpaper when the rice
+    /// has written its colours, and is Dusk otherwise.
     pub fn load() -> Mood {
         std::fs::read_to_string(Self::file())
             .ok()
             .and_then(|k| Mood::from_key(&k))
-            .unwrap_or(Mood::Dusk)
+            .unwrap_or_else(|| {
+                if HalcyonPalette::rice_file().exists() {
+                    Mood::Wallpaper
+                } else {
+                    Mood::Dusk
+                }
+            })
     }
 
     /// Remember the mood for next launch. Failure is harmless, so it is ignored.
@@ -182,7 +196,7 @@ impl HalcyonPalette {
     pub fn for_mood(mood: Mood) -> Self {
         let c = Color::from_rgb8;
         match mood {
-            Mood::Dusk => Self {
+            Mood::Dusk | Mood::Wallpaper => Self {
                 background: c(27, 22, 36),       // #1b1624
                 surface: c(38, 31, 50),          // #261f32
                 surface_variant: c(52, 43, 68),  // #342b44
@@ -241,50 +255,90 @@ impl HalcyonPalette {
         }
     }
 
-    /// Load the palette: the saved mood, plus the rice colours only when
-    /// `palette.toml` opts in with a line `override = true`. (Without the opt-in the
-    /// calm built-in moods win, so an old cold-blue rice file cannot undo the redesign.)
+    /// Where the rice writes the wallpaper colours.
+    pub fn rice_file() -> std::path::PathBuf {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".into());
+        Path::new(&home).join(".local/state/halcyon-music/palette.toml")
+    }
+
+    /// When the rice last rewrote its colours (`None` when there is no file). The app compares
+    /// this to notice a wallpaper change without watching the file all the time.
+    pub fn rice_file_stamp() -> Option<std::time::SystemTime> {
+        std::fs::metadata(Self::rice_file()).and_then(|m| m.modified()).ok()
+    }
+
+    /// Load the palette: the saved mood.
     pub fn load_from_rice() -> Self {
         Self::load_for_mood(Mood::load())
     }
 
     pub fn load_for_mood(mood: Mood) -> Self {
-        let mut palette = Self::for_mood(mood);
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".into());
-        let path = Path::new(&home).join(".local/state/halcyon-music/palette.toml");
+        let base = Self::for_mood(mood);
+        if mood != Mood::Wallpaper {
+            return base;
+        }
+        match std::fs::read_to_string(Self::rice_file()) {
+            Ok(content) => Self::from_rice_text(&content, base),
+            Err(_) => base,
+        }
+    }
 
-        if let Ok(content) = std::fs::read_to_string(path) {
-            let opted_in = content.lines().any(|l| {
-                let compact: String = l.chars().filter(|ch| !ch.is_whitespace()).collect();
-                compact == "override=true"
-            });
-            if !opted_in {
-                return palette;
-            }
-            for line in content.lines() {
-                let line = line.trim();
-                if let Some((k, v)) = line.split_once('=') {
-                    let key = k.trim();
-                    let val = v.trim().trim_matches('"');
-                    if let Some(c) = parse_hex_color(val) {
-                        match key {
-                            "background" => {
-                                palette.background = c;
-                                palette.bg_top = mix(c, Color::WHITE, 0.06);
-                                palette.bg_bottom = mix(c, Color::BLACK, 0.25);
-                            }
-                            "surface" => palette.surface = c,
-                            "accent" => palette.accent = c,
-                            "accent_secondary" => palette.accent_secondary = c,
-                            "text" | "foreground" => palette.text = c,
-                            "muted" => palette.text_muted = c,
-                            _ => {}
+    /// Build a palette from the text of `palette.toml`. Anything missing or unreadable keeps
+    /// the value of `base`, so a half-written file can never leave the app unreadable.
+    pub fn from_rice_text(content: &str, base: Self) -> Self {
+        let mut p = base;
+        let mut found_background = false;
+        let mut highlight: Option<Color> = None;
+        let mut surface: Option<Color> = None;
+        let mut glow_hint: Option<Color> = None;
+        for line in content.lines() {
+            let line = line.trim();
+            if let Some((k, v)) = line.split_once('=') {
+                let key = k.trim();
+                let val = v.trim().trim_matches('"');
+                if let Some(c) = parse_hex_color(val) {
+                    match key {
+                        "background" => {
+                            p.background = c;
+                            found_background = true;
                         }
+                        "surface" => surface = Some(c),
+                        "highlight" => highlight = Some(c),
+                        "accent" => p.accent = c,
+                        "accent_secondary" => p.accent_secondary = c,
+                        "text" | "foreground" => p.text = c,
+                        "muted" => p.text_muted = c,
+                        "red" => p.danger = c,
+                        "magenta" => glow_hint = Some(c),
+                        _ => {}
                     }
                 }
             }
         }
-        palette
+        if !found_background {
+            return base;
+        }
+        let bg = p.background;
+        // Panels are the wallpaper's own surface when the rice wrote one, else the background
+        // nudged toward the text colour so they still stand off the page.
+        let lift = if relative_luminance(bg) > 0.5 { Color::BLACK } else { Color::WHITE };
+        p.surface = surface.unwrap_or_else(|| mix(bg, lift, 0.06));
+        p.surface_variant = highlight.unwrap_or_else(|| mix(bg, lift, 0.12));
+        p.border = mix(p.surface_variant, p.text_muted, 0.35);
+        p.glow = mix(p.accent, glow_hint.unwrap_or(p.accent_secondary), 0.35);
+        // The page wash is the wallpaper colour itself, lighter at the top and deep at the bottom.
+        p.bg_top = mix(bg, p.accent, 0.12);
+        p.bg_bottom = mix(bg, Color::BLACK, if relative_luminance(bg) > 0.5 { 0.06 } else { 0.30 });
+        // Keep everything readable whatever the wallpaper looks like.
+        if contrast_ratio(p.text, bg) < 7.0 {
+            p.text = if relative_luminance(bg) > 0.5 { Color::from_rgb8(30, 24, 30) } else { Color::from_rgb8(243, 238, 232) };
+        }
+        if contrast_ratio(p.text_muted, bg) < 4.5 {
+            p.text_muted = mix(p.text, bg, 0.30);
+        }
+        p.accent = ensure_wcag_contrast(p.accent, bg, 4.5);
+        p.accent_secondary = ensure_wcag_contrast(p.accent_secondary, bg, 3.0);
+        p
     }
 
     /// Blend palette accent with extracted cover art tint, ensuring 4.5:1 text contrast.
@@ -418,10 +472,56 @@ pub fn gradient3(a: Color, b: Color, c: Color) -> iced::Background {
     iced::Background::Gradient(iced::Gradient::Linear(linear))
 }
 
+/// A soft fade edge: `color` covers the content on the side it hides behind and melts to nothing
+/// on the other, so scrolling content dissolves instead of being cut by a line. `from_top = true`
+/// is opaque at the top. `strength` (0..=1) scales it, so it can vanish when nothing is scrolled
+/// under it.
+pub fn fade_edge(color: Color, from_top: bool, strength: f32) -> iced::Background {
+    let k = strength.clamp(0.0, 1.0);
+    let stops = [(0.0, 1.0), (0.55, 0.93), (0.82, 0.45), (1.0, 0.0)];
+    let mut linear = iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2));
+    for (offset, a) in stops {
+        let (o, a) = if from_top { (offset, a) } else { (1.0 - offset, a) };
+        linear = linear.add_stop(o, alpha(color, a * k));
+    }
+    iced::Background::Gradient(iced::Gradient::Linear(linear))
+}
+
+/// Three-stop gradient that runs exactly top to bottom (the page behind everything), so the
+/// colour at any height is known and the fades above and below can match it.
+pub fn gradient3_vertical(a: Color, b: Color, c: Color) -> iced::Background {
+    let linear = iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2))
+        .add_stop(0.0, a)
+        .add_stop(0.55, b)
+        .add_stop(1.0, c);
+    iced::Background::Gradient(iced::Gradient::Linear(linear))
+}
+
 impl HalcyonPalette {
     /// The page behind everything: a slow vertical wash from `bg_top` to `bg_bottom`.
     pub fn page_background(&self) -> iced::Background {
-        gradient3(self.bg_top, self.background, self.bg_bottom)
+        gradient3_vertical(self.bg_top, self.background, self.bg_bottom)
+    }
+
+    /// The one surface the sidebar, the title bar and the player bar share. It is the page
+    /// colour lifted toward the surface with a little of the wallpaper's glow at the top, so
+    /// it reads as a frame around the page and follows the wallpaper like everything else.
+    pub fn chrome_background(&self) -> iced::Background {
+        gradient2(
+            mix(mix(self.background, self.surface, 0.75), self.glow, 0.10),
+            mix(self.background, self.surface, 0.55),
+            true,
+        )
+    }
+
+    /// The page colour right under the search strip (what the top fade melts from).
+    pub fn page_top_tone(&self) -> Color {
+        mix(self.bg_top, self.background, 0.15)
+    }
+
+    /// The page colour at its bottom edge (what the bottom fade melts into).
+    pub fn page_bottom_tone(&self) -> Color {
+        mix(self.background, self.bg_bottom, 0.93)
     }
 
     /// Frosted card fill: surface with a faint glow at the top.
@@ -519,7 +619,7 @@ mod tests {
 
     #[test]
     fn every_mood_keeps_text_readable() {
-        for mood in [Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [Mood::Wallpaper, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
             let p = HalcyonPalette::for_mood(mood);
             assert!(contrast_ratio(p.text, p.background) >= 7.0, "{mood:?} text");
             assert!(contrast_ratio(p.text_muted, p.background) >= 4.5, "{mood:?} muted");
@@ -529,10 +629,28 @@ mod tests {
 
     #[test]
     fn mood_keys_round_trip() {
-        for mood in [Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [Mood::Wallpaper, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
             assert_eq!(Mood::from_key(mood.key()), Some(mood));
         }
-        assert_eq!(Mood::Dusk.next().next().next().next(), Mood::Dusk);
+        assert_eq!(Mood::Dusk.next().next().next().next().next(), Mood::Dusk);
+    }
+
+    #[test]
+    fn rice_colours_become_a_readable_palette() {
+        let base = HalcyonPalette::for_mood(Mood::Wallpaper);
+        let text = "[colors]\nbackground = \"#10202a\"\nforeground = \"#dde9ee\"\naccent = \"#3a6f8a\"\naccent_secondary = \"#c08a50\"\nmuted = \"#33444c\"\n";
+        let p = HalcyonPalette::from_rice_text(text, base);
+        assert_eq!(p.background, Color::from_rgb8(0x10, 0x20, 0x2a));
+        assert!(contrast_ratio(p.text, p.background) >= 7.0);
+        assert!(contrast_ratio(p.text_muted, p.background) >= 4.5);
+        assert!(contrast_ratio(p.accent, p.background) >= 4.5);
+    }
+
+    #[test]
+    fn a_rice_file_without_a_background_changes_nothing() {
+        let base = HalcyonPalette::for_mood(Mood::Wallpaper);
+        let p = HalcyonPalette::from_rice_text("accent = \"#ff0000\"\n", base);
+        assert_eq!(p, base);
     }
 
     #[test]

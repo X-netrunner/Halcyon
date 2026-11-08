@@ -27,9 +27,9 @@ pub enum LikedSort {
 }
 
 impl LibraryTab {
+    /// The tabs shown on the page. Liked Songs is a pinned playlist now, not a tab.
     pub fn all() -> &'static [LibraryTab] {
         &[
-            LibraryTab::Liked,
             LibraryTab::Playlists,
             LibraryTab::Albums,
             LibraryTab::Artists,
@@ -55,6 +55,204 @@ impl LibraryTab {
     }
 }
 
+/// Every word typed must appear in at least one of the fields (any order, any case).
+/// `filter` is already lower case. An empty filter matches everything.
+fn matches(filter: &str, fields: &[&str]) -> bool {
+    filter
+        .split_whitespace()
+        .all(|word| fields.iter().any(|f| f.to_lowercase().contains(word)))
+}
+
+/// The one search box of the page: a search icon, the text, and a clear button once there is text.
+fn search_box<'a, Message: Clone + 'a>(
+    text_now: &'a str,
+    placeholder: &'static str,
+    palette: HalcyonPalette,
+    on_change: impl Fn(String) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let input = text_input(placeholder, text_now)
+        .on_input(on_change)
+        .size(13)
+        .padding(iced::Padding { top: 9.0, bottom: 9.0, left: 40.0, right: 38.0 })
+        .width(Length::Fill)
+        .style(move |_t, status| text_input::Style {
+            background: palette.surface_variant.into(),
+            border: iced::Border {
+                radius: crate::theme::radius::PILL.into(),
+                width: 1.0,
+                color: if matches!(status, text_input::Status::Focused) {
+                    palette.accent
+                } else {
+                    palette.soft_border()
+                },
+            },
+            icon: palette.text_muted,
+            placeholder: palette.text_muted,
+            value: palette.text,
+            selection: crate::theme::alpha(palette.accent, 0.3),
+        });
+
+    let mut layers: Vec<Element<'a, Message>> = vec![
+        input.into(),
+        container(icon(Icon::Search, 15.0, palette.text_muted))
+            .height(Length::Fill)
+            .padding([0.0, 14.0])
+            .align_y(iced::alignment::Vertical::Center)
+            .into(),
+    ];
+    if !text_now.is_empty() {
+        layers.push(
+            container(
+                button(icon(Icon::Close, 12.0, palette.text_muted))
+                    .on_press(on_change(String::new()))
+                    .padding(6)
+                    .style(crate::views::ghost(palette)),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right)
+            .align_y(iced::alignment::Vertical::Center)
+            .padding([0.0, 6.0])
+            .into(),
+        );
+    }
+    container(iced::widget::stack(layers)).width(340).into()
+}
+
+/// The tabs as one segmented control. Each shows how many entries it holds (or how many match
+/// the search), so a search is never a dead end on the wrong tab.
+fn tab_strip<'a, Message: Clone + 'a>(
+    active_tab: LibraryTab,
+    counts: &[(LibraryTab, usize)],
+    palette: HalcyonPalette,
+    on_select_tab: impl Fn(LibraryTab) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let mut strip = row![].spacing(4).align_y(Alignment::Center);
+    for (tab, count) in counts {
+        let is_active = *tab == active_tab;
+        let tint = if is_active { palette.on_accent() } else { palette.text };
+        let label = row![
+            icon(tab.icon(), 14.0, if is_active { tint } else { palette.accent }),
+            Space::with_width(7),
+            text(tab.label()).size(13).color(tint),
+            Space::with_width(7),
+            text(count.to_string())
+                .size(11)
+                .color(crate::theme::alpha(tint, if is_active { 0.8 } else { 0.55 })),
+        ]
+        .align_y(Alignment::Center);
+        strip = strip.push(
+            button(label)
+                .on_press(on_select_tab(*tab))
+                .padding([7, 14])
+                .style(move |_t, status| button::Style {
+                    background: Some(if is_active {
+                        palette.accent_background()
+                    } else if status == button::Status::Hovered {
+                        iced::Background::from(crate::theme::alpha(palette.accent, 0.12))
+                    } else {
+                        iced::Background::from(iced::Color::TRANSPARENT)
+                    }),
+                    text_color: tint,
+                    border: iced::Border {
+                        radius: crate::theme::radius::PILL.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+        );
+    }
+    container(strip)
+        .padding(4)
+        .style(move |_t| container::Style {
+            background: Some(crate::theme::alpha(palette.surface, 0.7).into()),
+            border: iced::Border {
+                color: palette.soft_border(),
+                width: 1.0,
+                radius: crate::theme::radius::PILL.into(),
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Lay tiles out in rows of `cols`; the last row is padded so tiles keep one width.
+fn grid<'a, Message: 'a>(items: Vec<Element<'a, Message>>, cols: usize) -> Element<'a, Message> {
+    let mut rows = column![].spacing(12).width(Length::Fill);
+    let mut iter = items.into_iter();
+    loop {
+        let mut r = row![].spacing(12).width(Length::Fill);
+        let mut got = 0;
+        for _ in 0..cols {
+            match iter.next() {
+                Some(item) => {
+                    r = r.push(item);
+                    got += 1;
+                }
+                None => r = r.push(Space::with_width(Length::FillPortion(1))),
+            }
+        }
+        if got == 0 {
+            break;
+        }
+        rows = rows.push(r);
+    }
+    rows.into()
+}
+
+/// What a tab shows when nothing is in it: a short line, and when the search found matches on
+/// other tabs, a button for each.
+fn empty_state<'a, Message: Clone + 'a>(
+    glyph: Icon,
+    headline: String,
+    hint: &'static str,
+    elsewhere: Vec<(LibraryTab, usize)>,
+    palette: HalcyonPalette,
+    on_select_tab: impl Fn(LibraryTab) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let mut jump = row![].spacing(8).align_y(Alignment::Center);
+    for (tab, n) in elsewhere {
+        jump = jump.push(
+            button(
+                text(format!("{} in {}", n, tab.label()))
+                    .size(12)
+                    .color(palette.accent),
+            )
+            .on_press(on_select_tab(tab))
+            .padding([6, 12])
+            .style(move |_t, status| button::Style {
+                background: Some(
+                    crate::theme::alpha(palette.accent, if status == button::Status::Hovered { 0.20 } else { 0.10 })
+                        .into(),
+                ),
+                text_color: palette.accent,
+                border: iced::Border {
+                    color: crate::theme::alpha(palette.accent, 0.30),
+                    width: 1.0,
+                    radius: crate::theme::radius::PILL.into(),
+                },
+                ..Default::default()
+            }),
+        );
+    }
+    container(
+        column![
+            Space::with_height(36),
+            icon(glyph, 34.0, palette.text_muted),
+            Space::with_height(12),
+            text(headline).size(15).color(palette.text),
+            Space::with_height(4),
+            text(hint).size(12).color(palette.text_muted),
+            Space::with_height(14),
+            jump,
+        ]
+        .align_x(Alignment::Center),
+    )
+    .width(Length::Fill)
+    .center_x(Length::Fill)
+    .into()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
     active_tab: LibraryTab,
@@ -69,7 +267,7 @@ pub fn view<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     density: Density,
     on_select_tab: impl Fn(LibraryTab) -> Message + 'a + Copy,
-    on_filter_changed: impl Fn(String) -> Message + 'a,
+    on_filter_changed: impl Fn(String) -> Message + 'a + Copy,
     on_change_sort: impl Fn(LikedSort) -> Message + 'a + Copy,
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
@@ -80,72 +278,104 @@ pub fn view<'a, Message: Clone + 'static>(
     on_new_playlist_input: impl Fn(String) -> Message + 'a,
     on_create_playlist: Message,
     on_delete_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_liked: Message,
 ) -> Element<'a, Message> {
-    let mut page = column![].spacing(16).padding(20).width(Length::Fill);
-
-    // 1. Tab buttons & Search Filter row
-    let mut tabs_row = row![].spacing(8);
-    for tab in LibraryTab::all() {
-        let is_active = *tab == active_tab;
-        let tab_btn = button(
-            row![
-                icon(tab.icon(), 14.0, if is_active {
-                    palette.background
-                } else {
-                    palette.accent
-                }),
-                Space::with_width(6),
-                text(tab.label()).size(13).color(if is_active {
-                    palette.background
-                } else {
-                    palette.text
-                }),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .on_press(on_select_tab(*tab))
-        .padding([6, 14])
-        .style(move |_t, _s| button::Style {
-            background: Some(
-                if is_active {
-                    palette.accent
-                } else {
-                    palette.surface
-                }
-                .into(),
-            ),
-            border: iced::Border {
-                color: if is_active {
-                    palette.accent
-                } else {
-                    palette.border
-                },
-                width: 0.5,
-                radius: 20.0.into(),
-            },
-            ..Default::default()
-        });
-        tabs_row = tabs_row.push(tab_btn);
-    }
-
-    let filter_input = text_input("Filter in library...", filter_text)
-        .on_input(on_filter_changed)
-        .padding([6, 10])
-        .size(13)
-        .width(Length::Fixed(240.0));
-
-    let header_row = row![
-        tabs_row,
-        Space::with_width(Length::Fill),
-        filter_input,
-    ]
-    .align_y(Alignment::Center)
-    .width(Length::Fill);
-
-    page = page.push(header_row);
-
-    // 2. Tab Content
+    let mut page = column![].spacing(18).padding(20).width(Length::Fill);
     let filter_lower = filter_text.to_lowercase();
+
+    // What each tab would show for the current search. Liked Songs is the first playlist.
+    let liked_shown = matches(&filter_lower, &["liked songs"]);
+    let playlist_hits = playlists
+        .iter()
+        .filter(|p| matches(&filter_lower, &[p.name.as_str(), p.owner.as_str()]))
+        .count()
+        + usize::from(liked_shown);
+    let album_hits = albums
+        .iter()
+        .filter(|a| matches(&filter_lower, &[a.title.as_str(), a.artist.as_str()]))
+        .count();
+    let artist_hits = artists
+        .iter()
+        .filter(|a| {
+            let genres = a.genres.join(" ");
+            matches(&filter_lower, &[a.name.as_str(), genres.as_str()])
+        })
+        .count();
+    let counts = [
+        (LibraryTab::Playlists, playlist_hits),
+        (LibraryTab::Albums, album_hits),
+        (LibraryTab::Artists, artist_hits),
+    ];
+
+    // Heading and search on one line. Liked Songs opens like a playlist, so it brings its own heading.
+    let heading: Element<'a, Message> = if active_tab == LibraryTab::Liked {
+        row![
+            crate::views::liked_cover(64.0, 16.0, palette),
+            Space::with_width(16),
+            column![
+                text("Liked Songs").size(26).color(palette.text),
+                text(format!("Playlist · {} songs", liked_tracks.len()))
+                    .size(13)
+                    .color(palette.text_muted),
+            ]
+            .spacing(4),
+        ]
+        .align_y(Alignment::Center)
+        .into()
+    } else {
+        text("Your Library").size(26).color(palette.text).into()
+    };
+    let placeholder = match active_tab {
+        LibraryTab::Liked => "Search liked songs",
+        _ => "Search playlists, albums and artists",
+    };
+    page = page.push(
+        row![
+            heading,
+            Space::with_width(Length::Fill),
+            search_box(filter_text, placeholder, palette, on_filter_changed),
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill),
+    );
+
+    // The tabs (on the Liked Songs page none is lit and each leads back to the library).
+    page = page.push(tab_strip(active_tab, &counts, palette, on_select_tab));
+
+    // The content of the open tab, or an empty state that points at where the matches are.
+    let shown = match active_tab {
+        LibraryTab::Playlists => playlist_hits,
+        LibraryTab::Albums => album_hits,
+        LibraryTab::Artists => artist_hits,
+        LibraryTab::Liked => 1,
+    };
+    let searching = !filter_lower.trim().is_empty();
+    if shown == 0 {
+        let elsewhere: Vec<(LibraryTab, usize)> = counts
+            .iter()
+            .filter(|(t, n)| *t != active_tab && *n > 0 && searching)
+            .copied()
+            .collect();
+        let (glyph, noun) = match active_tab {
+            LibraryTab::Albums => (Icon::Album, "albums"),
+            LibraryTab::Artists => (Icon::Artist, "artists"),
+            _ => (Icon::Playlist, "playlists"),
+        };
+        let headline = if searching {
+            format!("No {noun} match \u{201c}{}\u{201d}", filter_text.trim())
+        } else {
+            format!("No {noun} yet")
+        };
+        let hint = if searching {
+            "Try fewer words, or check the spelling."
+        } else if active_tab == LibraryTab::Albums {
+            "Albums you save on Spotify show up here."
+        } else {
+            "Artists you follow on Spotify show up here."
+        };
+        page = page.push(empty_state(glyph, headline, hint, elsewhere, palette, on_select_tab));
+        return container(page).width(Length::Fill).into();
+    }
 
     match active_tab {
         LibraryTab::Liked => {
@@ -172,23 +402,15 @@ pub fn view<'a, Message: Clone + 'static>(
                 on_new_playlist_input,
                 on_create_playlist,
                 on_delete_playlist,
+                liked_tracks.len(),
+                on_open_liked,
             ));
         }
         LibraryTab::Albums => {
-            page = page.push(view_albums_tab(
-                albums,
-                &filter_lower,
-                palette,
-                on_open_album,
-            ));
+            page = page.push(view_albums_tab(albums, &filter_lower, palette, on_open_album));
         }
         LibraryTab::Artists => {
-            page = page.push(view_artists_tab(
-                artists,
-                &filter_lower,
-                palette,
-                on_open_artist,
-            ));
+            page = page.push(view_artists_tab(artists, &filter_lower, palette, on_open_artist));
         }
     }
 
@@ -211,15 +433,7 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     // Filtered & sorted tracks
     let mut filtered: Vec<Track> = tracks
         .iter()
-        .filter(|t| {
-            if filter.is_empty() {
-                true
-            } else {
-                t.title.to_lowercase().contains(filter)
-                    || t.artist.to_lowercase().contains(filter)
-                    || t.album.to_lowercase().contains(filter)
-            }
-        })
+        .filter(|t| matches(filter, &[t.title.as_str(), t.artist.as_str(), t.album.as_str()]))
         .cloned()
         .collect();
 
@@ -383,114 +597,110 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
     on_input_new: impl Fn(String) -> Message + 'a,
     on_create: Message,
     on_delete_playlist: impl Fn(String) -> Message + 'a + Copy,
+    liked_count: usize,
+    on_open_liked: Message,
 ) -> Element<'a, Message> {
     let mut col = column![].spacing(14).width(Length::Fill);
 
-    // Top action row
     let new_btn = button(
         row![
-            icon(Icon::Plus, 14.0, palette.background),
+            icon(Icon::Plus, 14.0, palette.on_accent()),
             Space::with_width(6),
-            text("New Playlist").size(13).color(palette.background),
+            text("New playlist").size(13).color(palette.on_accent()),
         ]
         .align_y(Alignment::Center),
     )
     .on_press(on_toggle_new)
-    .padding([6, 14])
-    .style(move |_t, _s| button::Style {
-        background: Some(palette.accent_background()),
-        border: iced::Border {
-            radius: 12.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+    .padding([7, 16])
+    .style(crate::views::solid(palette));
 
-    let mut top_bar = row![
-        new_btn,
-        Space::with_width(12),
-        text(format!("{} playlists", playlists.len())).size(13).color(palette.text_muted),
-    ]
-    .align_y(Alignment::Center);
+    let mut top_bar = row![new_btn].align_y(Alignment::Center);
 
     if show_new_input {
-        top_bar = top_bar.push(Space::with_width(16));
+        top_bar = top_bar.push(Space::with_width(12));
         top_bar = top_bar.push(
-            text_input("Enter playlist name...", new_name)
+            text_input("Name your playlist", new_name)
                 .on_input(on_input_new)
-                .padding([6, 10])
+                .on_submit(on_create.clone())
+                .padding([7, 12])
                 .size(13)
-                .width(Length::Fixed(200.0)),
+                .width(Length::Fixed(220.0)),
         );
         top_bar = top_bar.push(Space::with_width(8));
         top_bar = top_bar.push(
-            button(text("Create").size(12).color(palette.background))
+            button(text("Create").size(12).color(palette.on_accent()))
                 .on_press(on_create)
-                .padding([6, 12])
-                .style(move |_t, _s| button::Style {
-                    background: Some(palette.accent_background()),
-                    border: iced::Border {
-                        radius: 10.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }),
+                .padding([7, 14])
+                .style(crate::views::solid(palette)),
         );
     }
-
     col = col.push(top_bar);
 
     let filtered: Vec<&Playlist> = playlists
         .iter()
-        .filter(|p| filter.is_empty() || p.name.to_lowercase().contains(filter))
+        .filter(|p| matches(filter, &[p.name.as_str(), p.owner.as_str()]))
         .collect();
 
-    let mut grid = column![].spacing(12);
-    for chunk in filtered.chunks(3) {
-        let mut r = row![].spacing(12).width(Length::Fill);
-        for pl in chunk {
-            let id = pl.id.clone();
-            let del_id = pl.id.clone();
+    let mut tiles: Vec<Element<'a, Message>> = Vec::new();
 
-            let card = button(
+    // Liked Songs: always the first playlist.
+    if matches(filter, &["liked songs"]) {
+        tiles.push(
+            button(
                 row![
-                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 56.0, 8.0, Icon::Playlist, &pl.name, palette),
-                    Space::with_width(12),
+                    crate::views::liked_cover(56.0, 12.0, palette),
+                    Space::with_width(14),
                     column![
-                        text(super::ellipsize(&pl.name, 56)).size(14).color(palette.text),
-                        text(format!("By {} · {} songs", pl.owner, pl.total_tracks))
+                        text("Liked Songs").size(14).color(palette.text),
+                        text(format!("Pinned · {liked_count} songs"))
                             .size(11)
                             .color(palette.text_muted),
                     ]
+                    .spacing(3)
+                    .width(Length::Fill),
+                ]
+                .align_y(Alignment::Center)
+                .padding(10),
+            )
+            .width(Length::FillPortion(1))
+            .on_press(on_open_liked)
+            .style(crate::views::tile(palette, 16.0))
+            .into(),
+        );
+    }
+
+    for pl in filtered {
+        let id = pl.id.clone();
+        let del_id = pl.id.clone();
+        tiles.push(
+            button(
+                row![
+                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 56.0, 10.0, Icon::Playlist, &pl.name, palette),
+                    Space::with_width(14),
+                    column![
+                        text(super::ellipsize(&pl.name, 30)).size(14).color(palette.text),
+                        text(format!("{} · {} songs", super::ellipsize(&pl.owner, 18), pl.total_tracks))
+                            .size(11)
+                            .color(palette.text_muted),
+                    ]
+                    .spacing(3)
                     .width(Length::Fill),
                     button(icon(Icon::Trash, 14.0, palette.text_muted))
                         .on_press(on_delete_playlist(del_id))
-                        .padding(4)
-                        .style(|_t, _s| button::Style::default()),
+                        .padding(6)
+                        .style(crate::views::ghost(palette)),
                 ]
                 .align_y(Alignment::Center)
                 .padding(10),
             )
             .width(Length::FillPortion(1))
             .on_press(on_open_playlist(id))
-            .style(move |_t, s| button::Style {
-                background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 12.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-
-            r = r.push(card);
-        }
-        grid = grid.push(r);
+            .style(crate::views::tile(palette, 16.0))
+            .into(),
+        );
     }
 
-    col = col.push(grid);
+    col = col.push(grid(tiles, 3));
     col.into()
 }
 
@@ -500,56 +710,30 @@ fn view_albums_tab<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     on_open_album: impl Fn(String) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
-    let mut col = column![].spacing(14).width(Length::Fill);
-
-    let filtered: Vec<&Album> = albums
+    let mut tiles: Vec<Element<'a, Message>> = Vec::new();
+    for alb in albums
         .iter()
-        .filter(|a| {
-            filter.is_empty()
-                || a.title.to_lowercase().contains(filter)
-                || a.artist.to_lowercase().contains(filter)
-        })
-        .collect();
-
-    col = col.push(
-        text(format!("{} saved albums", filtered.len())).size(13).color(palette.text_muted),
-    );
-
-    let mut grid = column![].spacing(12);
-    for chunk in filtered.chunks(4) {
-        let mut r = row![].spacing(12).width(Length::Fill);
-        for alb in chunk {
-            let id = alb.id.clone();
-            let card = button(
+        .filter(|a| matches(filter, &[a.title.as_str(), a.artist.as_str()]))
+    {
+        let id = alb.id.clone();
+        tiles.push(
+            button(
                 column![
-                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 96.0, 8.0, Icon::Album, &alb.title, palette),
+                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 120.0, 10.0, Icon::Album, &alb.title, palette),
                     Space::with_height(10),
-                    text(super::ellipsize(&alb.title, 56)).size(13).color(palette.text),
-                    text(super::ellipsize(&alb.artist, 44)).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&alb.title, 24)).size(13).color(palette.text),
+                    text(super::ellipsize(&alb.artist, 26)).size(11).color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)
                 .padding(12),
             )
             .width(Length::FillPortion(1))
             .on_press(on_open_album(id))
-            .style(move |_t, s| button::Style {
-                background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 14.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-            r = r.push(card);
-        }
-        grid = grid.push(r);
+            .style(crate::views::tile(palette, 16.0))
+            .into(),
+        );
     }
-
-    col = col.push(grid);
-    col.into()
+    grid(tiles, 4)
 }
 
 fn view_artists_tab<'a, Message: Clone + 'static>(
@@ -558,56 +742,33 @@ fn view_artists_tab<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     on_open_artist: impl Fn(String) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
-    let mut col = column![].spacing(14).width(Length::Fill);
-
-    let filtered: Vec<&Artist> = artists
-        .iter()
-        .filter(|a| filter.is_empty() || a.name.to_lowercase().contains(filter))
-        .collect();
-
-    col = col.push(
-        text(format!("{} followed artists", filtered.len())).size(13).color(palette.text_muted),
-    );
-
-    let mut grid = column![].spacing(12);
-    for chunk in filtered.chunks(4) {
-        let mut r = row![].spacing(12).width(Length::Fill);
-        for a in chunk {
-            let id = a.id.clone();
-            let card = button(
+    let mut tiles: Vec<Element<'a, Message>> = Vec::new();
+    for a in artists.iter().filter(|a| {
+        let genres = a.genres.join(" ");
+        matches(filter, &[a.name.as_str(), genres.as_str()])
+    }) {
+        let id = a.id.clone();
+        let sub = if a.genres.is_empty() {
+            "Artist".to_string()
+        } else {
+            super::ellipsize(&a.genres.join(", "), 26)
+        };
+        tiles.push(
+            button(
                 column![
-                    crate::art::cover(a.image_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 84.0, 42.0, Icon::Artist, &a.name, palette),
+                    crate::art::cover(a.image_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 104.0, 52.0, Icon::Artist, &a.name, palette),
                     Space::with_height(10),
-                    text(super::ellipsize(&a.name, 56)).size(13).color(palette.text),
-                    text(if a.genres.is_empty() {
-                        "Artist".to_string()
-                    } else {
-                        a.genres.join(", ")
-                    })
-                    .size(11)
-                    .color(palette.text_muted),
+                    text(super::ellipsize(&a.name, 24)).size(13).color(palette.text),
+                    text(sub).size(11).color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)
                 .padding(12),
             )
             .width(Length::FillPortion(1))
             .on_press(on_open_artist(id))
-            .style(move |_t, s| button::Style {
-                background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
-                    .into(),
-                ),
-                border: iced::Border {
-                    radius: 14.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-            r = r.push(card);
-        }
-        grid = grid.push(r);
+            .style(crate::views::tile(palette, 16.0))
+            .into(),
+        );
     }
-
-    col = col.push(grid);
-    col.into()
+    grid(tiles, 4)
 }

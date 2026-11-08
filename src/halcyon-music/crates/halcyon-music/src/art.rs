@@ -204,6 +204,11 @@ pub fn home_items(feed: &HomeFeed) -> Vec<(Option<&str>, ArtSize)> {
     for shelf in [&feed.jump_back_in, &feed.new_releases, &feed.fresh_releases, &feed.popular_charts] {
         v.extend(shelf.iter().map(|i| (i.art_url.as_deref(), ArtSize::Medium)));
     }
+    // Made-for-you cards draw a 2x2 mosaic of their first songs' covers (or one cover).
+    for mix in &feed.made_for_you {
+        v.push((mix.art_url.as_deref(), ArtSize::Small));
+        v.extend(mix.tracks.iter().take(4).map(|t| (t.art_url.as_deref(), ArtSize::Small)));
+    }
     v
 }
 

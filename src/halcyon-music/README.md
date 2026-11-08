@@ -90,6 +90,11 @@ the engine's own events.
 
 ## Look and feel
 
-Four moods (Dusk, Dawn, Forest, Ocean) under Settings, Appearance, Mood; the page gradient and
-glow follow the album cover. Motion is slow and soft; set `GTK_ENABLE_ANIMATIONS=0` to turn it off.
-`~/.local/state/halcyon-music/palette.toml` only applies if it contains the line `override = true`.
+Five moods under Settings, Appearance, Mood: **Wallpaper** (follows the colours the rice writes to
+`~/.local/state/halcyon-music/palette.toml` whenever the wallpaper or theme changes; the app checks the file
+every few seconds and re-colours itself), and the fixed Dusk, Dawn, Forest and Ocean. With no saved choice the
+app starts in Wallpaper when that file exists, otherwise Dusk. The page gradient and glow also follow the
+album cover. Motion is slow and soft; set `GTK_ENABLE_ANIMATIONS=0` to turn it off.
+
+The sidebar, the title bar and the player bar are one frame around the page. The sidebar opens under the
+pointer and pushes the page aside; its icons stay where they are and the labels fade in on the same line.

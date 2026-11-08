@@ -17,46 +17,42 @@ pub fn view<'a, Message: Clone + 'static>(
     month_offset: u32,
     palette: HalcyonPalette,
     _density: Density,
+    halcyon_name: &str,
+    halcyon_pfp: Option<&str>,
     on_prev_month: Message,
     on_next_month: Message,
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(20).padding(24).width(Length::Fill);
 
-    // 1. Header & Month Navigation
-    let next_btn = button(icon(Icon::ChevronRight, 16.0, if month_offset > 0 {
-        palette.text
-    } else {
-        palette.text_muted
-    }))
-    .on_press(on_next_month)
-    .padding([6, 12])
-    .style(move |_t, _s| button::Style {
-        background: Some(palette.card_background()),
-        border: iced::Border {
-            radius: 12.0.into(),
-            color: palette.soft_border(),
-            width: 0.5,
-        },
-        ..Default::default()
-    });
-
-    let prev_btn = button(icon(Icon::ChevronLeft, 16.0, palette.text))
-        .on_press(on_prev_month)
-        .padding([6, 12])
-        .style(move |_t, _s| button::Style {
-            background: Some(palette.card_background()),
-            border: iced::Border {
-                radius: 12.0.into(),
-                color: palette.soft_border(),
-                width: 0.5,
-            },
-            ..Default::default()
-        });
+    // 1. Header & Month Navigation. Halcyon's own picture sits in a soft glowing ring beside
+    // the title; the month arrows are quiet icon buttons instead of boxed capsules.
+    let prev_btn = crate::views::icon_action(Icon::ChevronLeft, "Previous month", palette, Some(on_prev_month));
+    let next_btn = crate::views::icon_action(
+        Icon::ChevronRight,
+        "Next month",
+        palette,
+        (month_offset > 0).then_some(on_next_month),
+    );
 
     let month_title = format!("{} {}", capsule.month_name, capsule.year);
 
+    let pfp = container(crate::views::account::avatar(halcyon_name, halcyon_pfp, 52.0, palette))
+        .padding(3)
+        .style(move |_t| container::Style {
+            background: None,
+            border: iced::Border {
+                color: crate::theme::alpha(palette.accent, 0.55),
+                width: 1.5,
+                radius: 30.0.into(),
+            },
+            shadow: palette.glow_shadow(0.35, 18.0),
+            ..Default::default()
+        });
+
     let header = row![
+        pfp,
+        Space::with_width(14),
         column![
             text("Sound Capsule").size(22).color(palette.text),
             Space::with_height(4),
@@ -67,18 +63,10 @@ pub fn view<'a, Message: Clone + 'static>(
         Space::with_width(Length::Fill),
         row![
             prev_btn,
-            Space::with_width(8),
             container(text(month_title).size(14).color(palette.text))
-                .padding([6, 14])
-                .style(move |_t| container::Style {
-                    background: Some(palette.surface_variant.into()),
-                    border: iced::Border {
-                        radius: 12.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }),
-            Space::with_width(8),
+                .padding([6, 12])
+                .width(120)
+                .center_x(120),
             next_btn,
         ]
         .align_y(Alignment::Center),
@@ -267,19 +255,7 @@ pub fn view<'a, Message: Clone + 'static>(
                         .width(28)
                         .center_x(28),
                     Space::with_width(8),
-                    container(icon(Icon::Artist, 16.0, palette.accent))
-                        .width(32)
-                        .height(32)
-                        .center_x(32)
-                        .center_y(32)
-                        .style(move |_t| container::Style {
-                            background: Some(palette.surface_variant.into()),
-                            border: iced::Border {
-                                radius: 20.0.into(),
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }),
+                    artist_picture(capsule, artist, halcyon_name, halcyon_pfp, palette),
                     Space::with_width(10),
                     text(artist).size(13).color(palette.text).width(Length::Fill),
                     text(format!("{} mins", minutes)).size(12).color(palette.text_muted),
@@ -371,6 +347,45 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     container(page).width(Length::Fill).into()
+}
+
+/// The round picture beside a top artist: the cover of that artist's most-played song when it
+/// is in this month's list, otherwise Halcyon's own picture (never a blank circle).
+fn artist_picture<'a, Message: 'a>(
+    capsule: &FullCapsule,
+    artist: &str,
+    halcyon_name: &str,
+    halcyon_pfp: Option<&str>,
+    palette: HalcyonPalette,
+) -> Element<'a, Message> {
+    let cover_url = capsule
+        .top_tracks
+        .iter()
+        .find(|(t, _)| t.artist == artist || t.artists.iter().any(|a| a == artist))
+        .and_then(|(t, _)| t.art_url.as_deref());
+    let pic: Element<'a, Message> = match cover_url {
+        Some(url) => crate::art::cover(
+            Some(url),
+            halcyon_music_core::art::ArtSize::Small,
+            40.0,
+            20.0,
+            Icon::Artist,
+            artist,
+            palette,
+        ),
+        None => crate::views::account::avatar(halcyon_name, halcyon_pfp, 40.0, palette),
+    };
+    container(pic)
+        .padding(2)
+        .style(move |_t| container::Style {
+            border: iced::Border {
+                color: crate::theme::alpha(palette.accent, 0.45),
+                width: 1.0,
+                radius: 23.0.into(),
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 fn view_metric_card<'a, Message: 'static>(

@@ -84,7 +84,10 @@ pub struct Actions<M, F1, F2, F3> {
     pub add_to_queue: M,
     pub play_next: M,
     pub retry: M,
-    pub delete: M,
+    /// Delete the playlist (`None` for a mix, which is not a Spotify playlist).
+    pub delete: Option<M>,
+    /// Save the mix as a real playlist (`Some` only for a mix).
+    pub save: Option<M>,
     /// A click on a row (select; a second quick click plays).
     pub row_click: F1,
     /// The play button of a row.
@@ -127,43 +130,6 @@ fn skeleton_row<'a, M: 'a>(palette: HalcyonPalette, alpha: f32) -> Element<'a, M
     .into()
 }
 
-fn pill_button<'a, M: Clone + 'a>(
-    glyph: Icon,
-    label: &'static str,
-    filled: bool,
-    palette: HalcyonPalette,
-    msg: Option<M>,
-) -> Element<'a, M> {
-    let fg = if filled { palette.background } else { palette.text };
-    let mut b = button(
-        row![
-            icon(glyph, 15.0, fg),
-            Space::with_width(space::SM),
-            text(label).size(type_size::BODY).color(fg),
-        ]
-        .align_y(Alignment::Center),
-    )
-    .padding([space::SM + 2.0, space::XL - 2.0])
-    .style(move |_t, status| {
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        let (bg, border) = if filled {
-            (if hovered { iced::Color { a: 0.88, ..palette.accent } } else { palette.accent }, iced::Color::TRANSPARENT)
-        } else {
-            (if hovered { palette.surface_variant } else { iced::Color::TRANSPARENT }, palette.border)
-        };
-        button::Style {
-            background: Some(bg.into()),
-            text_color: fg,
-            border: iced::Border { color: border, width: 1.0, radius: 999.0.into() },
-            ..Default::default()
-        }
-    });
-    if let Some(m) = msg {
-        b = b.on_press(m);
-    }
-    b.into()
-}
-
 fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, impl Fn(usize) -> M, impl Fn(usize) -> M>) -> Element<'a, M> {
     let pal = p.palette;
     let count = p.total.max(p.playlist.total_tracks as usize).max(p.tracks.len());
@@ -186,20 +152,33 @@ fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, i
     .padding([space::XS, space::SM])
     .style(crate::views::ghost(pal));
 
-    let delete = button(
-        row![
-            icon(Icon::Trash, 14.0, pal.text_muted),
-            Space::with_width(space::SM - 2.0),
-            text("Delete").size(type_size::SMALL).color(pal.text_muted),
-        ]
-        .align_y(Alignment::Center),
-    )
-    .on_press(a.delete.clone())
-    .padding([space::XS + 2.0, space::MD])
-    .style(crate::views::ghost(pal));
+    // One big round Play, then quiet icon buttons: no capsules around words. Save shows only
+    // for a mix, Delete only for a real playlist.
+    let mut actions = row![
+        crate::views::play_orb(Icon::Play, 56.0, pal, can_play.then(|| a.play_all.clone())),
+        Space::with_width(space::SM),
+        crate::views::icon_action(Icon::Shuffle, "Shuffle", pal, can_play.then(|| a.shuffle.clone())),
+        crate::views::icon_action(Icon::Queue, "Add to queue", pal, can_play.then(|| a.add_to_queue.clone())),
+        crate::views::icon_action(Icon::Plus, "Play next", pal, can_play.then(|| a.play_next.clone())),
+    ]
+    .spacing(space::XS)
+    .align_y(Alignment::Center);
+    if let Some(save) = a.save.clone() {
+        actions = actions.push(crate::views::icon_action(
+            Icon::Playlist,
+            "Save as a playlist",
+            pal,
+            can_play.then_some(save),
+        ));
+    }
+    actions = actions.push(Space::with_width(Length::Fill));
+    if let Some(del) = a.delete.clone() {
+        actions = actions.push(crate::views::icon_action(Icon::Trash, "Delete playlist", pal, Some(del)));
+    }
 
+    let kicker = if p.playlist.id.starts_with("mix:") { "MADE FOR YOU BY HALCYON" } else { "PLAYLIST" };
     let info = column![
-        text("PLAYLIST").size(type_size::CAPTION).color(pal.accent),
+        text(kicker).size(type_size::CAPTION).color(pal.accent),
         Space::with_height(space::XS),
         text(crate::views::ellipsize(&p.playlist.name, 60)).size(32).color(pal.text),
         Space::with_height(space::SM),
@@ -207,16 +186,7 @@ fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, i
             .size(type_size::BODY)
             .color(pal.text_muted),
         Space::with_height(space::XL),
-        row![
-            pill_button(Icon::Play, "Play", true, pal, can_play.then(|| a.play_all.clone())),
-            pill_button(Icon::Shuffle, "Shuffle", false, pal, can_play.then(|| a.shuffle.clone())),
-            pill_button(Icon::Queue, "Add to queue", false, pal, can_play.then(|| a.add_to_queue.clone())),
-            pill_button(Icon::Plus, "Play next", false, pal, can_play.then(|| a.play_next.clone())),
-            Space::with_width(Length::Fill),
-            delete,
-        ]
-        .spacing(space::MD)
-        .align_y(Alignment::Center),
+        actions,
     ];
 
     column![
@@ -362,7 +332,19 @@ fn notice<'a, M: Clone + 'a>(
     .align_x(Alignment::Center);
     if let Some(r) = retry {
         col = col.push(Space::with_height(space::SM));
-        col = col.push(pill_button(Icon::Refresh, "Retry", true, pal, Some(r)));
+        col = col.push(
+            button(
+                row![
+                    icon(Icon::Refresh, 15.0, pal.on_accent()),
+                    Space::with_width(space::SM),
+                    text("Retry").size(type_size::BODY),
+                ]
+                .align_y(Alignment::Center),
+            )
+            .padding([space::SM + 2.0, space::XL - 2.0])
+            .on_press(r)
+            .style(crate::views::solid(pal)),
+        );
     }
     container(col)
         .width(Length::Fill)

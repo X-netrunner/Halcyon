@@ -115,8 +115,10 @@ pub struct AnimationManager {
     epoch: Instant,
     // Page entrance animation
     pub page_transition: Animation,
-    // Sidebar active pill position (index 0..=5)
+    // Sidebar active pill position (slot index, 0 = first item)
     pub sidebar_pill: Animation,
+    // Sidebar width: 0.0 collapsed (icons only) .. 1.0 fully open
+    pub sidebar_expand: Animation,
     // Skeleton shimmer phase (0.0 ..= 1.0)
     pub shimmer_phase: f32,
     // Toast entrance animation
@@ -137,6 +139,7 @@ impl Default for AnimationManager {
             epoch: Instant::now(),
             page_transition: Animation::instant(1.0),
             sidebar_pill: Animation::instant(0.0),
+            sidebar_expand: Animation::instant(0.0),
             shimmer_phase: 0.0,
             toast_slide: Animation::instant(0.0),
         }
@@ -152,6 +155,7 @@ impl AnimationManager {
         }
         self.page_transition.is_active()
             || self.sidebar_pill.is_active()
+            || self.sidebar_expand.is_active()
             || self.toast_slide.is_active()
     }
 
@@ -183,13 +187,46 @@ impl AnimationManager {
         0.5 + 0.5 * (secs * std::f32::consts::TAU / 9.0).sin()
     }
 
-    /// Trigger sidebar pill sliding to target tab index.
-    pub fn animate_sidebar_pill(&mut self, current_pos: f32, target_pos: f32) {
+    /// Seconds since the app started; 0.0 when motion is reduced. Drives the visualizer and the
+    /// little equalizer bars, which are pure functions of this clock and the playback position.
+    pub fn clock(&self) -> f32 {
+        if self.reduce_motion {
+            0.0
+        } else {
+            self.epoch.elapsed().as_secs_f32()
+        }
+    }
+
+    /// Slide the sidebar's active pill from where it is now to `target_pos` (a slot index).
+    pub fn animate_sidebar_pill(&mut self, target_pos: f32) {
+        let from = self.sidebar_pill.peek();
         if self.reduce_motion {
             self.sidebar_pill = Animation::instant(target_pos);
         } else {
-            self.sidebar_pill = Animation::new(current_pos, target_pos, 360, Easing::EaseOutCubic);
+            self.sidebar_pill = Animation::new(from, target_pos, 320, Easing::EaseOutCubic);
         }
+    }
+
+    /// Put the pill on a slot at once (used when it was hidden, so it does not fly in).
+    pub fn set_sidebar_pill(&mut self, pos: f32) {
+        self.sidebar_pill = Animation::instant(pos);
+    }
+
+    /// Open or close the sidebar. It starts from however open it is right now, so moving the
+    /// pointer in and out quickly never makes the width jump.
+    pub fn animate_sidebar(&mut self, open: bool) {
+        let from = self.sidebar_expand.peek();
+        let target = if open { 1.0 } else { 0.0 };
+        if self.reduce_motion {
+            self.sidebar_expand = Animation::instant(target);
+        } else {
+            self.sidebar_expand = Animation::new(from, target, 260, Easing::EaseOutCubic);
+        }
+    }
+
+    /// 0.0 (collapsed) to 1.0 (open). Drives the sidebar width and the fade of its labels.
+    pub fn sidebar_progress(&self) -> f32 {
+        self.sidebar_expand.peek().clamp(0.0, 1.0)
     }
 
     /// Show toast slide-in.
@@ -229,6 +266,17 @@ mod tests {
     fn page_progress_is_settled_when_idle() {
         let m = AnimationManager::default();
         assert_eq!(m.page_progress(), 1.0);
+    }
+
+    #[test]
+    fn sidebar_starts_collapsed_and_opens() {
+        let mut m = AnimationManager::default();
+        assert_eq!(m.sidebar_progress(), 0.0);
+        m.reduce_motion = true;
+        m.animate_sidebar(true);
+        assert_eq!(m.sidebar_progress(), 1.0);
+        m.animate_sidebar(false);
+        assert_eq!(m.sidebar_progress(), 0.0);
     }
 
     #[test]
