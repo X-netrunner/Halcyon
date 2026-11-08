@@ -92,6 +92,10 @@ pub enum Mood {
     Forest,
     /// Quiet blue-teal night water.
     Ocean,
+    /// The whole page is coloured by the song that is playing.
+    Song,
+    /// Pitch black, with an ambient glow in the colour of the song.
+    Ambient,
 }
 
 impl Mood {
@@ -102,12 +106,16 @@ impl Mood {
             Mood::Dawn => "Dawn",
             Mood::Forest => "Forest",
             Mood::Ocean => "Ocean",
+            Mood::Song => "Song colours",
+            Mood::Ambient => "Pitch black",
         }
     }
 
     pub fn next(&self) -> Mood {
         match self {
-            Mood::Wallpaper => Mood::Dusk,
+            Mood::Wallpaper => Mood::Song,
+            Mood::Song => Mood::Ambient,
+            Mood::Ambient => Mood::Dusk,
             Mood::Dusk => Mood::Dawn,
             Mood::Dawn => Mood::Forest,
             Mood::Forest => Mood::Ocean,
@@ -122,6 +130,8 @@ impl Mood {
             Mood::Dawn => "dawn",
             Mood::Forest => "forest",
             Mood::Ocean => "ocean",
+            Mood::Song => "song",
+            Mood::Ambient => "ambient",
         }
     }
 
@@ -132,6 +142,8 @@ impl Mood {
             "dawn" => Some(Mood::Dawn),
             "forest" => Some(Mood::Forest),
             "ocean" => Some(Mood::Ocean),
+            "song" => Some(Mood::Song),
+            "ambient" => Some(Mood::Ambient),
             _ => None,
         }
     }
@@ -166,6 +178,17 @@ impl Mood {
     }
 }
 
+/// How strongly the playing song's cover colours the palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TintMode {
+    /// A gentle wash on the accent and glow (the fixed rooms and Wallpaper).
+    Soft,
+    /// The page itself takes the song's colour (Song colours).
+    Deep,
+    /// The page stays black; only the glow and accent take the song's colour (Pitch black).
+    Ambient,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HalcyonPalette {
     pub background: Color,
@@ -183,6 +206,8 @@ pub struct HalcyonPalette {
     pub bg_bottom: Color,
     /// Soft light used for glows and gradient highlights.
     pub glow: Color,
+    /// How the cover of the playing song tints this palette.
+    pub tint: TintMode,
 }
 
 impl Default for HalcyonPalette {
@@ -194,9 +219,17 @@ impl Default for HalcyonPalette {
 impl HalcyonPalette {
     /// The built-in palette for a mood.
     pub fn for_mood(mood: Mood) -> Self {
+        let mut p = Self::base_for(mood);
+        if mood == Mood::Song {
+            p.tint = TintMode::Deep;
+        }
+        p
+    }
+
+    fn base_for(mood: Mood) -> Self {
         let c = Color::from_rgb8;
         match mood {
-            Mood::Dusk | Mood::Wallpaper => Self {
+            Mood::Dusk | Mood::Wallpaper | Mood::Song => Self {
                 background: c(27, 22, 36),       // #1b1624
                 surface: c(38, 31, 50),          // #261f32
                 surface_variant: c(52, 43, 68),  // #342b44
@@ -209,6 +242,22 @@ impl HalcyonPalette {
                 bg_top: c(44, 33, 58),
                 bg_bottom: c(20, 17, 28),
                 glow: c(240, 160, 140),
+                tint: TintMode::Soft,
+            },
+            Mood::Ambient => Self {
+                background: c(0, 0, 0),
+                surface: c(12, 12, 16),
+                surface_variant: c(26, 26, 34),
+                text: c(238, 240, 246),
+                text_muted: c(152, 158, 172),
+                accent: c(124, 172, 255),        // ambient blue until a song colours it
+                accent_secondary: c(150, 132, 255),
+                border: c(38, 40, 52),
+                danger: c(240, 120, 116),
+                bg_top: c(8, 10, 20),
+                bg_bottom: c(0, 0, 0),
+                glow: c(90, 140, 255),
+                tint: TintMode::Ambient,
             },
             Mood::Dawn => Self {
                 background: c(246, 238, 230),    // #f6eee6
@@ -223,6 +272,7 @@ impl HalcyonPalette {
                 bg_top: c(252, 238, 226),
                 bg_bottom: c(238, 226, 236),
                 glow: c(244, 190, 160),
+                tint: TintMode::Soft,
             },
             Mood::Forest => Self {
                 background: c(19, 28, 24),       // #131c18
@@ -237,6 +287,7 @@ impl HalcyonPalette {
                 bg_top: c(30, 46, 38),
                 bg_bottom: c(14, 21, 18),
                 glow: c(150, 200, 150),
+                tint: TintMode::Soft,
             },
             Mood::Ocean => Self {
                 background: c(16, 24, 34),       // #101822
@@ -251,6 +302,7 @@ impl HalcyonPalette {
                 bg_top: c(26, 44, 60),
                 bg_bottom: c(11, 17, 26),
                 glow: c(120, 190, 220),
+                tint: TintMode::Soft,
             },
         }
     }
@@ -341,18 +393,54 @@ impl HalcyonPalette {
         p
     }
 
-    /// Blend palette accent with extracted cover art tint, ensuring 4.5:1 text contrast.
+    /// Blend the palette with the colour of the playing song's cover. How far depends on
+    /// `tint`: a gentle wash, the whole page, or only the glow over pitch black. Accents always
+    /// keep 4.5:1 contrast against the page.
     pub fn with_cover_tint(&self, cover_color: Color) -> Self {
         let mut p = *self;
-        // Soften the cover colour toward the mood accent so every song still feels like
-        // the same calm room, then make sure text in the accent stays readable.
-        let softened = mix(cover_color, self.accent, 0.35);
-        let adjusted = ensure_wcag_contrast(softened, p.background, 4.5);
-        p.accent = adjusted;
-        // The page gradient and glow breathe in the cover's colour.
-        p.glow = mix(self.glow, cover_color, 0.7);
-        p.bg_top = mix(self.bg_top, cover_color, 0.16);
-        p.bg_bottom = mix(self.bg_bottom, cover_color, 0.05);
+        match self.tint {
+            TintMode::Soft => {
+                // Soften the cover colour toward the mood accent so every song still feels like
+                // the same calm room, then make sure text in the accent stays readable.
+                let softened = mix(cover_color, self.accent, 0.35);
+                p.accent = ensure_wcag_contrast(softened, p.background, 4.5);
+                // The page gradient and glow breathe in the cover's colour.
+                p.glow = mix(self.glow, cover_color, 0.7);
+                p.bg_top = mix(self.bg_top, cover_color, 0.16);
+                p.bg_bottom = mix(self.bg_bottom, cover_color, 0.05);
+            }
+            TintMode::Deep => {
+                // The song's colour, darkened so text stays readable, floods the page.
+                let deep = mix(cover_color, Color::BLACK, 0.40);
+                p.background = mix(self.background, deep, 0.35);
+                p.surface = mix(self.surface, deep, 0.30);
+                p.surface_variant = mix(self.surface_variant, deep, 0.34);
+                p.border = mix(self.border, deep, 0.30);
+                p.bg_top = mix(self.bg_top, deep, 0.55);
+                p.bg_bottom = mix(self.bg_bottom, deep, 0.20);
+                p.glow = mix(self.glow, cover_color, 0.85);
+                p.accent = ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.25), p.background, 4.5);
+                p.accent_secondary =
+                    ensure_wcag_contrast(mix(cover_color, self.accent_secondary, 0.40), p.background, 3.0);
+                if contrast_ratio(p.text, p.background) < 7.0 {
+                    p.text = Color::from_rgb8(243, 238, 232);
+                }
+                if contrast_ratio(p.text_muted, p.background) < 4.5 {
+                    p.text_muted = mix(p.text, p.background, 0.30);
+                }
+            }
+            TintMode::Ambient => {
+                // Black stays black. Only a halo at the top and the accents take the colour.
+                p.glow = cover_color;
+                p.bg_top = mix(self.bg_top, cover_color, 0.30);
+                p.surface = mix(self.surface, cover_color, 0.05);
+                p.surface_variant = mix(self.surface_variant, cover_color, 0.08);
+                p.border = mix(self.border, cover_color, 0.12);
+                p.accent = ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.15), p.background, 4.5);
+                p.accent_secondary =
+                    ensure_wcag_contrast(mix(cover_color, self.accent_secondary, 0.45), p.background, 3.0);
+            }
+        }
         p
     }
 
@@ -619,7 +707,7 @@ mod tests {
 
     #[test]
     fn every_mood_keeps_text_readable() {
-        for mood in [Mood::Wallpaper, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
             let p = HalcyonPalette::for_mood(mood);
             assert!(contrast_ratio(p.text, p.background) >= 7.0, "{mood:?} text");
             assert!(contrast_ratio(p.text_muted, p.background) >= 4.5, "{mood:?} muted");
@@ -629,10 +717,10 @@ mod tests {
 
     #[test]
     fn mood_keys_round_trip() {
-        for mood in [Mood::Wallpaper, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
             assert_eq!(Mood::from_key(mood.key()), Some(mood));
         }
-        assert_eq!(Mood::Dusk.next().next().next().next().next(), Mood::Dusk);
+        assert_eq!(Mood::Dusk.next().next().next().next().next().next().next(), Mood::Dusk);
     }
 
     #[test]

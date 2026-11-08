@@ -24,9 +24,10 @@ use halcyon_music_core::models::{
     HomeFeed, MusicMix, QuickPick, ShelfItem, Track,
 };
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, warn};
 
 // --- Fuzzy String Matching & Spotify Resolution ---
 
@@ -121,6 +122,13 @@ pub fn score_track_match(
     0.5 * title_score + 0.35 * artist_score + 0.15 * duration_score
 }
 
+/// Uncached Spotify searches still allowed during this Home build. Matches are cached, so
+/// the mixes fill in over a few loads instead of one burst that gets us rate limited.
+static SEARCH_BUDGET: AtomicU32 = AtomicU32::new(0);
+/// After a failed search (usually HTTP 429) no more searches are sent until this time (unix secs).
+static SEARCH_PAUSED_UNTIL: AtomicU64 = AtomicU64::new(0);
+const SEARCHES_PER_BUILD: u32 = 24;
+
 /// Resolve an outside track (artist + title) to a Spotify track via search with SQLite resolution cache.
 pub async fn resolve_outside_track(
     spotify: &SpotifyClient,
@@ -136,7 +144,19 @@ pub async fn resolve_outside_track(
         return cached_res; // Some(track) on hit, None on cached miss
     }
 
-    // 2. Query Spotify search (capped at 10 results)
+    // 2. Query Spotify search (capped at 10 results), within the budget and not while paused
+    if now_secs() < SEARCH_PAUSED_UNTIL.load(Ordering::Relaxed) {
+        return None;
+    }
+    let had_budget = SEARCH_BUDGET
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+        .is_ok();
+    if !had_budget {
+        return None;
+    }
+    // Space uncached searches out: Spotify's limit is a short rolling window, and a burst of
+    // lookups on top of the start-up calls is what trips it.
+    tokio::time::sleep(Duration::from_millis(600)).await;
     let search_q = format!("{artist} {title}");
     match spotify.search_tracks(&search_q, 10, 0).await {
         Ok(page) => {
@@ -163,7 +183,15 @@ pub async fn resolve_outside_track(
             }
         }
         Err(e) => {
-            debug!("Spotify search resolution failed for {query_key}: {e}");
+            // Rate limited: wait as long as Spotify asked (1 min to 1 h). Cooling down: a minute.
+            // Anything else (a dropped connection, a timeout): a short pause only.
+            let pause = match &e {
+                crate::api::ApiError::RateLimited(secs) => (*secs).clamp(60, 3600),
+                crate::api::ApiError::CircuitOpen { .. } => 60,
+                _ => 20,
+            };
+            warn!("Spotify search resolution failed for {query_key}: {e}; pausing lookups for {pause}s");
+            SEARCH_PAUSED_UNTIL.fetch_max(now_secs() + pause, Ordering::Relaxed);
             None
         }
     }
@@ -254,23 +282,87 @@ pub async fn fetch_deezer_top_tracks(http: &reqwest::Client) -> Vec<(String, Str
         .send()
         .await;
 
-    match resp {
-        Ok(res) if res.status().is_success() => {
+    if let Ok(res) = resp {
+        if res.status().is_success() {
             if let Ok(parsed) = res.json::<DeezerChartResponse>().await {
                 let data = parsed.data.or_else(|| parsed.tracks.and_then(|t| t.data));
                 if let Some(data) = data {
-                    return data
-                        .into_iter()
-                        .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
-                        .take(20)
-                        .collect();
+                    if !data.is_empty() {
+                        return data
+                            .into_iter()
+                            .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
+                            .take(20)
+                            .collect();
+                    }
                 }
             }
         }
-        _ => {}
     }
 
-    Vec::new()
+    // Deezer returns an empty chart for some regions. Its editorial "Top Worldwide" playlist
+    // still answers there, so fall back to that.
+    warn!("Deezer chart/0 returned no tracks; falling back to the Top Worldwide playlist");
+    fetch_deezer_playlist_tracks(http, 3155776842, 30).await
+}
+
+/// Songs of one public Deezer playlist (no key): `(artist, title, duration_ms)` rows.
+pub async fn fetch_deezer_playlist_tracks(
+    http: &reqwest::Client,
+    playlist_id: u64,
+    limit: u32,
+) -> Vec<(String, String, Option<u64>)> {
+    let url = format!("https://api.deezer.com/playlist/{playlist_id}/tracks?limit={limit}");
+    let Ok(res) = http.get(url).timeout(Duration::from_secs(6)).send().await else {
+        warn!("Deezer playlist {playlist_id}: request failed");
+        return Vec::new();
+    };
+    if !res.status().is_success() {
+        warn!("Deezer playlist {playlist_id}: HTTP {}", res.status());
+        return Vec::new();
+    }
+    match res.json::<DeezerChartResponse>().await {
+        Ok(parsed) => parsed
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| (t.artist.name, t.title, t.duration.map(|d| d * 1000)))
+            .collect(),
+        Err(e) => {
+            warn!("Deezer playlist {playlist_id}: bad response: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// ListenBrainz sitewide most-played songs this week (open API, no key):
+/// `(artist, title, None)` rows.
+pub async fn fetch_listenbrainz_trending(http: &reqwest::Client) -> Vec<(String, String, Option<u64>)> {
+    let url = "https://api.listenbrainz.org/1/stats/sitewide/recordings?range=this_week&count=40";
+    let Ok(res) = http.get(url).timeout(Duration::from_secs(8)).send().await else {
+        warn!("ListenBrainz trending: request failed");
+        return Vec::new();
+    };
+    if !res.status().is_success() {
+        warn!("ListenBrainz trending: HTTP {}", res.status());
+        return Vec::new();
+    }
+    let Ok(v) = res.json::<serde_json::Value>().await else {
+        return Vec::new();
+    };
+    v["payload"]["recordings"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| {
+                    Some((
+                        r["artist_name"].as_str()?.to_string(),
+                        r["track_name"].as_str()?.to_string(),
+                        None,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Genre charts offered as Made-for-you mixes: (Deezer genre id, label, mix id).
@@ -389,6 +481,18 @@ async fn resolve_many(
     out
 }
 
+/// Deterministic shuffle (xorshift), so the same `seed` gives the same order.
+fn shuffle<T>(items: &mut [T], seed: u64) {
+    let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    for i in (1..items.len()).rev() {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        let j = (x % (i as u64 + 1)) as usize;
+        items.swap(i, j);
+    }
+}
+
 // --- Diversity Rules Enforcer ---
 
 /// Filter a candidate list of tracks according to Halcyon diversity rules:
@@ -464,6 +568,7 @@ pub async fn build_home_feed(
     http: &reqwest::Client,
 ) -> HomeFeed {
     let greeting = get_greeting();
+    SEARCH_BUDGET.store(SEARCHES_PER_BUILD, Ordering::Relaxed);
     let mut global_seen_track_ids = HashSet::new();
 
     // 1. Gather recent 24h play history for diversity filtering
@@ -637,6 +742,84 @@ pub async fn build_home_feed(
         }
     }
 
+    // (d2) Mix It Up, Hidden Gems, All-Time Best: built from your own library and play log,
+    // so they need no Spotify lookups and appear at once, even while Spotify rate limits us.
+    let liked_all: Vec<Track> = cache.get_liked_tracks(1000, 0).map(|(t, _)| t).unwrap_or_default();
+    let play_counts = cache.get_play_counts().unwrap_or_default();
+    // The seed changes every hour, so a refresh later in the day gives a new draw.
+    let seed = now_secs() / 3600;
+
+    // "Mix It Up": one song per artist, drawn at random across the whole liked library.
+    {
+        let mut pool = liked_all.clone();
+        shuffle(&mut pool, seed);
+        let mut artists_seen = HashSet::new();
+        let one_per_artist: Vec<Track> = pool
+            .into_iter()
+            .filter(|t| artists_seen.insert(t.artist.to_lowercase()))
+            .collect();
+        let tracks = filter_mix_tracks(one_per_artist, 1, &mut global_seen_track_ids, &recent_24h_ids, false, 20);
+        if tracks.len() >= 5 {
+            let art = tracks.first().and_then(|t| t.art_url.clone());
+            made_for_you.push(MusicMix {
+                id: "mix-it-up".to_string(),
+                title: "Mix It Up".to_string(),
+                description: "One song each from many of your artists, drawn fresh every hour.".to_string(),
+                source: "Halcyon Local".to_string(),
+                tracks,
+                art_url: art,
+            });
+        }
+    }
+
+    // "Hidden Gems": liked songs you have barely played, by artists you have few songs from.
+    {
+        let mut per_artist: HashMap<String, u32> = HashMap::new();
+        for t in &liked_all {
+            *per_artist.entry(t.artist.to_lowercase()).or_insert(0) += 1;
+        }
+        let mut gems: Vec<Track> = liked_all
+            .iter()
+            .filter(|t| {
+                play_counts.get(&t.id).copied().unwrap_or(0) <= 1
+                    && per_artist.get(&t.artist.to_lowercase()).copied().unwrap_or(0) <= 2
+            })
+            .cloned()
+            .collect();
+        shuffle(&mut gems, seed.wrapping_add(7));
+        // Rarest artists first; the shuffle above decides the order among equals.
+        gems.sort_by_key(|t| per_artist.get(&t.artist.to_lowercase()).copied().unwrap_or(0));
+        let tracks = filter_mix_tracks(gems, 1, &mut global_seen_track_ids, &recent_24h_ids, false, 15);
+        if tracks.len() >= 5 {
+            let art = tracks.first().and_then(|t| t.art_url.clone());
+            made_for_you.push(MusicMix {
+                id: "hidden-gems".to_string(),
+                title: "Hidden Gems".to_string(),
+                description: "Songs you saved but barely played, by artists you rarely hear.".to_string(),
+                source: "Halcyon Local".to_string(),
+                tracks,
+                art_url: art,
+            });
+        }
+    }
+
+    // "All-Time Best": your most played songs ever. It may repeat songs from On Repeat.
+    if let Ok(top_raw) = cache.get_all_time_top(40) {
+        let mut own_seen = HashSet::new();
+        let tracks = filter_mix_tracks(top_raw, 2, &mut own_seen, &recent_24h_ids, true, 20);
+        if tracks.len() >= 5 {
+            let art = tracks.first().and_then(|t| t.art_url.clone());
+            made_for_you.push(MusicMix {
+                id: "all-time-best".to_string(),
+                title: "All-Time Best".to_string(),
+                description: "The songs you have played most, ever.".to_string(),
+                source: "Halcyon Local".to_string(),
+                tracks,
+                art_url: art,
+            });
+        }
+    }
+
     // (e) Tier 2: Deezer Top Chart Mix (Resolved to Spotify)
     let deezer_entries = fetch_deezer_top_tracks(http).await;
     if !deezer_entries.is_empty() {
@@ -674,16 +857,27 @@ pub async fn build_home_feed(
 
     // (f) Hot new releases: the most popular song of each fresh album (Deezer editorial).
     {
-        let entries = fetch_deezer_new_release_songs(http).await;
-        let resolved = resolve_many(spotify, cache, entries, 14, 16).await;
+        let mut entries = fetch_deezer_new_release_songs(http).await;
+        let from_deezer = !entries.is_empty();
+        if !from_deezer {
+            // Deezer's editorial releases are empty in some regions: use what listeners play this week.
+            entries = fetch_listenbrainz_trending(http).await;
+        }
+        let resolved = resolve_many(spotify, cache, entries, 14, 24).await;
         let tracks = filter_mix_tracks(resolved, 1, &mut global_seen_track_ids, &recent_24h_ids, true, 12);
-        if !tracks.is_empty() {
+        if tracks.is_empty() {
+            warn!("Hot/Trending mix is empty: no song could be matched on Spotify");
+        } else {
             let art = tracks.first().and_then(|t| t.art_url.clone());
             made_for_you.push(MusicMix {
-                id: "hot-new-releases".to_string(),
-                title: "Hot New Releases".to_string(),
-                description: "The lead song of this week's freshest albums and singles.".to_string(),
-                source: "Deezer".to_string(),
+                id: if from_deezer { "hot-new-releases" } else { "trending-week" }.to_string(),
+                title: if from_deezer { "Hot New Releases" } else { "Trending This Week" }.to_string(),
+                description: if from_deezer {
+                    "The lead song of this week's freshest albums and singles.".to_string()
+                } else {
+                    "What ListenBrainz listeners are playing most this week.".to_string()
+                },
+                source: if from_deezer { "Deezer" } else { "ListenBrainz" }.to_string(),
                 tracks,
                 art_url: art,
             });

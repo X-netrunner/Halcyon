@@ -42,11 +42,55 @@ fn action<'a, M: Clone + 'a>(label: &'static str, trailing: Option<Icon>, palett
             border: iced::Border {
                 color: crate::theme::alpha(palette.accent, 0.30),
                 width: 1.0,
-                radius: radius::PILL.into(),
+                radius: radius::MD.into(),
             },
             ..Default::default()
         })
         .into()
+}
+
+/// One selectable theme tile: a title, a one-line description, lit when it is the current one.
+fn choice<'a, M: Clone + 'a>(
+    title: &'static str,
+    detail: &'static str,
+    selected: bool,
+    palette: HalcyonPalette,
+    msg: M,
+) -> Element<'a, M> {
+    button(
+        column![
+            text(title).size(type_size::BODY).color(if selected { palette.accent } else { palette.text }),
+            text(detail).size(type_size::SMALL).color(palette.text_muted),
+        ]
+        .spacing(4)
+        .width(Length::Fill),
+    )
+    .on_press(msg)
+    .width(Length::FillPortion(1))
+    .padding(space::LG)
+    .style(move |_t, status| {
+        let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(
+                if selected {
+                    crate::theme::alpha(palette.accent, 0.16)
+                } else if hot {
+                    crate::theme::alpha(palette.accent, 0.08)
+                } else {
+                    crate::theme::alpha(palette.surface_variant, 0.5)
+                }
+                .into(),
+            ),
+            text_color: palette.text,
+            border: iced::Border {
+                color: if selected { crate::theme::alpha(palette.accent, 0.6) } else { crate::theme::alpha(palette.border, 0.5) },
+                width: 1.0,
+                radius: radius::MD.into(),
+            },
+            ..Default::default()
+        }
+    })
+    .into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -56,7 +100,7 @@ pub fn view<'a, M: Clone + 'a>(
     mood: Mood,
     palette: HalcyonPalette,
     on_toggle_density: M,
-    on_cycle_mood: M,
+    on_set_mood: impl Fn(Mood) -> M + 'a + Copy,
     on_sign_out: M,
     on_spotify_settings: M,
     has_error: bool,
@@ -81,19 +125,44 @@ pub fn view<'a, M: Clone + 'a>(
     let appearance = card(
         "Appearance",
         column![
+            text("Theme").size(type_size::BODY).color(palette.text),
+            text("What the colours of the app follow.").size(type_size::SMALL).color(palette.text_muted),
+            Space::with_height(space::MD),
             row![
-                column![
-                    text("Mood").size(type_size::BODY).color(palette.text),
-                    text("Wallpaper follows your desktop colours. Dusk, Dawn, Forest and Ocean are fixed rooms.")
-                        .size(type_size::SMALL)
-                        .color(palette.text_muted),
-                ]
-                .spacing(2),
-                Space::with_width(Length::Fill),
-                action(mood.label(), None, palette, on_cycle_mood),
+                choice(
+                    "Wallpaper",
+                    "Matches your desktop wallpaper colours.",
+                    mood == Mood::Wallpaper,
+                    palette,
+                    on_set_mood(Mood::Wallpaper),
+                ),
+                choice(
+                    "Song colours",
+                    "The whole page takes the colour of the song playing.",
+                    mood == Mood::Song,
+                    palette,
+                    on_set_mood(Mood::Song),
+                ),
+                choice(
+                    "Pitch black",
+                    "Black, with an ambient glow in the song's colour.",
+                    mood == Mood::Ambient,
+                    palette,
+                    on_set_mood(Mood::Ambient),
+                ),
             ]
-            .align_y(Alignment::Center),
+            .spacing(space::MD),
             Space::with_height(space::LG),
+            text("Fixed rooms").size(type_size::SMALL).color(palette.text_muted),
+            Space::with_height(space::SM),
+            row![
+                choice("Dusk", "Plum and peach.", mood == Mood::Dusk, palette, on_set_mood(Mood::Dusk)),
+                choice("Dawn", "Cream and rose.", mood == Mood::Dawn, palette, on_set_mood(Mood::Dawn)),
+                choice("Forest", "Moss and honey.", mood == Mood::Forest, palette, on_set_mood(Mood::Forest)),
+                choice("Ocean", "Blue-teal night.", mood == Mood::Ocean, palette, on_set_mood(Mood::Ocean)),
+            ]
+            .spacing(space::MD),
+            Space::with_height(space::XL),
             row![
                 text("Row density").size(type_size::BODY).color(palette.text),
                 Space::with_width(Length::Fill),
@@ -164,6 +233,6 @@ pub fn view<'a, M: Clone + 'a>(
     ]
     .spacing(space::XL)
     .padding(space::XL)
-    .max_width(820)
+    .width(Length::Fill)
     .into()
 }
