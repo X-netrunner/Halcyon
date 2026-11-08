@@ -119,6 +119,8 @@ pub struct AnimationManager {
     pub sidebar_pill: Animation,
     // Sidebar width: 0.0 collapsed (icons only) .. 1.0 fully open
     pub sidebar_expand: Animation,
+    // Queue drawer width: 0.0 closed .. 1.0 open
+    pub queue_expand: Animation,
     // Skeleton shimmer phase (0.0 ..= 1.0)
     pub shimmer_phase: f32,
     // Toast entrance animation
@@ -140,6 +142,7 @@ impl Default for AnimationManager {
             page_transition: Animation::instant(1.0),
             sidebar_pill: Animation::instant(0.0),
             sidebar_expand: Animation::instant(0.0),
+            queue_expand: Animation::instant(0.0),
             shimmer_phase: 0.0,
             toast_slide: Animation::instant(0.0),
         }
@@ -156,6 +159,7 @@ impl AnimationManager {
         self.page_transition.is_active()
             || self.sidebar_pill.is_active()
             || self.sidebar_expand.is_active()
+            || self.queue_expand.is_active()
             || self.toast_slide.is_active()
     }
 
@@ -227,6 +231,22 @@ impl AnimationManager {
     /// 0.0 (collapsed) to 1.0 (open). Drives the sidebar width and the fade of its labels.
     pub fn sidebar_progress(&self) -> f32 {
         self.sidebar_expand.peek().clamp(0.0, 1.0)
+    }
+
+    /// Slide the queue drawer open or closed, from however open it is right now.
+    pub fn animate_queue(&mut self, open: bool) {
+        let from = self.queue_expand.peek();
+        let target = if open { 1.0 } else { 0.0 };
+        if self.reduce_motion {
+            self.queue_expand = Animation::instant(target);
+        } else {
+            self.queue_expand = Animation::new(from, target, 380, Easing::EaseOutCubic);
+        }
+    }
+
+    /// 0.0 (closed) to 1.0 (open). Drives the drawer's width.
+    pub fn queue_progress(&self) -> f32 {
+        self.queue_expand.peek().clamp(0.0, 1.0)
     }
 
     /// Show toast slide-in.

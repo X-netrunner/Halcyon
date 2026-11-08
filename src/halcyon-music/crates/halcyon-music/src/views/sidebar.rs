@@ -7,7 +7,7 @@
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Density, HalcyonPalette};
-use iced::widget::{button, column, container, mouse_area, row, text, Space};
+use iced::widget::{button, column, container, row, text, tooltip, Space};
 use iced::{Alignment, Element, Length};
 
 pub const SIDEBAR_EXPANDED_WIDTH: f32 = 236.0;
@@ -157,7 +157,35 @@ fn item_button<'a, Message: Clone + 'static>(
             }
         });
 
-    btn.into()
+    // The rail never opens, so the name of each page floats out to the right on hover.
+    labelled(btn.into(), label, palette, density.body_size())
+}
+
+/// Wrap `content` in a small tooltip showing `label` to its right.
+fn labelled<'a, Message: 'a>(
+    content: Element<'a, Message>,
+    label: &'static str,
+    palette: HalcyonPalette,
+    size: f32,
+) -> Element<'a, Message> {
+    tooltip(
+        content,
+        container(text(label).size(size).color(palette.text))
+            .padding([6, 12])
+            .style(move |_t| container::Style {
+                background: Some(palette.surface_variant.into()),
+                border: iced::Border {
+                    color: palette.soft_border(),
+                    width: 1.0,
+                    radius: crate::theme::radius::SM.into(),
+                },
+                shadow: palette.glow_shadow(0.14, 14.0),
+                ..Default::default()
+            }),
+        tooltip::Position::Right,
+    )
+    .gap(10)
+    .into()
 }
 
 /// The glow behind the active row: a soft accent wash that fades to the right, with a short
@@ -170,7 +198,9 @@ fn active_pill<'a, Message: 'a>(palette: HalcyonPalette) -> Element<'a, Message>
         ..Default::default()
     });
     container(
-        row![Space::with_width(4), bar, Space::with_width(Length::Fill)].align_y(Alignment::Center),
+        row![Space::with_width(4), bar, Space::with_width(Length::Fill)]
+            .height(Length::Fill)
+            .align_y(Alignment::Center),
     )
     .width(Length::Fill)
     .height(ITEM_HEIGHT)
@@ -197,9 +227,12 @@ pub fn view<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     density: Density,
     on_select: impl Fn(NavPage) -> Message + 'a,
-    on_hover: impl Fn(bool) -> Message + 'a,
+    _on_hover: impl Fn(bool) -> Message + 'a,
     queue_open: bool,
     on_queue: Message,
+    clock: f32,
+    playing: bool,
+    seed: f32,
     header: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let width = width_for(expand);
@@ -233,21 +266,28 @@ pub fn view<'a, Message: Clone + 'static>(
         nav_items,
     ];
 
-    let queue_item = item_button(
-        Icon::Queue,
-        "Queue",
-        queue_open,
-        expand,
-        palette,
-        density,
-        on_queue,
-    );
-
-    let queue_row: Element<'a, Message> = if queue_open {
-        iced::widget::stack![active_pill(palette), queue_item].into()
-    } else {
-        queue_item
-    };
+    // At the foot of the rail, in place of a Queue row: a column of dancing bars. Pressing it
+    // opens the queue; it glows while the queue is open.
+    let viz = crate::views::equalizer_vertical(14, 3.0, 5.0, 38.0, clock, seed, playing, palette);
+    let viz_btn = button(
+        container(viz)
+            .width(ICON_SLOT)
+            .center_x(ICON_SLOT)
+            .padding([10, 0]),
+    )
+    .on_press(on_queue)
+    .padding(0)
+    .style(move |_t, status| {
+        let hot = queue_open || matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(
+                if hot { crate::theme::alpha(palette.accent, 0.12) } else { iced::Color::TRANSPARENT }.into(),
+            ),
+            border: iced::Border { radius: crate::theme::radius::MD.into(), ..Default::default() },
+            ..Default::default()
+        }
+    });
+    let queue_row = labelled(viz_btn.into(), "Queue", palette, density.body_size());
 
     let panel = column![
         // The account circle sits in the same slot as the icons below it.
@@ -272,8 +312,5 @@ pub fn view<'a, Message: Clone + 'static>(
         })
         .clip(true);
 
-    mouse_area(strip)
-        .on_enter(on_hover(true))
-        .on_exit(on_hover(false))
-        .into()
+    strip.into()
 }

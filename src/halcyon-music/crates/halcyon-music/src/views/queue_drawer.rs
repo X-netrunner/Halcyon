@@ -144,22 +144,22 @@ pub fn view<'a, Message: Clone + 'static>(
         }
     }
 
-    // No fill of its own to speak of: a veil that grows from nothing at the left edge, so the
-    // drawer melts into the page instead of sitting on it as a box.
+    // No fill and no border: the drawer is drawn straight on the window frame, so it reads as
+    // one piece with the sidebar, title bar and player bar (the page is the only raised card).
     container(
-        column![header, scrollable(list).height(Length::Fill).width(Length::Fill)]
-            .width(QUEUE_DRAWER_WIDTH)
-            .height(Length::Fill),
+        column![
+            header,
+            scrollable(list)
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::new().width(0).scroller_width(0).margin(0),
+                ))
+                .height(Length::Fill)
+                .width(Length::Fill),
+        ]
+        .width(QUEUE_DRAWER_WIDTH)
+        .height(Length::Fill),
     )
     .width(QUEUE_DRAWER_WIDTH)
     .height(Length::Fill)
-    .style(move |_t| container::Style {
-        background: Some(theme::gradient2(
-            theme::alpha(palette.surface, 0.0),
-            theme::alpha(theme::mix(palette.surface, palette.glow, 0.06), 0.62),
-            false,
-        )),
-        ..Default::default()
-    })
     .into()
 }

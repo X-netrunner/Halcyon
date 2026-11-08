@@ -991,6 +991,58 @@ impl Cache {
         Ok(rows.flatten().collect())
     }
 
+    /// "All-Time Best": the most played tracks over the whole play log.
+    pub fn get_all_time_top(&self, limit: usize) -> Result<Vec<Track>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT p.track_id, p.title, p.artist, p.album, p.ms_played, t.data_json, COUNT(*) as play_count
+                FROM play_log p
+                LEFT JOIN tracks t ON p.track_id = t.id
+                GROUP BY p.track_id
+                ORDER BY play_count DESC
+                LIMIT ?1
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                let track_id: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let artist: String = row.get(2)?;
+                let album: String = row.get(3)?;
+                let ms_played: i64 = row.get(4)?;
+                let data_json: Option<String> = row.get(5)?;
+                if let Some(json_str) = data_json {
+                    if let Ok(track) = serde_json::from_str::<Track>(&json_str) {
+                        return Ok(track);
+                    }
+                }
+                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(rows.flatten().collect())
+    }
+
+    /// How often each track was played, over the whole play log (track id -> plays).
+    pub fn get_play_counts(&self) -> Result<std::collections::HashMap<String, u32>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT track_id, COUNT(*) FROM play_log GROUP BY track_id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let id: String = row.get(0)?;
+                let n: i64 = row.get(1)?;
+                Ok((id, n.max(0) as u32))
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(rows.flatten().collect())
+    }
+
     /// "Rediscover": Liked songs not played in 90+ days.
     pub fn get_rediscover(&self, limit: usize) -> Result<Vec<Track>, String> {
         let (liked_tracks, _) = self.get_liked_tracks(500, 0)?;
