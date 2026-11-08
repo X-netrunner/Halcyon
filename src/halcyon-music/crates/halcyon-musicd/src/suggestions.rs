@@ -1742,7 +1742,7 @@ pub fn get_greeting() -> String {
 
 /// The weight of one play. Recent plays count more (half-life 30 days) and a play you stayed
 /// for counts more than one you skipped; a song dropped within 30 seconds counts against it.
-fn play_weight(p: &PlayLogEntry, now: u64) -> f32 {
+pub(crate) fn play_weight(p: &PlayLogEntry, now: u64) -> f32 {
     let age_days = now.saturating_sub(p.started_at) as f32 / 86_400.0;
     let recency = 0.5f32.powf(age_days / 30.0);
     let engagement = if p.completed {

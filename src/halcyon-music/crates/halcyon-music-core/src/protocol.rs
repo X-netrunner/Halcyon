@@ -169,6 +169,15 @@ pub enum CommandBody {
     /// Off by default: the GUI turns them on only while something that dances is on screen
     /// (the queue drawer, the full-screen player), so nothing is sent or analysed otherwise.
     SetAudioStream { enabled: bool },
+    /// Ask whether the optional LLM layer is on and which model it uses; answered with
+    /// [`EventBody::LlmStatus`] without contacting the model. An older daemon ignores it.
+    GetLlmStatus,
+    /// Turn the optional LLM layer on or off and choose its backend and model (`backend` is
+    /// `ollama` today). Answered with [`EventBody::LlmStatus`]. The layer is off by default.
+    SetLlmSettings { enabled: bool, backend: String, model: String },
+    /// Check whether the chosen backend answers and has the model; answered with
+    /// [`EventBody::LlmStatus`] carrying `reachable` and, when something is wrong, a `hint`.
+    TestLlmConnection,
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -300,6 +309,20 @@ pub enum EventBody {
     /// holds each one back until it is due at the speakers. One all-zero frame is sent when
     /// playback stops.
     AudioLevels { bands: Vec<u8>, bass: u8, beat: u8 },
+    /// State of the optional LLM layer. `reachable` is only meaningful after a connection test
+    /// (it is `false` when the layer is off or has not been tested). `hint` is a plain-language
+    /// fix when something is wrong.
+    LlmStatus {
+        enabled: bool,
+        backend: String,
+        model: String,
+        reachable: bool,
+        #[serde(default)]
+        hint: Option<String>,
+    },
+    /// A Home mix got a better title and a short reason. Sent when the answer is ready (or
+    /// found in the cache), never before; the mix keeps working as it is until then.
+    MixEnriched { mix_id: String, title: String, reason: String },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -455,6 +478,64 @@ mod tests {
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn llm_messages_round_trip() {
+        for cmd in [
+            command(CommandBody::GetLlmStatus),
+            command(CommandBody::TestLlmConnection),
+            command(CommandBody::SetLlmSettings {
+                enabled: true,
+                backend: "ollama".into(),
+                model: "qwen2.5:3b".into(),
+            }),
+        ] {
+            let line = encode_line(&cmd).expect("encode");
+            let back: Command = decode_line(&line).expect("decode");
+            assert_eq!(cmd, back);
+        }
+        for ev in [
+            event(EventBody::LlmStatus {
+                enabled: true,
+                backend: "ollama".into(),
+                model: "qwen2.5:3b".into(),
+                reachable: false,
+                hint: Some("Start Ollama with: ollama serve".into()),
+            }),
+            event(EventBody::MixEnriched {
+                mix_id: "on-repeat".into(),
+                title: "Your Heavy Rotation".into(),
+                reason: "The songs you keep coming back to.".into(),
+            }),
+        ] {
+            let line = encode_line(&ev).expect("encode");
+            let back: Event = decode_line(&line).expect("decode");
+            assert_eq!(ev, back);
+        }
+    }
+
+    #[test]
+    fn llm_status_decodes_without_a_hint() {
+        // A peer that does not send `hint` (older or simpler) must still decode.
+        let line = br#"{"version":1,"type":"llm_status","enabled":false,"backend":"ollama","model":"m","reachable":false}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::LlmStatus { hint: None, enabled: false, .. }));
+    }
+
+    #[test]
+    fn older_peer_sees_llm_messages_as_unknown() {
+        // Simulates a peer built before the LLM layer: a kind it does not list decodes to Unknown.
+        // The same bytes decode to the real variant here, and an unlisted kind decodes to Unknown.
+        let line = br#"{"version":1,"type":"prompt_playlist_from_the_future","text":"x"}
+"#;
+        let cmd: Command = decode_line(line).expect("decode");
+        assert!(matches!(cmd.body, CommandBody::Unknown));
+        let line = br#"{"version":1,"type":"mix_enriched_v2","mix_id":"a"}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::Unknown));
     }
 
     #[test]
