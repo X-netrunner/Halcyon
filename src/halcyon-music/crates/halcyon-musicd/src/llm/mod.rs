@@ -11,7 +11,9 @@
 
 pub mod backend;
 pub mod mock;
+pub mod playlist;
 pub mod prompts;
+pub mod rerank;
 pub mod taste;
 pub mod validate;
 
@@ -167,7 +169,9 @@ fn set_pause(cache: &Cache, feature: &str, model: &str) {
 /// Forget a failure pause (the user changed a setting or the connection test succeeded).
 pub fn clear_pause(cache: &Cache, model: &str) {
     // A zero-second lifetime is stale at once.
-    let _ = cache.kv_set(&pause_key(FEATURE_WHY_MIX, model), "0", 0);
+    for feature in [FEATURE_WHY_MIX, rerank::FEATURE_RERANK] {
+        let _ = cache.kv_set(&pause_key(feature, model), "0", 0);
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -359,6 +363,7 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
         let llm = make_backend(&settings, &ctx.http);
         let taste = taste_from_cache(&ctx.cache);
         let tx = ctx.events_tx.clone();
+        let tx_orders = ctx.events_tx.clone();
         let emit = move |b: MixBlurb| {
             let _ = tx.send(protocol::event(EventBody::MixEnriched {
                 mix_id: b.mix_id,
@@ -367,7 +372,29 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
             }));
         };
         match enrich_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, CALL_TIMEOUT, &emit).await {
-            Ok(r) => debug!(from_cache = r.from_cache, generated = r.generated, paused = r.paused, "mix words done"),
+            Ok(r) => {
+                debug!(from_cache = r.from_cache, generated = r.generated, paused = r.paused, "mix words done");
+                // Feature 3, in the same task so the model is only ever used by one job at a time.
+                // Skipped when the words just failed: the backend is probably down.
+                let emit_order = move |o: rerank::MixOrder| {
+                    let _ = tx_orders.send(protocol::event(EventBody::MixReranked {
+                        mix_id: o.mix_id,
+                        track_ids: o.track_ids,
+                    }));
+                };
+                match rerank::rerank_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, CALL_TIMEOUT, &emit_order)
+                    .await
+                {
+                    Ok(r) => debug!(
+                        from_cache = r.from_cache,
+                        reordered = r.reordered,
+                        kept = r.kept,
+                        paused = r.paused,
+                        "mix order done"
+                    ),
+                    Err(e) => info!("Smart suggestions skipped reordering this time: {e}"),
+                }
+            }
             Err(e) => info!("Smart suggestions skipped this time: {e}"),
         }
     });

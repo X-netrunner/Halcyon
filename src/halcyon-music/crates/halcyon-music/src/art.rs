@@ -325,6 +325,32 @@ pub fn avatar_items(url: &str) -> Vec<(Option<&str>, ArtSize)> {
     vec![(Some(url), ArtSize::Small)]
 }
 
+/// Decode a picture that is a file on this machine (the Halcyon avatar) into the cover store under
+/// `url` (see `avatar::local_url`), off the UI thread, as a circle. It goes through the same
+/// `ArtDecoded` message as a cover from the daemon, so nothing else has to know about it.
+pub fn local_decode_task(url: String, path: PathBuf) -> iced::Task<crate::Message> {
+    let size = ArtSize::Small;
+    with_store(|s| {
+        s.circles.insert(url.clone());
+        s.begin_decode(&url, size);
+    });
+    let u = url.clone();
+    iced::Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || decode_file(&path, size, true))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r)
+        },
+        move |result| crate::Message::ArtDecoded { url: u.clone(), size, result: result.map(Box::new) },
+    )
+}
+
+/// True when the store has any entry for this cover (requested, decoding, ready or failed).
+pub fn is_known(url: &str, size: ArtSize) -> bool {
+    with_store(|s| s.entries.contains_key(&(url.to_string(), size)))
+}
+
 /// True when the cover is decoded and can be drawn right now.
 pub fn is_ready(url: &str, size: ArtSize) -> bool {
     with_store(|s| matches!(s.entries.get(&(url.to_string(), size)), Some(Entry { slot: Slot::Ready { .. }, .. })))
@@ -429,14 +455,23 @@ pub fn cover<'a, M: 'a>(
 
     match lookup {
         Lookup::Ready { handle, fade_left } => {
+            // The fade-in lowers the picture's own opacity over a placeholder-coloured
+            // background, all in ONE draw layer. (It used to stack a veil over the picture;
+            // a stacked layer is drawn after the whole window, so it could land on top of
+            // the player bar while a card was scrolled partly out of view.)
+            let opacity = if fade_left > 0.0 { (1.0 - fade_left).clamp(0.0, 1.0) } else { 1.0 };
             let pic: iced::widget::Image<Handle> = image_widget(handle)
                 .width(Length::Fixed(px))
                 .height(Length::Fixed(px))
-                .content_fit(ContentFit::Cover);
-            let base = container(pic)
+                .content_fit(ContentFit::Cover)
+                .opacity(opacity);
+            let placeholder = palette.surface_variant;
+            let fading = fade_left > 0.0;
+            container(pic)
                 .width(Length::Fixed(px))
                 .height(Length::Fixed(px))
                 .style(move |_t| container::Style {
+                    background: fading.then(|| placeholder.into()),
                     border: iced::Border { radius: radius.into(), ..Default::default() },
                     shadow: iced::Shadow {
                         color: Color { a: if px >= 120.0 { 0.35 } else { 0.18 }, ..Color::BLACK },
@@ -444,24 +479,7 @@ pub fn cover<'a, M: 'a>(
                         blur_radius: if px >= 120.0 { 28.0 } else { 10.0 },
                     },
                     ..Default::default()
-                });
-            if fade_left <= 0.0 {
-                return base.into();
-            }
-            // Fade in by lifting a placeholder-coloured veil off the cover.
-            let veil = container(Space::new(Length::Fill, Length::Fill))
-                .width(Length::Fixed(px))
-                .height(Length::Fixed(px))
-                .style(move |_t| container::Style {
-                    background: Some(
-                        Color { a: fade_left, ..palette.surface_variant }.into(),
-                    ),
-                    border: iced::Border { radius: radius.into(), ..Default::default() },
-                    ..Default::default()
-                });
-            container(iced::widget::stack![base, veil])
-                .width(Length::Fixed(px))
-                .height(Length::Fixed(px))
+                })
                 .into()
         }
         Lookup::Pending | Lookup::Missing => block(px, radius, palette.surface_variant, None),
@@ -627,6 +645,21 @@ mod tests {
         assert_eq!(alpha(w - 1, h - 1), 0);
         assert_eq!(alpha(w / 2, h / 2), 255);
         assert_eq!(alpha(w / 2, 0), 255, "edges between corners stay opaque");
+    }
+
+    #[test]
+    fn a_circular_mask_leaves_transparent_corners_and_an_opaque_centre() {
+        // The account picture is masked with radius = half the edge, at decode time.
+        let (w, h) = (64u32, 64u32);
+        let mut px = vec![255u8; (w * h * 4) as usize];
+        round_corners(&mut px, w, h, w as f32 * 0.5);
+        let alpha = |x: u32, y: u32| px[((y * w + x) * 4 + 3) as usize];
+        for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
+            assert_eq!(alpha(x, y), 0, "corner ({x},{y})");
+        }
+        assert_eq!(alpha(w / 2, h / 2), 255);
+        // The middle of each edge touches the circle, so it stays (nearly) opaque.
+        assert!(alpha(w / 2, 1) > 200);
     }
 
     #[test]

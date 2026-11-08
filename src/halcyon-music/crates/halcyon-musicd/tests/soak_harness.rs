@@ -66,10 +66,15 @@ async fn test_soak_simulation_with_fault_injection() {
         })
         .await;
 
+    // The fault is injected in the Web API request path, and the default sign-in browses through
+    // librespot instead. Use the Web API mode here, and keep the saved choice out of the real
+    // state directory.
+    std::env::set_var("XDG_STATE_HOME", dir.path().join("state"));
     let spotify = halcyon_musicd::api::SpotifyClient::new(
         Some("http://127.0.0.1:9".into()),
         None,
     );
+    spotify.switch_mode(halcyon_musicd::auth_mode::AuthMode::OwnClientId).await;
 
     let ctx = Arc::new(DaemonContext {
         player: player.clone(),

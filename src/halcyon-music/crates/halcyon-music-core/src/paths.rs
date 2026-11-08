@@ -89,3 +89,81 @@ fn home_dir() -> PathBuf {
 pub fn state_file() -> PathBuf {
     state_dir().join(STATE_FILE_NAME)
 }
+
+// ---------------------------------------------------------------------------------------------
+// The Halcyon avatar (the same picture `hal avatar` prints)
+// ---------------------------------------------------------------------------------------------
+
+/// Where the rice keeps the user's picture, best first. This is the same list, in the same order,
+/// as `src/hal/src/avatar.rs`; keep the two in step. `user` may be empty (the AccountsService entry
+/// is then skipped). Nothing is read from disk here.
+pub fn avatar_candidates_in(home: &std::path::Path, user: &str) -> Vec<PathBuf> {
+    let mut v = vec![home.join(".face"), home.join(".face.icon")];
+    if !user.is_empty() {
+        v.push(PathBuf::from(format!("/var/lib/AccountsService/icons/{user}")));
+    }
+    let extensions = ["png", "jpg", "jpeg", "webp"];
+    for ext in extensions {
+        v.push(home.join(format!(".config/Halcyon/avatar.{ext}")));
+    }
+    for ext in extensions {
+        v.push(home.join(format!("Pictures/avatar.{ext}")));
+    }
+    v
+}
+
+/// The first candidate that is a non-empty file.
+pub fn first_existing_avatar(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .find(|p| p.is_file() && std::fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false))
+        .cloned()
+}
+
+/// The user's Halcyon avatar right now, if there is one. Cheap (a few `stat` calls) but it touches
+/// the disk, so call it from a timer or a background task, not from `view`.
+pub fn halcyon_avatar() -> Option<PathBuf> {
+    let user = std::env::var("USER").unwrap_or_default();
+    first_existing_avatar(&avatar_candidates_in(&home_dir(), &user))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_home(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("halcyon-paths-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    #[test]
+    fn candidate_order_matches_hal_avatar() {
+        let home = PathBuf::from("/h");
+        let c = avatar_candidates_in(&home, "ada");
+        assert_eq!(c[0], PathBuf::from("/h/.face"));
+        assert_eq!(c[1], PathBuf::from("/h/.face.icon"));
+        assert_eq!(c[2], PathBuf::from("/var/lib/AccountsService/icons/ada"));
+        assert_eq!(c[3], PathBuf::from("/h/.config/Halcyon/avatar.png"));
+        assert_eq!(c[6], PathBuf::from("/h/.config/Halcyon/avatar.webp"));
+        assert_eq!(c[7], PathBuf::from("/h/Pictures/avatar.png"));
+        assert_eq!(c.len(), 11);
+        // No user name: the AccountsService entry is left out.
+        assert_eq!(avatar_candidates_in(&home, "").len(), 10);
+    }
+
+    #[test]
+    fn first_existing_skips_missing_and_empty_files() {
+        let home = temp_home("first");
+        std::fs::write(home.join(".face"), b"").expect("empty file");
+        std::fs::create_dir_all(home.join(".config/Halcyon")).expect("dir");
+        std::fs::write(home.join(".config/Halcyon/avatar.jpg"), b"x").expect("file");
+        std::fs::write(home.join(".config/Halcyon/avatar.png"), b"y").expect("file");
+        let found = first_existing_avatar(&avatar_candidates_in(&home, ""));
+        // .face is empty, so the first real file in list order wins: avatar.png before avatar.jpg.
+        assert_eq!(found, Some(home.join(".config/Halcyon/avatar.png")));
+        assert_eq!(first_existing_avatar(&[home.join("nope")]), None);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}

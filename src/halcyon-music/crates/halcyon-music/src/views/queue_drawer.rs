@@ -7,7 +7,7 @@ use crate::icons::{icon, Icon};
 use crate::theme::{self, format_duration, HalcyonPalette};
 use halcyon_music_core::state::PlayerState;
 use crate::viz::VizFrame;
-use iced::widget::{button, column, container, row, scrollable, stack, text, Space};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
 pub const QUEUE_DRAWER_WIDTH: f32 = 340.0;
@@ -70,16 +70,18 @@ pub fn view<'a, Message: Clone + 'static>(
             },
             ..Default::default()
         });
-        let art = stack![
+        // One layer, not a `stack!`: this lives inside a scrollable, and a stack's extra layer is
+        // drawn after the whole window, so it could paint over the player bar. `Crossfade` draws
+        // both children in the layer the scroll area has already clipped.
+        let art: Element<'a, Message> = crate::views::crossfade::Crossfade::new(
             crate::views::orbit::view(viz, cover_px, ORBIT_PX, palette),
             container(cover)
                 .width(ORBIT_PX)
                 .height(ORBIT_PX)
                 .center_x(ORBIT_PX)
                 .center_y(ORBIT_PX),
-        ]
-        .width(ORBIT_PX)
-        .height(ORBIT_PX);
+        )
+        .into();
         list = list.push(
             container(
                 column![

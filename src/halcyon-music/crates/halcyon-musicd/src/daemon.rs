@@ -71,7 +71,7 @@ fn kv_load<T: serde::de::DeserializeOwned>(cache: &crate::cache::Cache, key: &st
     serde_json::from_str(&item.item).ok()
 }
 
-const KV_ACCOUNT: &str = "account.me";
+const KV_ACCOUNT: &str = crate::profile::KV_ACCOUNT;
 
 /// The "signed in" status for the GUI, with the account name when it is known.
 async fn logged_in_status(ctx: &DaemonContext) -> AuthStatus {
@@ -85,6 +85,8 @@ fn profile_event(account: &crate::api::AccountInfo) -> protocol::Event {
     protocol::event(EventBody::Profile {
         display_name: account.display_name.clone(),
         image_url: account.image_url.clone(),
+        username: account.username.clone(),
+        plan: account.plan.clone(),
     })
 }
 
@@ -94,17 +96,73 @@ async fn forget_account(ctx: &DaemonContext) {
     kv_store(&ctx.cache, KV_ACCOUNT, &Option::<crate::api::AccountInfo>::None);
 }
 
-/// Read the account name once, keep it, and tell the GUI. If Spotify refuses `/v1/me` (or is
-/// rate limiting), nothing is lost: the GUI keeps showing "Signed in".
+/// True while one background task is looking for the account name (so reconnecting GUIs do not
+/// start a second one).
+static ACCOUNT_REFRESHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set by the Refresh button while the task is waiting between attempts: it then looks again now.
+static ACCOUNT_NUDGE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Clears `ACCOUNT_REFRESHING` when the task ends, even if it panics.
+struct AccountGuard;
+
+impl Drop for AccountGuard {
+    fn drop(&mut self) {
+        ACCOUNT_REFRESHING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Find out who is signed in, keep it, and tell the GUI. The order (see `profile.rs`): the cached
+/// account (already shown), then the streaming session (no Web API quota), then `/v1/me` only when
+/// nothing gave a name and no rate-limit wait is running. If the name is still unknown the task
+/// tries again in the background after 10 s, 1 min and 10 min; nothing here blocks the UI and a
+/// failure never blanks a name that is already known.
 async fn refresh_account(ctx: Arc<DaemonContext>) {
-    match ctx.spotify.fetch_account().await {
-        Ok(account) => {
+    if ACCOUNT_REFRESHING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let _guard = AccountGuard;
+    let mut attempt = 0usize;
+    loop {
+        let old = ctx.spotify.cached_account().await;
+        let web_allowed = ctx
+            .spotify
+            .rate_limit_remaining(crate::api::EndpointFamily::Other)
+            .await
+            .is_none();
+        let resolved = crate::profile::resolve_with(
+            old,
+            web_allowed,
+            || async { ctx.spotify.session_profile().await.map_err(|e| e.to_string()) },
+            || async { ctx.spotify.fetch_account().await.map_err(|e| e.to_string()) },
+        )
+        .await;
+        let known = crate::profile::has_name(resolved.as_ref());
+        if let Some(account) = resolved {
+            ctx.spotify.set_cached_account(Some(account.clone())).await;
             kv_store(&ctx.cache, KV_ACCOUNT, &account);
             let status = logged_in_status(&ctx).await;
             let _ = ctx.events_tx.send(protocol::event(EventBody::AuthStatus(status)));
             let _ = ctx.events_tx.send(profile_event(&account));
         }
-        Err(e) => warn!("could not read the account name ({e}); the app shows \"Signed in\""),
+        if known {
+            return;
+        }
+        let Some(delay) = crate::profile::RETRY_DELAYS_SECS.get(attempt).copied() else {
+            warn!("could not read the account name; the app shows the username or \"Signed in\"");
+            return;
+        };
+        attempt += 1;
+        // Wait in one-second steps so the Refresh button can cut the wait short.
+        for _ in 0..delay {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if ACCOUNT_NUDGE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+        }
+        if !ctx.spotify.is_authenticated().await {
+            return;
+        }
     }
 }
 
@@ -338,16 +396,15 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         let player = player.clone();
         let cache = cache.clone();
         let events = events_tx.clone();
+        // The direct engine, or (with `--features connect` and HALCYON_CONNECT=1) the Spotify
+        // Connect backend. Either way the GUI sees the same state and events.
         supervisor::supervise("player", None, move || {
-            let engine = Arc::new(crate::audio::AudioEngine::new(
+            let backend = crate::backend::select_backend(
                 player.clone(),
                 cache.clone(),
                 events.clone(),
-            ));
-            async move {
-                engine.run_loop().await;
-                Ok(())
-            }
+            );
+            async move { backend.run().await }
         });
     }
 
@@ -447,12 +504,20 @@ async fn handle_client(
     let auth_status = if ctx.spotify.is_authenticated().await {
         // Restore the remembered account name; read it once if there is none yet.
         if ctx.spotify.cached_account().await.is_none() {
-            match kv_load::<crate::api::AccountInfo>(&ctx.cache, KV_ACCOUNT) {
-                Some(account) => ctx.spotify.set_cached_account(Some(account)).await,
-                None => {
-                    tokio::spawn(refresh_account(ctx.clone()));
-                }
+            if let Some(account) = kv_load::<crate::api::AccountInfo>(&ctx.cache, KV_ACCOUNT) {
+                ctx.spotify.set_cached_account(Some(account)).await;
             }
+        }
+        // An account saved by an older build has no username or plan (and one that never got
+        // a name has no name): look again in the background. The cached copy is shown meanwhile.
+        let incomplete = ctx
+            .spotify
+            .cached_account()
+            .await
+            .as_ref()
+            .map_or(true, |a| a.display_name.is_none() || a.username.is_none());
+        if incomplete {
+            tokio::spawn(refresh_account(ctx.clone()));
         }
         EventBody::AuthStatus(logged_in_status(&ctx).await)
     } else {
@@ -469,6 +534,10 @@ async fn handle_client(
         seconds_left: streaming,
     });
     writer.write_all(&protocol::encode_line(&streaming_status)?).await?;
+    let connect_device = protocol::event(EventBody::ConnectDevice {
+        name: crate::connect::registered_name(),
+    });
+    writer.write_all(&protocol::encode_line(&connect_device)?).await?;
 
     // Live audio frames are opt-in per connection (`SetAudioStream`), on their own channel.
     let mut audio_rx: Option<broadcast::Receiver<protocol::Event>> = None;
@@ -800,13 +869,31 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             // Answer from what is remembered; read `/me` in the background only when it was
             // never read (or read by a version that did not know about pictures).
             let account = ctx.spotify.cached_account().await;
-            if account.as_ref().map_or(true, |a| !a.images_read) && ctx.spotify.is_authenticated().await {
+            let incomplete = account
+                .as_ref()
+                .map_or(true, |a| !a.images_read || a.display_name.is_none() || a.username.is_none());
+            if incomplete && ctx.spotify.is_authenticated().await {
                 tokio::spawn(refresh_account(ctx.clone()));
             }
             return Some(match account {
                 Some(a) => profile_event(&a),
-                None => protocol::event(EventBody::Profile { display_name: None, image_url: None }),
+                None => protocol::event(EventBody::Profile {
+                    display_name: None,
+                    image_url: None,
+                    username: None,
+                    plan: None,
+                }),
             });
+        }
+
+        RefreshProfile => {
+            if ctx.spotify.is_authenticated().await {
+                if ACCOUNT_REFRESHING.load(std::sync::atomic::Ordering::SeqCst) {
+                    ACCOUNT_NUDGE.store(true, std::sync::atomic::Ordering::SeqCst);
+                } else {
+                    tokio::spawn(refresh_account(ctx.clone()));
+                }
+            }
         }
 
         GetAuthStatus => {
@@ -1564,6 +1651,12 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 .map(|f| f.made_for_you)
                 .unwrap_or_default();
             crate::llm::spawn_connection_test(ctx.clone(), home);
+            return None;
+        }
+
+        // Answered on the event stream: progress, then exactly one result or failure.
+        PromptPlaylist { text } => {
+            crate::llm::playlist::spawn_prompt_playlist(ctx.clone(), text);
             return None;
         }
 

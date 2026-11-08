@@ -1,0 +1,143 @@
+[
+  [
+    "narrow taste",
+    [
+      {
+        "engine": "current (suggestions::learn_taste)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.5325680272108844,
+          "ndcg_at_k": 0.46933964052279087,
+          "skip_auc": 0.9871031746031745,
+          "diversity": 0.6952380952380952,
+          "novelty": 0.0,
+          "coverage": 0.42857142857142855,
+          "repeat_rate": 1.0
+        }
+      },
+      {
+        "engine": "most played (baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.5794784580498865,
+          "ndcg_at_k": 0.5167555386816283,
+          "skip_auc": 0.9871031746031745,
+          "diversity": 0.6984126984126984,
+          "novelty": 0.0,
+          "coverage": 0.42857142857142855,
+          "repeat_rate": 0.9928571428571429
+        }
+      },
+      {
+        "engine": "random (seeded, baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.2745181405895692,
+          "ndcg_at_k": 0.26155255761117674,
+          "skip_auc": 0.5310405643738977,
+          "diversity": 0.8873015873015876,
+          "novelty": 0.0,
+          "coverage": 1.0,
+          "repeat_rate": 0.7000000000000001
+        }
+      }
+    ]
+  ],
+  [
+    "broad taste",
+    [
+      {
+        "engine": "current (suggestions::learn_taste)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.08750000000000001,
+          "ndcg_at_k": 0.06706681300226894,
+          "skip_auc": 0.9954545454545454,
+          "diversity": 0.9365079365079366,
+          "novelty": 0.0,
+          "coverage": 0.6,
+          "repeat_rate": 0.7214285714285714
+        }
+      },
+      {
+        "engine": "most played (baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.06607142857142857,
+          "ndcg_at_k": 0.0513805282027413,
+          "skip_auc": 0.9954545454545454,
+          "diversity": 0.9682539682539683,
+          "novelty": 0.0,
+          "coverage": 0.55,
+          "repeat_rate": 0.5571428571428572
+        }
+      },
+      {
+        "engine": "random (seeded, baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.073015873015873,
+          "ndcg_at_k": 0.06724627101732218,
+          "skip_auc": 0.5444031767895404,
+          "diversity": 0.9682539682539684,
+          "novelty": 0.0,
+          "coverage": 1.0,
+          "repeat_rate": 0.45
+        }
+      }
+    ]
+  ],
+  [
+    "recent taste shift",
+    [
+      {
+        "engine": "current (suggestions::learn_taste)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.011904761904761904,
+          "ndcg_at_k": 0.0033019468171909643,
+          "skip_auc": 0.011904761904761904,
+          "diversity": 0.7031746031746031,
+          "novelty": 0.0,
+          "coverage": 0.5,
+          "repeat_rate": 0.4714285714285715
+        }
+      },
+      {
+        "engine": "most played (baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.0,
+          "ndcg_at_k": 0.0,
+          "skip_auc": 0.005952380952380952,
+          "diversity": 0.711111111111111,
+          "novelty": 0.0,
+          "coverage": 0.5,
+          "repeat_rate": 0.5428571428571428
+        }
+      },
+      {
+        "engine": "random (seeded, baseline)",
+        "k": 10,
+        "metrics": {
+          "days": 14,
+          "recall_at_k": 0.27086167800453514,
+          "ndcg_at_k": 0.24570761604736616,
+          "skip_auc": 0.6011054421768708,
+          "diversity": 0.8539682539682539,
+          "novelty": 0.0,
+          "coverage": 1.0,
+          "repeat_rate": 0.7285714285714285
+        }
+      }
+    ]
+  ]
+]

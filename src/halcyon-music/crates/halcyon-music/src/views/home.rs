@@ -60,6 +60,7 @@ pub fn view<'a, Message: Clone + 'static>(
     clock: f32,
     status: HomeStatus,
     on_refresh: Message,
+    prompt_card: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(28).padding([16, 24]);
 
@@ -92,6 +93,10 @@ pub fn view<'a, Message: Clone + 'static>(
         ]
         .align_y(Alignment::Center),
     );
+
+    // "Describe a mood" (Smart suggestions): a text box, a one-line status and, once there is one,
+    // the mix it made. Its height does not change while it works.
+    page = page.push(prompt_card);
 
     // Liked Songs is a playlist that is always pinned to the top of Home.
     page = page.push(view_liked_pin(liked_tracks, palette, on_play_context, on_navigate));

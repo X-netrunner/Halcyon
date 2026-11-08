@@ -21,6 +21,8 @@
     )
 )]
 
+mod avatar;
+mod mix_order;
 mod animation;
 mod art;
 mod client;
@@ -164,6 +166,15 @@ struct HalcyonApp {
     /// Better titles and one-line reasons the daemon sent, by mix id. Re-applied whenever the
     /// Home feed is replaced, so a rebuild does not wipe them.
     mix_notes: std::collections::HashMap<String, (String, String)>,
+    /// "Describe a mood": the text box, where the request is, the exact text that was sent (so an
+    /// answer to an older request is ignored) and the last mix it made.
+    prompt_text: String,
+    /// The best order of a Home mix's own songs, by mix id, as the daemon sent it. Re-applied when
+    /// the Home feed is replaced, like `mix_notes`.
+    mix_orders: std::collections::HashMap<String, Vec<String>>,
+    prompt_phase: views::prompt_card::Phase,
+    prompt_pending: Option<String>,
+    prompt_mix: Option<halcyon_music_core::models::MusicMix>,
     discover_feed: DiscoverFeed,
     /// Set while a Discover build is on its way (until its last, complete copy arrives).
     discover_loading_since: Option<Instant>,
@@ -222,7 +233,18 @@ struct HalcyonApp {
     last_title_press: Option<Instant>,
     account_menu_open: bool,
     profile_name: Option<String>,
+    /// The Spotify picture's URL (the daemon fetches it like a cover).
     profile_image: Option<String>,
+    /// Spotify's canonical user id and the plan ("Premium" / "Free"), when the daemon knows them.
+    profile_username: Option<String>,
+    profile_plan: Option<String>,
+    /// The Spotify Connect device name the daemon is registered under ("Halcyon (host)"),
+    /// or `None` when it is not registered (Part 2).
+    connect_device: Option<String>,
+    /// Which picture the account circle prefers (Settings > Account), saved between launches.
+    avatar_source: avatar::AvatarSource,
+    /// The Halcyon avatar file as last seen, and when it last changed.
+    halcyon_avatar: Option<(std::path::PathBuf, Option<std::time::SystemTime>)>,
     track_menu: Option<TrackMenu>,
     playlist_page: PlaylistPage,
     /// Where Lyrics was opened from, so closing it goes back there.
@@ -274,6 +296,11 @@ enum Message {
     ToggleQueue,
     /// Time to look at whether the wallpaper colours changed.
     PaletteCheck,
+    /// Time to look at whether the Halcyon avatar file changed.
+    AvatarCheck,
+    SetAvatarSource(avatar::AvatarSource),
+    /// Ask the daemon to look up the account name and plan again.
+    RefreshProfile,
     ToggleLyrics,
     ToggleHelp,
     ToggleDiagnostics,
@@ -301,6 +328,10 @@ enum Message {
     LlmModelChanged(String),
     LlmModelSubmit,
     TestLlm,
+    /// "Describe a mood" on Home.
+    PromptTextChanged(String),
+    PromptSubmit,
+    PromptClear,
     ToggleLike,
     Dequeue(usize),
     DismissError,
@@ -448,6 +479,14 @@ fn is_double_press(previous: Option<Instant>, now: Instant) -> bool {
     previous.is_some_and(|p| now.saturating_duration_since(p) <= DOUBLE_CLICK)
 }
 
+/// The text after "Connected as": the Spotify Connect device name, else this computer.
+fn device_line_text(connect_device: Option<&str>) -> String {
+    match connect_device.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => format!("Connected as {name}"),
+        None => "Connected as This computer".to_string(),
+    }
+}
+
 /// True when this press and the previous one hit the same target in time.
 fn is_double_click(previous: &Option<(String, Instant)>, key: &str, now: Instant) -> bool {
     previous
@@ -571,6 +610,11 @@ impl HalcyonApp {
             llm_hint: None,
             llm_model_synced: false,
             mix_notes: std::collections::HashMap::new(),
+            prompt_text: String::new(),
+            mix_orders: std::collections::HashMap::new(),
+            prompt_phase: views::prompt_card::Phase::Idle,
+            prompt_pending: None,
+            prompt_mix: None,
             discover_feed: DiscoverFeed::default(),
             discover_loading_since: None,
             discover_return: false,
@@ -615,13 +659,20 @@ impl HalcyonApp {
             account_menu_open: false,
             profile_name: None,
             profile_image: None,
+            profile_username: None,
+            profile_plan: None,
+            connect_device: None,
+            avatar_source: avatar::AvatarSource::load(),
+            halcyon_avatar: None,
             track_menu: None,
             playlist_page: PlaylistPage::default(),
             page_before_lyrics: NavPage::Home,
             fresh_counter: 0,
         };
         let window_task = iced::window::get_oldest().map(Message::WindowId);
-        (app, Task::batch([task, window_task]))
+        let mut app = app;
+        let avatar_task = app.check_local_avatar();
+        (app, Task::batch([task, window_task, avatar_task]))
     }
 
     fn send(&self, body: CommandBody) {
@@ -640,13 +691,19 @@ impl HalcyonApp {
     /// Put the daemon's better titles and reasons on the matching Home mixes. A mix keeps its own
     /// title and description until its words have arrived, so nothing moves or flickers.
     fn apply_mix_notes(&mut self) {
-        if self.mix_notes.is_empty() {
+        if self.mix_notes.is_empty() && self.mix_orders.is_empty() {
             return;
         }
         for mix in self.home_feed.made_for_you.iter_mut() {
             if let Some((title, reason)) = self.mix_notes.get(&mix.id) {
                 mix.title = title.clone();
                 mix.description = reason.clone();
+            }
+            // A better order of the songs the mix already has; ids we do not hold are ignored.
+            if let Some(ids) = self.mix_orders.get(&mix.id) {
+                if let Some(better) = mix_order::reorder(&mix.tracks, ids) {
+                    mix.tracks = better;
+                }
             }
         }
     }
@@ -729,7 +786,10 @@ impl HalcyonApp {
             iced::Subscription::none()
         };
 
-        iced::Subscription::batch([key_sub, touchpad_sub, resize_sub, cursor_sub, anim_sub, toast_sub, palette_sub])
+        // A few `stat` calls every five seconds: the avatar file can be replaced while the app runs.
+        let avatar_sub = iced::time::every(Duration::from_secs(5)).map(|_| Message::AvatarCheck);
+
+        iced::Subscription::batch([key_sub, touchpad_sub, resize_sub, cursor_sub, anim_sub, toast_sub, palette_sub, avatar_sub])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -1105,6 +1165,10 @@ impl HalcyonApp {
                         self.streaming_signed_in = Some(signed_in);
                         Task::none()
                     }
+                    EventBody::ConnectDevice { name } => {
+                        self.connect_device = name.filter(|n| !n.trim().is_empty());
+                        Task::none()
+                    }
                     EventBody::AuthModeChanged { mode } => {
                         self.auth_mode = mode;
                         Task::none()
@@ -1149,11 +1213,40 @@ impl HalcyonApp {
                         if !enabled {
                             // The words go away at the next refresh; the mixes keep working.
                             self.mix_notes.clear();
+                            self.mix_orders.clear();
+                            self.prompt_pending = None;
+                            self.prompt_phase = views::prompt_card::Phase::Idle;
+                        }
+                        Task::none()
+                    }
+                    EventBody::PromptPlaylistProgress { request, step } => {
+                        if self.prompt_pending.as_deref() == Some(request.as_str()) {
+                            self.prompt_phase = views::prompt_card::Phase::Working(step);
+                        }
+                        Task::none()
+                    }
+                    EventBody::PromptPlaylistResult { request, mix } => {
+                        if self.prompt_pending.as_deref() == Some(request.as_str()) {
+                            self.prompt_pending = None;
+                            self.prompt_phase = views::prompt_card::Phase::Idle;
+                            self.prompt_mix = Some(mix);
+                        }
+                        Task::none()
+                    }
+                    EventBody::PromptPlaylistFailed { request, reason } => {
+                        if self.prompt_pending.as_deref() == Some(request.as_str()) {
+                            self.prompt_pending = None;
+                            self.prompt_phase = views::prompt_card::Phase::Failed(reason);
                         }
                         Task::none()
                     }
                     EventBody::MixEnriched { mix_id, title, reason } => {
                         self.mix_notes.insert(mix_id, (title, reason));
+                        self.apply_mix_notes();
+                        Task::none()
+                    }
+                    EventBody::MixReranked { mix_id, track_ids } => {
+                        self.mix_orders.insert(mix_id, track_ids);
                         self.apply_mix_notes();
                         Task::none()
                     }
@@ -1217,13 +1310,20 @@ impl HalcyonApp {
                         self.followed_artists = artists;
                         Task::none()
                     }
-                    EventBody::Profile { display_name, image_url } => {
-                        // Never let a late, empty answer wipe a name or picture we already have.
-                        if display_name.is_some() {
+                    EventBody::Profile { display_name, image_url, username, plan } => {
+                        // Never let a late, empty answer wipe a name, picture, username or plan we
+                        // already have.
+                        if display_name.as_deref().is_some_and(|n| !n.trim().is_empty()) {
                             self.profile_name = display_name;
                         }
                         if image_url.is_some() {
                             self.profile_image = image_url;
+                        }
+                        if username.as_deref().is_some_and(|u| !u.trim().is_empty()) {
+                            self.profile_username = username;
+                        }
+                        if plan.is_some() {
+                            self.profile_plan = plan;
                         }
                         Task::none()
                     }
@@ -1811,6 +1911,7 @@ impl HalcyonApp {
                 self.llm_hint = None;
                 if !self.llm_enabled {
                     self.mix_notes.clear();
+                    self.mix_orders.clear();
                 }
                 self.send_llm_settings();
                 Task::none()
@@ -1830,6 +1931,32 @@ impl HalcyonApp {
                 self.llm_hint = None;
                 self.send_llm_settings();
                 self.send(CommandBody::TestLlmConnection);
+                Task::none()
+            }
+            Message::PromptTextChanged(text) => {
+                // Same cap as the daemon's, so what is sent is what comes back.
+                self.prompt_text = text.chars().take(200).collect();
+                if matches!(self.prompt_phase, views::prompt_card::Phase::Failed(_)) {
+                    self.prompt_phase = views::prompt_card::Phase::Idle;
+                }
+                Task::none()
+            }
+            Message::PromptSubmit => {
+                let text = self.prompt_text.trim().to_string();
+                let busy = matches!(self.prompt_phase, views::prompt_card::Phase::Working(_));
+                if !self.llm_enabled || busy || !views::prompt_card::can_send_text(&text) {
+                    return Task::none();
+                }
+                self.prompt_pending = Some(text.clone());
+                self.prompt_phase = views::prompt_card::Phase::Working("understanding".to_string());
+                self.send(CommandBody::PromptPlaylist { text });
+                Task::none()
+            }
+            Message::PromptClear => {
+                self.prompt_mix = None;
+                if matches!(self.prompt_phase, views::prompt_card::Phase::Failed(_)) {
+                    self.prompt_phase = views::prompt_card::Phase::Idle;
+                }
                 Task::none()
             }
             Message::ToggleNormalisation => {
@@ -1982,6 +2109,16 @@ impl HalcyonApp {
                 }
                 Task::none()
             }
+            Message::AvatarCheck => self.check_local_avatar(),
+            Message::SetAvatarSource(source) => {
+                self.avatar_source = source;
+                source.save();
+                Task::none()
+            }
+            Message::RefreshProfile => {
+                self.send(CommandBody::RefreshProfile);
+                Task::none()
+            }
             Message::LibraryTabSelected(tab) => {
                 self.library_tab = tab;
                 // On the Liked Songs page the tabs double as the way back to the library.
@@ -2102,6 +2239,7 @@ impl HalcyonApp {
                     .iter()
                     .chain(self.discover_feed.genres.iter())
                     .chain(self.discover_feed.mixes.iter())
+                    .chain(self.prompt_mix.iter())
                     .find(|m| m.id == id)
                     .cloned()
                 else {
@@ -2177,6 +2315,8 @@ impl HalcyonApp {
                 self.playlists.clear();
                 self.profile_name = None;
                 self.profile_image = None;
+                self.profile_username = None;
+                self.profile_plan = None;
                 self.close_menus();
                 Task::none()
             }
@@ -2345,6 +2485,66 @@ impl HalcyonApp {
         }
     }
 
+    /// Look at the Halcyon avatar file; when it appeared, changed or was dropped from the store,
+    /// decode it again in the background. A few `stat` calls, no shell.
+    fn check_local_avatar(&mut self) -> Task<Message> {
+        let found = halcyon_music_core::paths::halcyon_avatar();
+        let stamp = found.as_deref().and_then(avatar::stamp);
+        let changed = match (&self.halcyon_avatar, &found) {
+            (Some((old, old_stamp)), Some(new)) => old != new || *old_stamp != stamp,
+            (None, None) => false,
+            _ => true,
+        };
+        let url = found.as_deref().map(avatar::local_url);
+        let evicted = url.as_deref().is_some_and(|u| !art::is_known(u, ArtSize::Small));
+        self.halcyon_avatar = found.clone().map(|p| (p, stamp));
+        match (found, url) {
+            (Some(path), Some(url)) if changed || evicted => art::local_decode_task(url, path),
+            _ => Task::none(),
+        }
+    }
+
+    /// The picture for the account circle: the chosen source first, then the other, and nothing
+    /// (so the initial shows) when neither exists.
+    fn avatar_url(&self) -> Option<String> {
+        let halcyon = self.halcyon_avatar.as_ref().map(|(p, _)| avatar::local_url(p));
+        let order = avatar::order(self.avatar_source, halcyon.as_deref(), self.profile_image.as_deref());
+        avatar::pick(&order, |u| art::is_ready(u, ArtSize::Small))
+    }
+
+    /// `@username` (or the user id the daemon reported at sign-in) for the account menu.
+    fn account_handle(&self) -> Option<String> {
+        let from_status = match &self.auth_status {
+            AuthStatus::LoggedIn { user_id: Some(id), .. } => Some(id.clone()),
+            _ => None,
+        };
+        self.profile_username
+            .clone()
+            .or(from_status)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("@{s}"))
+    }
+
+    /// One line under the name in Settings: `@username · Premium · Connected as This computer`.
+    fn account_detail(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        parts.extend(self.account_handle());
+        parts.extend(self.profile_plan.clone());
+        parts.push(self.device_line());
+        parts.join("  ·  ")
+    }
+
+    /// Where this app is connected: the Spotify Connect device name when the daemon is
+    /// registered as one (Part 2), else "This computer".
+    fn device_line(&self) -> String {
+        if matches!(self.status, ConnStatus::Connected { .. }) {
+            device_line_text(self.connect_device.as_deref())
+        } else {
+            "Not connected".to_string()
+        }
+    }
+
     /// The name shown in the account menu: Spotify's, else what the daemon said at sign-in.
     fn account_name(&self) -> String {
         if let Some(n) = self.profile_name.as_deref().filter(|n| !n.trim().is_empty()) {
@@ -2391,10 +2591,11 @@ impl HalcyonApp {
 
         // 2. Sidebar Navigation, with the account circle at its top
         let account_name = self.account_name();
+        let avatar_url = self.avatar_url();
         let account_header: Element<Message> = if logged_in {
             views::account::avatar_button(
                 &account_name,
-                self.profile_image.as_deref(),
+                avatar_url.as_deref(),
                 self.account_menu_open,
                 pal,
                 Message::ToggleAccountMenu,
@@ -2596,7 +2797,10 @@ impl HalcyonApp {
         if self.account_menu_open && logged_in {
             let card = views::account::menu_card(
                 account_name.clone(),
-                self.profile_image.as_deref(),
+                self.account_handle(),
+                self.profile_plan.clone(),
+                self.device_line(),
+                avatar_url.as_deref(),
                 pal,
                 Message::OpenSettings,
                 Message::OpenSpotifyAccount,
@@ -2930,6 +3134,20 @@ impl HalcyonApp {
                     views::home::HomeStatus::Live
                 },
                 Message::RefreshHome,
+                views::prompt_card::view(
+                    self.llm_enabled,
+                    &self.prompt_text,
+                    &self.prompt_phase,
+                    self.prompt_mix.as_ref(),
+                    self.palette,
+                    Message::PromptTextChanged,
+                    Message::PromptSubmit,
+                    Message::PlayMix,
+                    Message::SaveMix,
+                    Message::OpenMix,
+                    Message::PromptClear,
+                    Message::NavSelected(NavPage::Settings),
+                ),
             ),
             NavPage::Search => views::search::view(
                 &self.search_query,
@@ -3007,7 +3225,7 @@ impl HalcyonApp {
                 self.palette,
                 self.density,
                 &self.account_name(),
-                self.profile_image.as_deref(),
+                self.avatar_url().as_deref(),
                 Message::CapsulePrevMonth,
                 Message::CapsuleNextMonth,
                 Message::PlayTrack,
@@ -3128,6 +3346,10 @@ impl HalcyonApp {
             ),
             NavPage::Settings => views::settings::view(
                 account_label.clone(),
+                self.account_detail(),
+                self.avatar_source,
+                Message::SetAvatarSource,
+                Message::RefreshProfile,
                 self.density,
                 self.mood,
                 self.state.bitrate,
@@ -3441,6 +3663,13 @@ fn needs_art_sync(message: &Message) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_device_line_names_the_connect_device_when_there_is_one() {
+        assert_eq!(device_line_text(Some("Halcyon (arch)")), "Connected as Halcyon (arch)");
+        assert_eq!(device_line_text(Some("  ")), "Connected as This computer");
+        assert_eq!(device_line_text(None), "Connected as This computer");
+    }
 
     #[test]
     fn two_quick_title_presses_are_a_double_click() {

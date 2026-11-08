@@ -14,6 +14,7 @@ pub mod notch;
 pub mod now_playing_bar;
 pub mod orbit;
 pub mod playlist;
+pub mod prompt_card;
 pub mod queue_drawer;
 pub mod recent;
 pub mod search;

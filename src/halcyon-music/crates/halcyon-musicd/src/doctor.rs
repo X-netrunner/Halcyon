@@ -83,6 +83,8 @@ pub fn run() -> anyhow::Result<ExitCode> {
     checks.push(check_audio_sink());
     checks.push(check_network());
     checks.push(check_cache());
+    checks.push(check_account_name());
+    checks.push(check_connect_device());
     checks.push(check_streaming_token(&streaming));
     checks.push(check_session(&streaming));
     checks.push(check_browsing_sign_in(&streaming));
@@ -552,6 +554,101 @@ fn check_network() -> Check {
         ),
         Err(_) => check("network", Status::Warn, "network check thread failed"),
     }
+}
+
+/// The account the daemon last remembered, read straight from the cache file (read-only, so it
+/// works while the daemon runs). `None` when there is no cache or no saved account.
+fn read_saved_account() -> Option<crate::api::AccountInfo> {
+    let db_path = paths::cache_dir().join("cache.db");
+    if !db_path.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let json: String = conn
+        .query_row(
+            "SELECT value FROM kv WHERE key = ?1",
+            [crate::profile::KV_ACCOUNT],
+            |row| row.get(0),
+        )
+        .ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+/// "account name": PASS with the name, WARN when only the username is known (the name could not be
+/// read yet, for example while Spotify's Web API is rate limiting), INFO when nothing is saved.
+fn judge_account_name(account: Option<&crate::api::AccountInfo>) -> Check {
+    let name = account
+        .and_then(|a| a.display_name.as_deref())
+        .map(str::trim)
+        .filter(|n| !n.is_empty());
+    let username = account
+        .and_then(|a| a.username.as_deref())
+        .map(str::trim)
+        .filter(|u| !u.is_empty());
+    match (name, username) {
+        (Some(n), _) => check("account name", Status::Pass, format!("signed in as {n}")),
+        (None, Some(u)) => check_hint(
+            "account name",
+            Status::Warn,
+            format!("only the username is known ({u}); the display name has not been read yet"),
+            "it is retried in the background; if it stays like this, restart halcyon-musicd and check the log for \"profile\" lines",
+        ),
+        (None, None) => check(
+            "account name",
+            Status::Info,
+            "no account saved yet (sign in, then run this again)",
+        ),
+    }
+}
+
+/// "connect device": read from the status file a running Connect device leaves (no Web API).
+fn judge_connect_device(view: crate::connect::DoctorView) -> Check {
+    use crate::connect::DoctorView;
+    match view {
+        DoctorView::Registered { name } => {
+            check("connect device", Status::Pass, format!("registered as {name}"))
+        }
+        DoctorView::Stale { name } => check_hint(
+            "connect device",
+            Status::Warn,
+            format!("{name} was registered, but its process is gone"),
+            "start it again; Spotify drops a stopped device from the list within a minute",
+        ),
+        DoctorView::Off { compiled } => check(
+            "connect device",
+            Status::Info,
+            if compiled {
+                "not enabled (set HALCYON_CONNECT=1 and run --connect-spike to try it)"
+            } else {
+                "not built in (cargo build --features connect to try it)"
+            },
+        ),
+        DoctorView::RequestedNotRegistered { compiled } => check_hint(
+            "connect device",
+            Status::Warn,
+            "HALCYON_CONNECT is set but no device is registered",
+            if compiled {
+                "run halcyon-musicd --connect-spike and read its output"
+            } else {
+                "this build has no Connect code: cargo build --release -p halcyon-musicd --features connect"
+            },
+        ),
+    }
+}
+
+fn check_connect_device() -> Check {
+    let status = crate::connect::read_status();
+    let alive = status.as_ref().is_some_and(|s| crate::connect::pid_alive(s.pid));
+    judge_connect_device(crate::connect::doctor_view(
+        status.as_ref(),
+        alive,
+        crate::connect::enabled(),
+        crate::connect::compiled_in(),
+    ))
+}
+
+fn check_account_name() -> Check {
+    judge_account_name(read_saved_account().as_ref())
 }
 
 fn check_cache() -> Check {
@@ -1175,5 +1272,39 @@ mod tests {
         // The doctor's own pid is never reported, whatever the name.
         let own = running_processes("definitely-not-a-real-binary-name");
         assert!(own.is_empty());
+    }
+
+    #[test]
+    fn connect_device_check_levels() {
+        use crate::connect::DoctorView;
+        let pass = judge_connect_device(DoctorView::Registered { name: "Halcyon (x)".into() });
+        assert_eq!(pass.status, Status::Pass);
+        assert!(pass.detail.contains("Halcyon (x)"));
+        assert_eq!(judge_connect_device(DoctorView::Stale { name: "n".into() }).status, Status::Warn);
+        assert_eq!(judge_connect_device(DoctorView::Off { compiled: false }).status, Status::Info);
+        let missing = judge_connect_device(DoctorView::RequestedNotRegistered { compiled: false });
+        assert_eq!(missing.status, Status::Warn);
+        assert!(missing.hint.unwrap().contains("--features connect"));
+    }
+
+    #[test]
+    fn account_name_check_levels() {
+        use crate::api::AccountInfo;
+        let acc = |name: Option<&str>, user: Option<&str>| AccountInfo {
+            id: "u1".into(),
+            display_name: name.map(str::to_string),
+            image_url: None,
+            images_read: false,
+            username: user.map(str::to_string),
+            plan: None,
+        };
+        let pass = judge_account_name(Some(&acc(Some("Ada"), Some("ada123"))));
+        assert_eq!(pass.status, Status::Pass);
+        assert!(pass.detail.contains("Ada"));
+        let warn = judge_account_name(Some(&acc(None, Some("ada123"))));
+        assert_eq!(warn.status, Status::Warn);
+        assert!(warn.detail.contains("ada123"));
+        assert_eq!(judge_account_name(Some(&acc(Some("  "), None))).status, Status::Info);
+        assert_eq!(judge_account_name(None).status, Status::Info);
     }
 }
