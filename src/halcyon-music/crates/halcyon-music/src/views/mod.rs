@@ -20,7 +20,7 @@ pub mod titlebar;
 
 use crate::icons::{icon, Icon};
 use crate::theme::{self, HalcyonPalette};
-use iced::widget::{button, container, row, slider, text, tooltip, Space};
+use iced::widget::{button, column, container, row, slider, text, tooltip, Space};
 use iced::{Alignment, Element};
 
 /// Filled accent button for the few plain text actions (log in, go back...).
@@ -352,6 +352,34 @@ pub fn equalizer<'a, M: 'a>(
         r = r.push(slot);
     }
     r.into()
+}
+
+/// The same dancing bars turned on their side and stacked: a column of short horizontal bars
+/// that grow from the middle line. It suits a narrow rail.
+#[allow(clippy::too_many_arguments)]
+pub fn equalizer_vertical<'a, M: 'a>(
+    rows: usize,
+    bar_h: f32,
+    gap: f32,
+    max_w: f32,
+    clock: f32,
+    seed: f32,
+    playing: bool,
+    palette: HalcyonPalette,
+) -> Element<'a, M> {
+    let mut col = column![].spacing(gap).align_x(Alignment::Center);
+    for i in 0..rows {
+        let lvl = spectrum_level(i, rows, clock, seed, playing);
+        let w = 4.0 + (max_w - 4.0) * lvl;
+        let t = i as f32 / rows.max(1) as f32;
+        let base = theme::mix(palette.accent, palette.accent_secondary, t);
+        col = col.push(container(Space::new(w, bar_h)).style(move |_t| container::Style {
+            background: Some(theme::gradient2(theme::alpha(base, 0.35), base, false)),
+            border: iced::Border { radius: (bar_h / 2.0).into(), ..Default::default() },
+            ..Default::default()
+        }));
+    }
+    col.into()
 }
 
 /// Shorten `s` to at most `max` characters, ending in "…" when it was cut.

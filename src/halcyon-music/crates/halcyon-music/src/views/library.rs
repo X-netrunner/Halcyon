@@ -63,117 +63,48 @@ fn matches(filter: &str, fields: &[&str]) -> bool {
         .all(|word| fields.iter().any(|f| f.to_lowercase().contains(word)))
 }
 
-/// The one search box of the page: a search icon, the text, and a clear button once there is text.
-fn search_box<'a, Message: Clone + 'a>(
-    text_now: &'a str,
-    placeholder: &'static str,
-    palette: HalcyonPalette,
-    on_change: impl Fn(String) -> Message + 'a + Copy,
-) -> Element<'a, Message> {
-    let input = text_input(placeholder, text_now)
-        .on_input(on_change)
-        .size(13)
-        .padding(iced::Padding { top: 9.0, bottom: 9.0, left: 40.0, right: 38.0 })
-        .width(Length::Fill)
-        .style(move |_t, status| text_input::Style {
-            background: palette.surface_variant.into(),
-            border: iced::Border {
-                radius: crate::theme::radius::PILL.into(),
-                width: 1.0,
-                color: if matches!(status, text_input::Status::Focused) {
-                    palette.accent
-                } else {
-                    palette.soft_border()
-                },
-            },
-            icon: palette.text_muted,
-            placeholder: palette.text_muted,
-            value: palette.text,
-            selection: crate::theme::alpha(palette.accent, 0.3),
-        });
-
-    let mut layers: Vec<Element<'a, Message>> = vec![
-        input.into(),
-        container(icon(Icon::Search, 15.0, palette.text_muted))
-            .height(Length::Fill)
-            .padding([0.0, 14.0])
-            .align_y(iced::alignment::Vertical::Center)
-            .into(),
-    ];
-    if !text_now.is_empty() {
-        layers.push(
-            container(
-                button(icon(Icon::Close, 12.0, palette.text_muted))
-                    .on_press(on_change(String::new()))
-                    .padding(6)
-                    .style(crate::views::ghost(palette)),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Right)
-            .align_y(iced::alignment::Vertical::Center)
-            .padding([0.0, 6.0])
-            .into(),
-        );
-    }
-    container(iced::widget::stack(layers)).width(340).into()
-}
-
-/// The tabs as one segmented control. Each shows how many entries it holds (or how many match
-/// the search), so a search is never a dead end on the wrong tab.
+/// The tabs as quiet text with a thin accent line under the open one: no pills, no boxes, so the
+/// page stays as calm as the rest of the player. Each shows how many entries it holds (or how
+/// many match the search), so a search is never a dead end on the wrong tab.
 fn tab_strip<'a, Message: Clone + 'a>(
     active_tab: LibraryTab,
     counts: &[(LibraryTab, usize)],
     palette: HalcyonPalette,
     on_select_tab: impl Fn(LibraryTab) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
-    let mut strip = row![].spacing(4).align_y(Alignment::Center);
+    let mut strip = row![].spacing(28).align_y(Alignment::End);
     for (tab, count) in counts {
         let is_active = *tab == active_tab;
-        let tint = if is_active { palette.on_accent() } else { palette.text };
+        let tint = if is_active { palette.text } else { palette.text_muted };
         let label = row![
-            icon(tab.icon(), 14.0, if is_active { tint } else { palette.accent }),
-            Space::with_width(7),
-            text(tab.label()).size(13).color(tint),
-            Space::with_width(7),
-            text(count.to_string())
-                .size(11)
-                .color(crate::theme::alpha(tint, if is_active { 0.8 } else { 0.55 })),
+            text(tab.label()).size(14).color(tint),
+            Space::with_width(6),
+            text(count.to_string()).size(11).color(crate::theme::alpha(palette.text_muted, 0.8)),
         ]
         .align_y(Alignment::Center);
+        let underline = container(Space::with_height(2))
+            .width(Length::Fill)
+            .style(move |_t| container::Style {
+                background: Some(if is_active {
+                    crate::theme::alpha(palette.accent, 0.9).into()
+                } else {
+                    iced::Color::TRANSPARENT.into()
+                }),
+                border: iced::Border { radius: 2.0.into(), ..Default::default() },
+                ..Default::default()
+            });
         strip = strip.push(
-            button(label)
+            button(column![label, Space::with_height(8), underline].width(Length::Shrink))
                 .on_press(on_select_tab(*tab))
-                .padding([7, 14])
+                .padding([4, 2])
                 .style(move |_t, status| button::Style {
-                    background: Some(if is_active {
-                        palette.accent_background()
-                    } else if status == button::Status::Hovered {
-                        iced::Background::from(crate::theme::alpha(palette.accent, 0.12))
-                    } else {
-                        iced::Background::from(iced::Color::TRANSPARENT)
-                    }),
-                    text_color: tint,
-                    border: iced::Border {
-                        radius: crate::theme::radius::PILL.into(),
-                        ..Default::default()
-                    },
+                    background: None,
+                    text_color: if status == button::Status::Hovered { palette.text } else { tint },
                     ..Default::default()
                 }),
         );
     }
-    container(strip)
-        .padding(4)
-        .style(move |_t| container::Style {
-            background: Some(crate::theme::alpha(palette.surface, 0.7).into()),
-            border: iced::Border {
-                color: palette.soft_border(),
-                width: 1.0,
-                radius: crate::theme::radius::PILL.into(),
-            },
-            ..Default::default()
-        })
-        .into()
+    strip.into()
 }
 
 /// Lay tiles out in rows of `cols`; the last row is padded so tiles keep one width.
@@ -267,7 +198,7 @@ pub fn view<'a, Message: Clone + 'static>(
     palette: HalcyonPalette,
     density: Density,
     on_select_tab: impl Fn(LibraryTab) -> Message + 'a + Copy,
-    on_filter_changed: impl Fn(String) -> Message + 'a + Copy,
+    _on_filter_changed: impl Fn(String) -> Message + 'a + Copy,
     on_change_sort: impl Fn(LikedSort) -> Message + 'a + Copy,
     on_play_track: impl Fn(Track) -> Message + 'a + Copy,
     on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
@@ -325,19 +256,7 @@ pub fn view<'a, Message: Clone + 'static>(
     } else {
         text("Your Library").size(26).color(palette.text).into()
     };
-    let placeholder = match active_tab {
-        LibraryTab::Liked => "Search liked songs",
-        _ => "Search playlists, albums and artists",
-    };
-    page = page.push(
-        row![
-            heading,
-            Space::with_width(Length::Fill),
-            search_box(filter_text, placeholder, palette, on_filter_changed),
-        ]
-        .align_y(Alignment::Center)
-        .width(Length::Fill),
-    );
+    page = page.push(heading);
 
     // The tabs (on the Liked Songs page none is lit and each leads back to the library).
     page = page.push(tab_strip(active_tab, &counts, palette, on_select_tab));

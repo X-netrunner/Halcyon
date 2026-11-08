@@ -8,6 +8,38 @@ use halcyon_music_core::models::{HomeFeed, MusicMix, QuickPick, ShelfItem, Track
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
+/// What the suggestions on Home are doing, shown in the chip at the top right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeStatus {
+    /// A feed is being built right now.
+    Loading,
+    /// Everything that could load has loaded.
+    Live,
+    /// Only the local mixes are in; the rest is still on its way (a retry is scheduled).
+    Partial,
+    /// As Partial, and Spotify is rate limiting.
+    WaitingOnSpotify,
+}
+
+fn status_chip<'a, Message: 'a>(status: HomeStatus, shimmer: f32, palette: HalcyonPalette) -> Element<'a, Message> {
+    let (label, tint) = match status {
+        HomeStatus::Loading => {
+            let pulse = 0.55 + 0.45 * (0.5 + 0.5 * (shimmer * std::f32::consts::TAU).sin());
+            ("Getting fresh suggestions…", crate::theme::alpha(palette.accent, pulse))
+        }
+        HomeStatus::Live => ("Live Suggestions", palette.accent),
+        HomeStatus::Partial => ("More suggestions on the way", palette.text_muted),
+        HomeStatus::WaitingOnSpotify => ("Spotify is busy, retrying soon", palette.text_muted),
+    };
+    container(
+        row![icon(Icon::Sparkles, 12.0, tint), Space::with_width(6), text(label).size(12).color(tint)]
+            .align_y(Alignment::Center),
+    )
+    .padding([6, 14])
+    .style(crate::views::chip(palette))
+    .into()
+}
+
 /// Main Home page element builder.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
@@ -25,6 +57,8 @@ pub fn view<'a, Message: Clone + 'static>(
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
     shimmer: f32,
     progress: f32,
+    status: HomeStatus,
+    on_refresh: Message,
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(28).padding([16, 24]);
 
@@ -47,10 +81,13 @@ pub fn view<'a, Message: Clone + 'static>(
             ]
             .spacing(4),
             Space::with_width(Length::Fill),
-            // Quick Refresh / Status
-            container(row![icon(Icon::Sparkles, 12.0, palette.accent), Space::with_width(6), text("Live Suggestions").size(12).color(palette.accent)].align_y(Alignment::Center))
-                .padding([6, 14])
-                .style(crate::views::chip(palette)),
+            // Status of the suggestions, with a refresh button next to it.
+            status_chip(status, shimmer, palette),
+            Space::with_width(8),
+            button(icon(Icon::Refresh, 14.0, if status == HomeStatus::Loading { palette.text_muted } else { palette.accent }))
+                .on_press_maybe(if status == HomeStatus::Loading { None } else { Some(on_refresh) })
+                .padding(8)
+                .style(crate::views::ghost(palette)),
         ]
         .align_y(Alignment::Center),
     );
@@ -92,10 +129,15 @@ pub fn view<'a, Message: Clone + 'static>(
         ));
     }
 
-    // 4. Made For You (Halcyon Suggestion Engine)
-    if !feed.made_for_you.is_empty() {
+    // 4. Made For You: mixes built from your own library and listening
+    let personal: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source == "Halcyon Local").collect();
+    let outside: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source != "Halcyon Local").collect();
+    if !personal.is_empty() {
         page = page.push(view_made_for_you_mixes(
-            &feed.made_for_you,
+            personal,
+            "Made for you",
+            "by Halcyon",
+            "What you keep on loop, forgotten favourites, hidden gems and fresh draws from your library",
             palette,
             density,
             on_play_mix,
@@ -105,7 +147,48 @@ pub fn view<'a, Message: Clone + 'static>(
         ));
     }
 
-    // 5. Popular Right Now (Global Charts)
+    // 5. Discover: new music and what everyone is playing
+    let has_discover = !outside.is_empty()
+        || !feed.popular_charts.is_empty()
+        || !feed.new_releases.is_empty()
+        || !feed.fresh_releases.is_empty();
+    if !outside.is_empty() {
+        page = page.push(view_made_for_you_mixes(
+            outside,
+            "Discover",
+            "new and famous",
+            "Trending this week, chart toppers and the freshest releases",
+            palette,
+            density,
+            on_play_mix,
+            on_save_mix,
+            on_open_mix,
+            progress,
+        ));
+    } else if !feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty() {
+        // Nothing from outside yet: say so, so the gap does not look like a bug.
+        let note = match status {
+            HomeStatus::Loading => "Looking for new and popular music…",
+            HomeStatus::WaitingOnSpotify => "Spotify is busy. Discover will fill in on its own shortly.",
+            _ => "New and popular music will show up here as soon as it has loaded.",
+        };
+        if !has_discover {
+            page = page.push(
+                column![
+                    row![
+                        icon(Icon::Sparkles, 16.0, palette.accent),
+                        Space::with_width(8),
+                        text("Discover").size(18).color(palette.text),
+                    ]
+                    .align_y(Alignment::Center),
+                    text(note).size(12).color(palette.text_muted),
+                ]
+                .spacing(4),
+            );
+        }
+    }
+
+    // Discover shelves (global charts, fresh releases)
     if !feed.popular_charts.is_empty() {
         page = page.push(view_shelf(
             "Popular right now",
@@ -537,7 +620,10 @@ fn mix_cover<'a, Message: 'a>(mix: &MusicMix, px: f32, palette: HalcyonPalette) 
 /// can be seen first. `progress` (0..1, the page-entrance clock) makes the cards rise in turn.
 #[allow(clippy::too_many_arguments)]
 fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
-    mixes: &'a [MusicMix],
+    mixes: Vec<&'a MusicMix>,
+    title: &'static str,
+    byline: &'static str,
+    subtitle: &'static str,
     palette: HalcyonPalette,
     _density: Density,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
@@ -549,12 +635,12 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
         row![
             icon(Icon::Sparkles, 16.0, palette.accent),
             Space::with_width(8),
-            text("Made for you").size(18).color(palette.text),
+            text(title).size(18).color(palette.text),
             Space::with_width(8),
-            text("by Halcyon").size(13).color(palette.accent),
+            text(byline).size(13).color(palette.accent),
         ]
         .align_y(Alignment::Center),
-        text("Top songs, hot new releases and mixes across genres, plus what you keep on loop")
+        text(subtitle)
             .size(12)
             .color(palette.text_muted),
     ]
@@ -563,7 +649,7 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     let cover_px = MIX_W - MIX_PAD * 2.0;
     let mut mix_row = row![].spacing(16).padding([4, 0]);
 
-    for (i, mix) in mixes.iter().enumerate() {
+    for (i, mix) in mixes.into_iter().enumerate() {
         let track_count = mix.tracks.len();
         let uris: Vec<String> = mix.tracks.iter().map(|t| t.uri.clone()).collect();
         let tracks = mix.tracks.clone();
@@ -631,8 +717,8 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
         let play_btn = crate::views::play_orb(Icon::Play, 40.0, palette, Some(on_play_mix(tracks, mix.title.clone())));
 
         let overlay = container(row![save_btn, play_btn].spacing(8).align_y(Alignment::Center))
-            .width(Length::Fill)
-            .height(Length::Fill)
+            .width(Length::Fixed(MIX_W))
+            .height(Length::Fixed(MIX_PAD * 2.0 + cover_px))
             .align_x(iced::alignment::Horizontal::Right)
             .padding(iced::Padding {
                 top: MIX_PAD + cover_px - 40.0 - 8.0,
