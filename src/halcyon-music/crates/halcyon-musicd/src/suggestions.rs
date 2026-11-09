@@ -129,6 +129,11 @@ static SEARCH_BUDGET: AtomicU32 = AtomicU32::new(0);
 static SEARCH_PAUSED_UNTIL: AtomicU64 = AtomicU64::new(0);
 const SEARCHES_PER_BUILD: u32 = 36;
 
+/// Part 5: allow up to `n` more uncached Spotify searches (never lowers a budget already granted).
+pub(crate) fn grant_search_budget(n: u32) {
+    SEARCH_BUDGET.fetch_max(n, Ordering::Relaxed);
+}
+
 /// One uncached Spotify song search, within the budget and not while paused. It goes through
 /// `search_detailed`, which in the default sign-in reads the librespot session (no Web API
 /// quota, so no 429s) and in Client ID mode uses the Web API.
@@ -955,7 +960,7 @@ pub async fn fetch_chart_pool(http: &reqwest::Client) -> Vec<OutsideSong> {
 }
 
 /// The "All-Time Best" candidates in today's order (a different order each day).
-fn all_time_candidates() -> Vec<OutsideSong> {
+pub(crate) fn all_time_candidates() -> Vec<OutsideSong> {
     let mut classics: Vec<OutsideSong> = ALL_TIME_CLASSICS
         .iter()
         .map(|&(artist, title)| (artist.to_string(), title.to_string(), None))
@@ -1259,7 +1264,7 @@ async fn deezer_get(http: &reqwest::Client, path: &str, query: &[(&str, &str)]) 
 }
 
 /// Deezer's id for an artist, when the best hit is really that artist.
-async fn deezer_artist_id(http: &reqwest::Client, name: &str) -> Option<u64> {
+pub(crate) async fn deezer_artist_id(http: &reqwest::Client, name: &str) -> Option<u64> {
     let v = deezer_get(http, "/search/artist", &[("q", name), ("limit", "1")]).await?;
     let hit = v["data"].as_array()?.first()?;
     let found = normalize_string(hit["name"].as_str()?);
@@ -1270,7 +1275,7 @@ async fn deezer_artist_id(http: &reqwest::Client, name: &str) -> Option<u64> {
 }
 
 /// Artists Deezer lists as similar to `id` (their ids).
-async fn deezer_related_artists(http: &reqwest::Client, id: u64, limit: u32) -> Vec<u64> {
+pub(crate) async fn deezer_related_artists(http: &reqwest::Client, id: u64, limit: u32) -> Vec<u64> {
     let limit = limit.to_string();
     let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await else {
         return Vec::new();
@@ -1282,7 +1287,7 @@ async fn deezer_related_artists(http: &reqwest::Client, id: u64, limit: u32) -> 
 }
 
 /// An artist's most popular songs on Deezer, as `(artist, title, duration_ms)` rows.
-async fn deezer_artist_top(http: &reqwest::Client, id: u64, limit: u32) -> Vec<(String, String, Option<u64>)> {
+pub(crate) async fn deezer_artist_top(http: &reqwest::Client, id: u64, limit: u32) -> Vec<(String, String, Option<u64>)> {
     let limit = limit.to_string();
     let Some(v) = deezer_get(http, &format!("/artist/{id}/top"), &[("limit", &limit)]).await else {
         return Vec::new();

@@ -511,8 +511,14 @@ pub fn fixture(kind: Listener) -> (Vec<PlayLogEntry>, HashSet<String>) {
 
 /// Evaluate the engines on one set of plays.
 pub fn run_engines(plays: &[PlayLogEntry], liked: &HashSet<String>) -> Vec<Report> {
-    let engines: [&dyn Ranker; 4] =
-        [&CurrentEngine, &MostPlayed, &SeededRandom(7), &crate::taste::TasteV2];
+    let engines: [&dyn Ranker; 6] = [
+        &CurrentEngine,
+        &MostPlayed,
+        &SeededRandom(7),
+        &crate::taste::TasteV2,
+        &crate::reco::engine::Part5Ranker,
+        &crate::reco::engine::Part5Pipeline,
+    ];
     engines.iter().map(|e| evaluate(*e, plays, liked)).collect()
 }
 
