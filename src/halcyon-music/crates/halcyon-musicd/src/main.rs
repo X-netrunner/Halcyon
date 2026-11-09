@@ -34,9 +34,12 @@ fn main() -> ExitCode {
         "--probe" => probe_cli_main(),
         "--eval" => eval_main(&args),
         "--connect-spike" => connect_spike_main(&args),
+        "--reco-explain" => reco_explain_main(&args),
+        "--reco-reset" => reco_reset_main(),
+        "--reco-probe" => reco_probe_main(),
         "--help" | "-h" => {
             println!(
-                "halcyon-musicd — Halcyon Music daemon\n\nUSAGE:\n    halcyon-musicd            run the daemon\n    halcyon-musicd --doctor   check the install and print PASS/WARN/FAIL (exit 1 on any FAIL)\n    halcyon-musicd --version  print the version\n    halcyon-musicd --login    sign in with Spotify in the browser\n    halcyon-musicd --probe    check which Spotify endpoints work with the current sign-in\n    halcyon-musicd --eval [--out DIR] [--write-baseline]\n                              replay the play log offline and score the recommendation engine\n    halcyon-musicd --connect-spike [--volume N]\n                              register as a Spotify Connect device until Ctrl+C (needs --features connect)"
+                "halcyon-musicd — Halcyon Music daemon\n\nUSAGE:\n    halcyon-musicd            run the daemon\n    halcyon-musicd --doctor   check the install and print PASS/WARN/FAIL (exit 1 on any FAIL)\n    halcyon-musicd --version  print the version\n    halcyon-musicd --login    sign in with Spotify in the browser\n    halcyon-musicd --probe    check which Spotify endpoints work with the current sign-in\n    halcyon-musicd --eval [--out DIR] [--write-baseline]\n                              replay the play log offline and score the recommendation engine\n    halcyon-musicd --reco-explain ARTIST [TITLE]\n                              show what the recommendation ranker makes of an artist or song\n    halcyon-musicd --reco-reset\n                              forget what the ranker learned from your skips and likes (history is kept)\n    halcyon-musicd --reco-probe\n                              check that the outside sources the recommendations use answer as expected\n    halcyon-musicd --connect-spike [--volume N]\n                              register as a Spotify Connect device until Ctrl+C (needs --features connect)"
             );
             ExitCode::SUCCESS
         }
@@ -196,5 +199,80 @@ fn eval_main(args: &[String]) -> ExitCode {
             eprintln!("could not write the reports: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// `--reco-explain ARTIST [TITLE]`: the debug view of the Part 5 ranker. Reads the cache only.
+fn reco_explain_main(args: &[String]) -> ExitCode {
+    use halcyon_musicd::{cache::Cache, reco::engine};
+    let Some(artist) = args.get(2).filter(|a| !a.starts_with("--")) else {
+        eprintln!("usage: halcyon-musicd --reco-explain ARTIST [TITLE]");
+        return ExitCode::from(2);
+    };
+    let title = args.get(3).map(String::as_str).unwrap_or("");
+    let db = halcyon_music_core::paths::cache_dir().join("cache.db");
+    if !db.exists() {
+        eprintln!("no play history yet (no cache at {})", db.display());
+        return ExitCode::FAILURE;
+    }
+    match Cache::open_default() {
+        Ok(cache) => {
+            println!("{}", engine::explain(&cache, artist, title, 0));
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("could not open the cache: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `--reco-reset`: the weights go back to the prior and the exploration beliefs are forgotten.
+/// The play history is untouched and is not replayed again.
+fn reco_reset_main() -> ExitCode {
+    use halcyon_musicd::{cache::Cache, reco::model};
+    let path = model::default_path();
+    let (mut state, _) = model::RecoState::load_or_default(&path);
+    let (mut last_play, mut last_skip) = (state.last_play_id, state.last_skip_id);
+    let db = halcyon_music_core::paths::cache_dir().join("cache.db");
+    if db.exists() {
+        if let Ok(cache) = Cache::open_default() {
+            last_play = cache.get_recent_plays(1).ok().and_then(|v| v.first().map(|p| p.id)).unwrap_or(last_play);
+            last_skip = cache.get_skips(1_000_000).ok().and_then(|v| v.iter().map(|p| p.id).max()).unwrap_or(last_skip);
+        }
+    }
+    state.reset(last_play, last_skip);
+    match state.save(&path) {
+        Ok(()) => {
+            println!("The recommendation model is back to its starting weights ({}).", path.display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("could not save: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `--reco-probe`: does each outside source answer in the shape the code expects?
+fn reco_probe_main() -> ExitCode {
+    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("could not start the async runtime: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let http = reqwest::Client::new();
+    let rows = runtime.block_on(halcyon_musicd::reco::engine::probe_sources(&http));
+    let mut all_ok = true;
+    for r in &rows {
+        println!("{:<32} {:<5} {}", r.name, if r.ok { "PASS" } else { "FAIL" }, r.detail);
+        all_ok &= r.ok;
+    }
+    if all_ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }

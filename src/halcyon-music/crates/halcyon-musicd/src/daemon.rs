@@ -408,6 +408,12 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         });
     }
 
+    // Part 5: keep the recommendation model up to date with new plays and skips.
+    {
+        let cache = cache.clone();
+        supervisor::supervise("reco-learner", None, move || crate::reco::engine::learner_loop(cache.clone()));
+    }
+
     // MPRIS 2 D-Bus server on user session bus
     {
         let player = player.clone();

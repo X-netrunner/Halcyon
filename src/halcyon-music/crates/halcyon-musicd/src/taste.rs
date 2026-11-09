@@ -29,6 +29,8 @@ use std::path::{Path, PathBuf};
 /// Half-lives, in days.
 pub const SLOW_HALF_LIFE_DAYS: f64 = 60.0;
 pub const FAST_HALF_LIFE_DAYS: f64 = 3.0;
+/// Half-life of the "recent skip rate" (Part 5): how often you skip this artist lately.
+pub const RECENT_HALF_LIFE_DAYS: f64 = 14.0;
 
 /// What one play is worth, by label (Part 3 labels).
 pub const W_STRONG: f64 = 2.5;
@@ -138,6 +140,11 @@ impl TagTable {
         self.by_artist.len()
     }
 
+    /// The artist keys that have tags, in order.
+    pub fn keys(&self) -> Vec<String> {
+        self.by_artist.keys().cloned().collect()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.by_artist.is_empty()
     }
@@ -165,17 +172,26 @@ pub struct Signal {
     pub skips: u32,
     /// Unix seconds of the last positive play, 0 if none.
     pub last_positive: u64,
+    /// Part 5: finished plays and skips with a 14-day half-life, so "you skipped this artist a lot
+    /// two months ago" fades. Old saved profiles do not have them (they read as 0).
+    #[serde(default)]
+    pub recent_pos: f64,
+    #[serde(default)]
+    pub recent_skip: f64,
 }
 
 impl Signal {
-    fn add(&mut self, w: f64, decay_slow: f64, decay_fast: f64, at: u64) {
+    fn add(&mut self, w: f64, decay_slow: f64, decay_fast: f64, decay_recent: f64, at: u64) {
         self.slow += w * decay_slow;
         self.fast += w * decay_fast;
         if w > 0.0 {
             self.positives += 1;
             self.last_positive = self.last_positive.max(at);
+            self.recent_pos += decay_recent;
         } else if w < 0.0 {
             self.skips += 1;
+            // A weak skip (left late) counts for less than a skip.
+            self.recent_skip += (-w).min(1.0) * decay_recent;
         }
     }
 }
@@ -212,6 +228,24 @@ pub struct TasteProfile {
     track_fast_max: f64,
 }
 
+/// A read-only summary of one artist for the Part 5 ranker.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ArtistView {
+    /// The listener has played (or skipped) this artist.
+    pub known: bool,
+    /// Slow and fast affinity, -1 to 1.
+    pub slow: f64,
+    pub fast: f64,
+    /// Loved once, not played for [`COMEBACK_AFTER_DAYS`].
+    pub comeback: bool,
+    /// Share of recent plays of this artist that were skipped, 0 to 1 (about 14-day memory).
+    pub skip_rate: f64,
+    /// How much more this artist is played at the current time of day than evenly, -1 to 1.
+    pub time_fit: f64,
+    /// The artist belongs to one of the taste clusters.
+    pub in_cluster: bool,
+}
+
 /// What the item is scored for.
 #[derive(Debug, Clone, Copy)]
 pub struct AffinityCtx {
@@ -240,9 +274,10 @@ impl TasteProfile {
             let age_days = (now - e.started_at) as f64 / DAY as f64;
             let ds = 0.5f64.powf(age_days / SLOW_HALF_LIFE_DAYS);
             let df = 0.5f64.powf(age_days / FAST_HALF_LIFE_DAYS);
+            let dr = 0.5f64.powf(age_days / RECENT_HALF_LIFE_DAYS);
             let key = artist_key(&e.artist);
-            p.artists.entry(key.clone()).or_default().add(w, ds, df, e.started_at);
-            p.tracks.entry(e.track_id.clone()).or_default().add(w, ds, df, e.started_at);
+            p.artists.entry(key.clone()).or_default().add(w, ds, df, dr, e.started_at);
+            p.tracks.entry(e.track_id.clone()).or_default().add(w, ds, df, dr, e.started_at);
             if w > 0.0 {
                 let b = bucket_of(e.started_at, tz_offset_secs);
                 let parts = p.buckets.entry(key).or_insert([0.0; BUCKETS]);
@@ -313,6 +348,64 @@ impl TasteProfile {
             }
         }
         score
+    }
+
+    /// Part 5: what the profile knows about an artist, as plain numbers for the ranker. Every field
+    /// is 0 for an artist the listener has not played (`known == false`).
+    pub fn artist_view(&self, artist: &str, ctx: &AffinityCtx) -> ArtistView {
+        let key = artist_key(artist);
+        let mut v = ArtistView::default();
+        let Some(a) = self.artists.get(&key) else {
+            return v;
+        };
+        v.known = true;
+        v.slow = (a.slow / self.slow_max).clamp(-1.0, 1.0);
+        v.fast = (a.fast / self.fast_max).clamp(-1.0, 1.0);
+        v.comeback = self.comeback(a, ctx.now);
+        v.skip_rate = a.recent_skip / (a.recent_pos + a.recent_skip + 1.0);
+        // Same rule as `affinity`'s demotion, so a hated artist is never rated better than before.
+        if a.skips >= 3 && a.skips > a.positives {
+            v.skip_rate = v.skip_rate.max(0.6);
+        }
+        if let (Some(b), Some(parts)) = (ctx.bucket, self.buckets.get(&key)) {
+            let total: f64 = parts.iter().sum();
+            if total > 1e-9 {
+                if let Some(part) = parts.get(b) {
+                    // 1/8 of the listening in this slot is "no preference" (0); all of it is 1.
+                    v.time_fit = ((part / total - 1.0 / BUCKETS as f64) / (1.0 - 1.0 / BUCKETS as f64)).clamp(-1.0, 1.0);
+                }
+            }
+        }
+        v.in_cluster = self.artist_cluster.contains_key(&key);
+        v
+    }
+
+    /// Part 5: the per-track signal in -1..=1 (a track you keep finishing is up, one you only ever
+    /// skipped is at the bottom), and whether the track is known at all.
+    pub fn track_view(&self, track_id: &str) -> (f64, bool) {
+        let Some(t) = self.tracks.get(track_id) else {
+            return (0.0, false);
+        };
+        let ts = (t.slow / self.track_slow_max).clamp(-1.0, 1.0);
+        let tf = (t.fast / self.track_fast_max).clamp(-1.0, 1.0);
+        let mut v = 0.5 * ts + 0.5 * tf;
+        if t.skips > 0 && t.positives == 0 {
+            v -= 1.0;
+        }
+        (v.clamp(-1.0, 1.0), true)
+    }
+
+    /// Part 5: the artists you like most right now, best first (slow and fast scale together), as
+    /// stored keys. Used to pick seeds for "similar artists" and new releases.
+    pub fn top_artists(&self, n: usize) -> Vec<String> {
+        let mut ranked: Vec<(&String, f64)> = self
+            .artists
+            .iter()
+            .map(|(k, s)| (k, s.slow.max(0.0) / self.slow_max + s.fast.max(0.0) / self.fast_max))
+            .filter(|(_, w)| *w > 0.0)
+            .collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(b.0)));
+        ranked.into_iter().take(n).map(|(k, _)| k.clone()).collect()
     }
 
     /// Which cluster the given tags fit best, and how well (cosine, 0 to 1). `None` when there are

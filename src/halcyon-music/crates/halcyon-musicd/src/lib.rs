@@ -34,6 +34,7 @@ pub mod panic_hook;
 pub mod probe_cli;
 pub mod probes;
 pub mod profile;
+pub mod reco;
 pub mod sd_notify;
 pub mod session_browse;
 pub mod state_store;
