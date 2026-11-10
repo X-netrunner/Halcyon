@@ -8,7 +8,7 @@
 use crate::art::ArtSize;
 use crate::models::{
     Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, EndpointProbe, FullCapsule, HomeFeed,
-    Lyrics, MusicMix, Playlist,
+    Lyrics, MixMeta, MusicMix, Playlist,
 };
 use crate::state::{Bitrate, PlayerState, RepeatMode, Track};
 use serde::{Deserialize, Serialize};
@@ -177,7 +177,26 @@ pub enum CommandBody {
     GetLlmStatus,
     /// Turn the optional LLM layer on or off and choose its backend and model (`backend` is
     /// `ollama` today). Answered with [`EventBody::LlmStatus`]. The layer is off by default.
-    SetLlmSettings { enabled: bool, backend: String, model: String },
+    ///
+    /// Part 7: `backend` is `local` (the built-in model) or `ollama`. `model` is the model of the
+    /// chosen backend (a built-in model id for `local`). `endpoint` is Ollama's address; empty
+    /// keeps the stored one. An older client that sends only the first three still works.
+    SetLlmSettings {
+        enabled: bool,
+        backend: String,
+        model: String,
+        #[serde(default)]
+        endpoint: String,
+    },
+    /// Ask for the built-in models and what is on disk; answered with [`EventBody::LlmModels`].
+    ListLlmModels,
+    /// Download a built-in model (resumes an interrupted one). Progress arrives as
+    /// [`EventBody::LlmDownload`], and a fresh [`EventBody::LlmModels`] when it ends. One at a time.
+    DownloadLlmModel { id: String },
+    /// Stop the running download. What was fetched is kept so the next download resumes.
+    CancelLlmDownload,
+    /// Delete a built-in model file (and any half-finished download of it).
+    DeleteLlmModel { id: String },
     /// Check whether the chosen backend answers and has the model; answered with
     /// [`EventBody::LlmStatus`] carrying `reachable` and, when something is wrong, a `hint`.
     TestLlmConnection,
@@ -187,7 +206,42 @@ pub enum CommandBody {
     /// [`EventBody::PromptPlaylistResult`] or [`EventBody::PromptPlaylistFailed`]. An older
     /// daemon answers with an "unsupported" error.
     PromptPlaylist { text: String },
+    /// Part 6: the stored mixes at once (answered with [`EventBody::MixesUpdated`]), then any mix
+    /// whose schedule is due is rebuilt in the background and sent again as it finishes.
+    GetMixes,
+    /// Part 6: rebuild one mix now (the Refresh button). Answered with [`EventBody::MixesUpdated`].
+    RefreshMix { mix_id: String },
+    /// Part 6: "Less like this" / "Not my taste". With `track_id` it is about that song and its
+    /// artist; without, about the whole mix. Takes effect on the taste model at once and is
+    /// answered with [`EventBody::MixesUpdated`].
+    MixFeedback {
+        mix_id: String,
+        #[serde(default)]
+        track_id: Option<String>,
+        action: MixFeedbackAction,
+    },
+    /// Part 6: song radio. Builds a list from one song with the same ranker and keeps adding
+    /// songs while it plays. Answered with [`EventBody::RadioStarted`].
+    StartRadio { track: Track },
+    /// Part 6: stop adding songs to a running radio.
+    StopRadio,
+    /// Part 6: Smart Shuffle for a list of your own. The daemon puts one suggestion after every
+    /// three of your songs and starts playing. Answered with [`EventBody::SmartShuffleStarted`].
+    SmartShuffle { name: String, tracks: Vec<Track> },
     /// Anything we do not recognise yet: kept, not fatal.
+    #[serde(other)]
+    Unknown,
+}
+
+/// What the listener said about a song or a mix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MixFeedbackAction {
+    /// Play fewer songs like this: the artist is capped at one song per list.
+    LessLikeThis,
+    /// Never this song again, and a strong negative for the taste model.
+    NotMyTaste,
+    /// "Not this" on a Smart Shuffle suggestion: same as `NotMyTaste` for that song.
     #[serde(other)]
     Unknown,
 }
@@ -345,6 +399,28 @@ pub enum EventBody {
         #[serde(default)]
         hint: Option<String>,
     },
+    /// The built-in language models (Part 7): what the catalogue offers and what is on disk.
+    /// `engine` is whether this daemon was built with the embedded model engine; `active` is
+    /// the model Smart suggestions would use; `dir` is the folder the files live in.
+    LlmModels {
+        models: Vec<crate::models::LlmModelInfo>,
+        #[serde(default)]
+        engine: bool,
+        #[serde(default)]
+        active: String,
+        #[serde(default)]
+        dir: String,
+    },
+    /// Where a model download is. `state` is `downloading`, `verifying`, `done`, `cancelled` or
+    /// `failed` (with `error` in plain language). A client that does not know a state shows the numbers.
+    LlmDownload {
+        id: String,
+        state: String,
+        done: u64,
+        total: u64,
+        #[serde(default)]
+        error: Option<String>,
+    },
     /// A Home mix got a better title and a short reason. Sent when the answer is ready (or
     /// found in the cache), never before; the mix keeps working as it is until then.
     MixEnriched { mix_id: String, title: String, reason: String },
@@ -363,6 +439,18 @@ pub enum EventBody {
     /// A [`CommandBody::PromptPlaylist`] request that could not be answered. `reason` is plain
     /// language and says what to do.
     PromptPlaylistFailed { request: String, reason: String },
+    /// Part 6: the generated mixes (Daily Mix, Discover Weekly, Release Radar, On Repeat, Repeat
+    /// Rewind, Daylist) as they stand, with the reason line and schedule of each. A client
+    /// replaces the mixes with the same ids and keeps the rest.
+    MixesUpdated { mixes: Vec<MusicMix>, meta: Vec<MixMeta> },
+    /// Part 6: a radio started (first songs are already queued and playing). Later songs are
+    /// appended to the queue by the daemon.
+    RadioStarted { mix: MusicMix, meta: MixMeta },
+    /// Part 6: the radio ended, or could not start; `reason` is plain language.
+    RadioStopped { reason: String },
+    /// Part 6: Smart Shuffle started. `suggested` are the ids of the inserted songs, so a client
+    /// can mark them and offer "Not this".
+    SmartShuffleStarted { name: String, suggested: Vec<String> },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -569,6 +657,7 @@ mod tests {
                 enabled: true,
                 backend: "ollama".into(),
                 model: "qwen2.5:3b".into(),
+                endpoint: String::new(),
             }),
         ] {
             let line = encode_line(&cmd).expect("encode");
@@ -593,6 +682,53 @@ mod tests {
             let back: Event = decode_line(&line).expect("decode");
             assert_eq!(ev, back);
         }
+    }
+
+    #[test]
+    fn set_llm_settings_from_an_older_client_still_decodes() {
+        // Part 7 added `endpoint`; a client that does not send it must still work.
+        let line = br#"{"version":1,"type":"set_llm_settings","enabled":true,"backend":"ollama","model":"qwen2.5:3b"}
+"#;
+        let cmd: Command = decode_line(line).expect("decode");
+        assert!(matches!(cmd.body, CommandBody::SetLlmSettings { enabled: true, ref endpoint, .. } if endpoint.is_empty()));
+    }
+
+    #[test]
+    fn local_model_messages_round_trip_and_have_stable_wire_names() {
+        for (cmd, wire) in [
+            (command(CommandBody::ListLlmModels), "list_llm_models"),
+            (command(CommandBody::DownloadLlmModel { id: "qwen2.5-0.5b-instruct".into() }), "download_llm_model"),
+            (command(CommandBody::CancelLlmDownload), "cancel_llm_download"),
+            (command(CommandBody::DeleteLlmModel { id: "x".into() }), "delete_llm_model"),
+        ] {
+            let line = encode_line(&cmd).expect("encode");
+            assert!(String::from_utf8_lossy(&line).contains(&format!("\"type\":\"{wire}\"")));
+            let back: Command = decode_line(&line).expect("decode");
+            assert_eq!(cmd, back);
+        }
+        let info = crate::models::LlmModelInfo {
+            id: "qwen2.5-0.5b-instruct".into(),
+            name: "Qwen2.5 0.5B".into(),
+            size_bytes: 491_000_000,
+            licence: "Apache-2.0".into(),
+            installed: false,
+            partial_bytes: 1024,
+            verified: String::new(),
+        };
+        for ev in [
+            event(EventBody::LlmModels { models: vec![info], engine: true, active: "qwen2.5-0.5b-instruct".into(), dir: "/d".into() }),
+            event(EventBody::LlmDownload { id: "m".into(), state: "downloading".into(), done: 5, total: 10, error: None }),
+            event(EventBody::LlmDownload { id: "m".into(), state: "failed".into(), done: 5, total: 10, error: Some("offline".into()) }),
+        ] {
+            let line = encode_line(&ev).expect("encode");
+            let back: Event = decode_line(&line).expect("decode");
+            assert_eq!(ev, back);
+        }
+        // a peer that sends only the models still decodes
+        let line = br#"{"version":1,"type":"llm_models","models":[{"id":"a"}]}
+"#;
+        let ev: Event = decode_line(line).expect("decode");
+        assert!(matches!(ev.body, EventBody::LlmModels { engine: false, .. }));
     }
 
     #[test]

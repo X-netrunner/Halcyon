@@ -10,6 +10,10 @@
 //! See `docs/llm-layer.md` for the data flow, the privacy table and the failure modes.
 
 pub mod backend;
+pub mod bench;
+pub mod grammar;
+pub mod local;
+pub mod models;
 pub mod mock;
 pub mod playlist;
 pub mod prompts;
@@ -22,6 +26,7 @@ use crate::daemon::DaemonContext;
 use crate::suggestions::normalize_string;
 use crate::token_store::now_secs;
 use backend::{LlmError, LlmRequest, OllamaBackend, TasteLlm};
+use local::LocalGgufBackend;
 use halcyon_music_core::models::{MusicMix, Track};
 use halcyon_music_core::protocol::{self, EventBody};
 use serde::{Deserialize, Serialize};
@@ -54,26 +59,56 @@ const FEATURE_WHY_MIX: &str = "why-mix";
 
 // ---------------------------------------------------------------- settings
 
+/// The two ways to run the model. `local` is the built-in one (a small downloaded model, no other
+/// app needed); `ollama` talks to an Ollama server.
+pub const BACKEND_LOCAL: &str = "local";
+pub const BACKEND_OLLAMA: &str = "ollama";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LlmSettings {
     /// Off by default: nothing is sent anywhere until the user turns this on.
     pub enabled: bool,
+    /// `local` (built-in model) or `ollama`.
     pub backend: String,
+    /// The Ollama model name (used when `backend` is `ollama`).
     pub model: String,
+    /// The built-in model's id from `models::CATALOGUE` (used when `backend` is `local`).
+    pub local_model: String,
+    /// Where Ollama listens. Only used with the `ollama` backend.
+    pub ollama_endpoint: String,
 }
 
 impl Default for LlmSettings {
     fn default() -> Self {
-        Self { enabled: false, backend: "ollama".to_string(), model: DEFAULT_MODEL.to_string() }
+        Self {
+            enabled: false,
+            backend: BACKEND_LOCAL.to_string(),
+            model: DEFAULT_MODEL.to_string(),
+            local_model: models::DEFAULT_LOCAL_MODEL.to_string(),
+            ollama_endpoint: DEFAULT_ENDPOINT.to_string(),
+        }
     }
 }
 
+/// An Ollama address that is safe to use: `http(s)://host[:port]` with nothing else.
+pub fn clean_endpoint(raw: &str) -> Option<String> {
+    let t = raw.trim().trim_end_matches('/');
+    let rest = t.strip_prefix("http://").or_else(|| t.strip_prefix("https://"))?;
+    let ok = !rest.is_empty()
+        && rest.len() <= 100
+        && rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+        && !rest.starts_with(|c: char| c == '.' || c == '-' || c == ':');
+    ok.then(|| t.to_string())
+}
+
 impl LlmSettings {
-    /// Make the settings safe to store and use: `ollama` is the only backend today, and a model
-    /// name keeps only the characters model names use.
+    /// Make the settings safe to store and use: the backend is one of the two known ones, model
+    /// names keep only the characters model names use, and the Ollama address is a plain http(s) one.
     pub fn normalised(mut self) -> Self {
-        self.backend = "ollama".to_string();
+        if self.backend != BACKEND_OLLAMA {
+            self.backend = BACKEND_LOCAL.to_string();
+        }
         let model: String = self
             .model
             .trim()
@@ -82,7 +117,24 @@ impl LlmSettings {
             .take(80)
             .collect();
         self.model = if model.is_empty() { DEFAULT_MODEL.to_string() } else { model };
+        if !models::is_known(&self.local_model) {
+            self.local_model = models::DEFAULT_LOCAL_MODEL.to_string();
+        }
+        self.ollama_endpoint = clean_endpoint(&self.ollama_endpoint).unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
         self
+    }
+
+    /// The model of the chosen backend: what answers are cached under and what Settings shows.
+    pub fn active_model(&self) -> &str {
+        if self.backend == BACKEND_OLLAMA {
+            &self.model
+        } else {
+            &self.local_model
+        }
+    }
+
+    pub fn uses_local(&self) -> bool {
+        self.backend != BACKEND_OLLAMA
     }
 }
 
@@ -111,14 +163,18 @@ pub fn status_event(settings: &LlmSettings, reachable: bool, hint: Option<String
     protocol::event(EventBody::LlmStatus {
         enabled: settings.enabled,
         backend: settings.backend.clone(),
-        model: settings.model.clone(),
+        model: settings.active_model().to_string(),
         reachable,
         hint,
     })
 }
 
 pub fn make_backend(settings: &LlmSettings, http: &reqwest::Client) -> Box<dyn TasteLlm> {
-    Box::new(OllamaBackend::new(http.clone(), DEFAULT_ENDPOINT, &settings.model))
+    if settings.uses_local() {
+        Box::new(LocalGgufBackend::production(&settings.local_model))
+    } else {
+        Box::new(OllamaBackend::new(http.clone(), &settings.ollama_endpoint, &settings.model))
+    }
 }
 
 /// Reachable or not, with a plain-language fix when not.
@@ -192,7 +248,7 @@ pub async fn call_with_retry(llm: &dyn TasteLlm, req: &LlmRequest, timeout: Dura
         }
         match tokio::time::timeout(timeout, llm.complete(req)).await {
             Ok(Ok(text)) => return Ok(text),
-            Ok(Err(e @ LlmError::ModelMissing(_))) => return Err(e),
+            Ok(Err(e)) if e.is_permanent() => return Err(e),
             Ok(Err(e)) => last = e,
             Err(_) => last = LlmError::Timeout,
         }
@@ -371,7 +427,8 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
                 reason: b.reason,
             }));
         };
-        match enrich_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, CALL_TIMEOUT, &emit).await {
+        let timeout = llm.call_timeout();
+        match enrich_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, timeout, &emit).await {
             Ok(r) => {
                 debug!(from_cache = r.from_cache, generated = r.generated, paused = r.paused, "mix words done");
                 // Feature 3, in the same task so the model is only ever used by one job at a time.
@@ -382,7 +439,7 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
                         track_ids: o.track_ids,
                     }));
                 };
-                match rerank::rerank_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, CALL_TIMEOUT, &emit_order)
+                match rerank::rerank_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, timeout, &emit_order)
                     .await
                 {
                     Ok(r) => debug!(
@@ -414,7 +471,7 @@ pub fn spawn_connection_test(ctx: Arc<DaemonContext>, then_enrich: Vec<MusicMix>
         let llm = make_backend(&settings, &ctx.http);
         let (reachable, hint) = check_connection(llm.as_ref()).await;
         if reachable {
-            clear_pause(&ctx.cache, &settings.model);
+            clear_pause(&ctx.cache, settings.active_model());
         }
         let _ = ctx.events_tx.send(status_event(&settings, reachable, hint));
         if reachable && settings.enabled {
@@ -423,14 +480,59 @@ pub fn spawn_connection_test(ctx: Arc<DaemonContext>, then_enrich: Vec<MusicMix>
     });
 }
 
-/// Apply new settings from the GUI: store them, tell everyone, and check the connection.
-pub fn apply_settings(ctx: &Arc<DaemonContext>, enabled: bool, model: String, home_mixes: Vec<MusicMix>) {
-    let settings = LlmSettings { enabled, backend: "ollama".to_string(), model }.normalised();
+/// The Home mixes the daemon last saved (what Smart suggestions writes words about).
+fn home_mixes(ctx: &DaemonContext) -> Vec<MusicMix> {
+    crate::daemon::load_home_mixes(&ctx.cache)
+}
+
+/// Settings after a client's change: only the chosen backend's model is replaced, so switching
+/// back and forth keeps each backend's own choice.
+pub fn merged_settings(old: LlmSettings, enabled: bool, backend: &str, model: &str, endpoint: &str) -> LlmSettings {
+    let mut s = old;
+    s.enabled = enabled;
+    s.backend = backend.to_string();
+    let model = model.trim();
+    if !model.is_empty() {
+        if backend == BACKEND_OLLAMA {
+            s.model = model.to_string();
+        } else {
+            s.local_model = model.to_string();
+        }
+    }
+    if !endpoint.trim().is_empty() {
+        s.ollama_endpoint = endpoint.to_string();
+    }
+    s.normalised()
+}
+
+/// Apply new settings from the GUI: store them, tell everyone, and check the connection. Turning
+/// Smart suggestions on with the built-in backend starts the one-time model download when the
+/// model is not on disk yet (Settings shows its size next to the switch).
+pub fn apply_settings(ctx: &Arc<DaemonContext>, enabled: bool, backend: &str, model: &str, endpoint: &str) {
+    let settings = merged_settings(load_settings(&ctx.cache), enabled, backend, model, endpoint);
     save_settings(&ctx.cache, &settings);
-    clear_pause(&ctx.cache, &settings.model);
+    clear_pause(&ctx.cache, settings.active_model());
     let _ = ctx.events_tx.send(status_event(&settings, false, None));
+    models::announce_models(ctx);
+    if settings.enabled && settings.uses_local() && local::engine_available() {
+        if let Some(spec) = models::find(&settings.local_model) {
+            if !models::disk_status(&models::models_dir(), spec.file).installed {
+                models::spawn_download(ctx.clone(), spec.id.to_string());
+                return;
+            }
+        }
+    }
     if settings.enabled {
-        spawn_connection_test(ctx.clone(), home_mixes);
+        spawn_connection_test(ctx.clone(), home_mixes(ctx));
+    }
+}
+
+/// A model download finished: if it is the one Smart suggestions uses, check it and write the words now.
+pub fn model_ready(ctx: Arc<DaemonContext>, id: &str) {
+    let settings = load_settings(&ctx.cache);
+    if settings.enabled && settings.uses_local() && settings.local_model == id {
+        let mixes = home_mixes(&ctx);
+        spawn_connection_test(ctx, mixes);
     }
 }
 
@@ -456,19 +558,28 @@ mod tests {
     fn defaults_are_off_and_local() {
         let s = LlmSettings::default();
         assert!(!s.enabled);
-        assert_eq!(s.backend, "ollama");
+        assert_eq!(s.backend, "local");
         assert!(DEFAULT_ENDPOINT.starts_with("http://127.0.0.1"));
+        assert_eq!(s.ollama_endpoint, DEFAULT_ENDPOINT);
+        assert_eq!(s.active_model(), models::DEFAULT_LOCAL_MODEL);
     }
 
     #[test]
     fn settings_normalise_model_names_and_backend() {
-        let s = LlmSettings { enabled: true, backend: "somewhere-else".into(), model: "  qwen2.5:3b; rm -rf /  ".into() }
-            .normalised();
-        assert_eq!(s.backend, "ollama");
+        let s = LlmSettings {
+            enabled: true,
+            backend: "somewhere-else".into(),
+            model: "  qwen2.5:3b; rm -rf /  ".into(),
+            ..LlmSettings::default()
+        }
+        .normalised();
+        assert_eq!(s.backend, "local");
         assert_eq!(s.model, "qwen2.5:3brm-rf/");
-        let empty = LlmSettings { enabled: true, backend: String::new(), model: "   ".into() }.normalised();
+        let o = LlmSettings { backend: "ollama".into(), ..LlmSettings::default() }.normalised();
+        assert_eq!(o.backend, "ollama");
+        let empty = LlmSettings { enabled: true, backend: String::new(), model: "   ".into(), ..LlmSettings::default() }.normalised();
         assert_eq!(empty.model, DEFAULT_MODEL);
-        let long = LlmSettings { enabled: true, backend: String::new(), model: "a".repeat(500) }.normalised();
+        let long = LlmSettings { enabled: true, backend: String::new(), model: "a".repeat(500), ..LlmSettings::default() }.normalised();
         assert_eq!(long.model.len(), 80);
     }
 
@@ -489,5 +600,60 @@ mod tests {
         assert_ne!(k1, answer_key("rerank", "abc", "qwen2.5:3b"));
         assert_ne!(k1, answer_key("why-mix", "abc", "llama3"));
         assert_ne!(k1, answer_key("why-mix", "abd", "qwen2.5:3b"));
+    }
+
+    #[test]
+    fn old_stored_settings_keep_their_ollama_choice() {
+        // What the layer stored before the built-in model existed.
+        let stored = r#"{"enabled":true,"backend":"ollama","model":"llama3:8b"}"#;
+        let s = serde_json::from_str::<LlmSettings>(stored).expect("decode").normalised();
+        assert!(s.enabled);
+        assert_eq!(s.backend, "ollama");
+        assert_eq!(s.active_model(), "llama3:8b");
+        assert_eq!(s.ollama_endpoint, DEFAULT_ENDPOINT);
+        assert_eq!(s.local_model, models::DEFAULT_LOCAL_MODEL);
+        // and an empty store is the new default
+        let fresh = serde_json::from_str::<LlmSettings>("{}").expect("decode").normalised();
+        assert_eq!(fresh.backend, "local");
+        assert!(!fresh.enabled);
+    }
+
+    #[test]
+    fn each_backend_keeps_its_own_model_choice() {
+        let start = LlmSettings::default();
+        let a = merged_settings(start, true, "ollama", "mistral:7b", "");
+        assert_eq!((a.backend.as_str(), a.active_model()), ("ollama", "mistral:7b"));
+        let b = merged_settings(a, true, "local", "qwen3-0.6b", "");
+        assert_eq!((b.backend.as_str(), b.active_model()), ("local", "qwen3-0.6b"));
+        assert_eq!(b.model, "mistral:7b");
+        // switching back finds the Ollama model again
+        let c = merged_settings(b, true, "ollama", "", "");
+        assert_eq!(c.active_model(), "mistral:7b");
+        // an unknown built-in id falls back to the default
+        let d = merged_settings(c, true, "local", "not-a-model", "");
+        assert_eq!(d.active_model(), models::DEFAULT_LOCAL_MODEL);
+    }
+
+    #[test]
+    fn ollama_endpoint_is_a_plain_http_address() {
+        assert_eq!(clean_endpoint("http://127.0.0.1:11434/"), Some("http://127.0.0.1:11434".to_string()));
+        assert_eq!(clean_endpoint(" https://ollama.lan:8443 "), Some("https://ollama.lan:8443".to_string()));
+        for bad in ["", "127.0.0.1:11434", "ftp://x", "http://", "http://a b", "http://x/y?z=1", "http://x;rm", "http://:80", "javascript:alert(1)"] {
+            assert_eq!(clean_endpoint(bad), None, "{bad:?}");
+        }
+        let s = merged_settings(LlmSettings::default(), true, "ollama", "", "http://192.168.1.5:11434");
+        assert_eq!(s.ollama_endpoint, "http://192.168.1.5:11434");
+        let bad = merged_settings(s, true, "ollama", "", "file:///etc/passwd");
+        assert_eq!(bad.ollama_endpoint, DEFAULT_ENDPOINT);
+    }
+
+    #[test]
+    fn answers_are_cached_per_backend_model() {
+        let ollama = LlmSettings { backend: "ollama".into(), ..LlmSettings::default() };
+        let local = LlmSettings::default();
+        assert_ne!(
+            answer_key("why-mix", "abc", ollama.active_model()),
+            answer_key("why-mix", "abc", local.active_model())
+        );
     }
 }

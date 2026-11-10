@@ -190,6 +190,31 @@ pub struct MusicMix {
     pub art_url: Option<String>,
 }
 
+/// Part 6: the words and the schedule that go with one generated mix. Kept apart from
+/// [`MusicMix`] so that struct stays as it is; a client matches the two by `mix_id`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct MixMeta {
+    pub mix_id: String,
+    /// `daily_mix`, `discover_weekly`, `release_radar`, `on_repeat`, `repeat_rewind`, `daylist`,
+    /// `radio` or `smart_shuffle`. A client treats a kind it does not know as a plain mix.
+    pub kind: String,
+    /// One line that says why the mix is what it is: "Because you've been playing X and Y".
+    pub reason: String,
+    /// One line per song, same order as the mix's songs.
+    pub reasons: Vec<String>,
+    /// Which songs are exploration slots (artists you have not played), same order.
+    pub explore: Vec<bool>,
+    /// Unix seconds when the mix was built.
+    pub built_at: u64,
+    /// Unix seconds when it changes by itself next. 0 = no schedule (radio).
+    pub next_refresh_at: u64,
+    /// Up to four cover thumbnails for the mosaic cover. Empty = draw the gradient.
+    pub cover_urls: Vec<String>,
+    /// 0 to 359: the colour of the gradient cover when there are no thumbnails.
+    pub cover_hue: u16,
+}
+
 /// Summary statistics for the Home page Capsule preview card.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapsuleSummary {
@@ -214,6 +239,8 @@ pub struct HomeFeed {
     pub playlists: Vec<Playlist>,
     pub saved_albums: Vec<Album>,
     pub capsule_preview: Option<CapsuleSummary>,
+    /// Part 6: reasons and schedule for the generated mixes in `made_for_you`.
+    pub mix_meta: Vec<MixMeta>,
 }
 
 /// The Discover page: new music, from outside sources and from artists the user follows.
@@ -322,3 +349,24 @@ pub struct Lyrics {
     pub offset_ms: i64,
 }
 
+
+/// One downloadable built-in language model, as the Settings card shows it (Part 7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LlmModelInfo {
+    /// Stable id, e.g. `qwen2.5-0.5b-instruct`.
+    pub id: String,
+    /// Name to show.
+    pub name: String,
+    /// Download size in bytes: exact once the file is on disk, otherwise the catalogue's estimate.
+    pub size_bytes: u64,
+    /// Licence name, e.g. `Apache-2.0`.
+    pub licence: String,
+    /// The file is on disk and complete.
+    pub installed: bool,
+    /// Bytes of an interrupted download that can be resumed (0 when none).
+    pub partial_bytes: u64,
+    /// How the file was checked: `pinned` (against a checksum shipped with Halcyon), `server`
+    /// (against the one the download server published) or `size` (length only). Empty when not installed.
+    pub verified: String,
+}

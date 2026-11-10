@@ -9,7 +9,7 @@
 //! metadata can sit in the message but cannot break out of its string or pose as an
 //! instruction.
 
-use super::backend::LlmRequest;
+use super::backend::{LlmRequest, Shape};
 use super::taste::TasteSummary;
 use super::validate::{clean_meta, mix_alias, QuerySpec};
 use halcyon_music_core::models::{MusicMix, Track};
@@ -95,7 +95,13 @@ pub fn build_why_mix(taste: &TasteSummary, mixes: &[&MusicMix]) -> WhyMixPrompt 
     let message = WhyMixMessage { task: "why_mix", taste, mixes: prompt_mixes };
     let user = serde_json::to_string(&message).unwrap_or_default();
     WhyMixPrompt {
-        request: LlmRequest { system: SYSTEM_WHY_MIX.to_string(), user, temperature: TEMPERATURE, max_tokens: 600 },
+        request: LlmRequest {
+            system: SYSTEM_WHY_MIX.to_string(),
+            user,
+            temperature: TEMPERATURE,
+            max_tokens: 600,
+            shape: Shape::WhyMix { mixes: aliases.len() },
+        },
         aliases,
     }
 }
@@ -161,7 +167,7 @@ struct QueryMessage<'a> {
 pub fn build_query(taste: &TasteSummary, request: &str) -> LlmRequest {
     let message = QueryMessage { task: "prompt_query", request: clean_meta(request, MAX_REQUEST_CHARS), taste };
     let user = serde_json::to_string(&message).unwrap_or_default();
-    LlmRequest { system: SYSTEM_QUERY.to_string(), user, temperature: TEMPERATURE, max_tokens: 300 }
+    LlmRequest { system: SYSTEM_QUERY.to_string(), user, temperature: TEMPERATURE, max_tokens: 300, shape: Shape::Query }
 }
 
 #[derive(Serialize)]
@@ -208,7 +214,13 @@ pub fn build_pick(taste: &TasteSummary, request: &str, plan: &QuerySpec, candida
     };
     let user = serde_json::to_string(&message).unwrap_or_default();
     PickPrompt {
-        request: LlmRequest { system: SYSTEM_PICK.to_string(), user, temperature: TEMPERATURE, max_tokens: 450 },
+        request: LlmRequest {
+            system: SYSTEM_PICK.to_string(),
+            user,
+            temperature: TEMPERATURE,
+            max_tokens: 450,
+            shape: Shape::Pick { candidates: aliases.len() },
+        },
         aliases,
     }
 }
@@ -258,7 +270,13 @@ pub fn build_rerank(taste: &TasteSummary, mix_title: &str, tracks: &[Track]) -> 
     let message = RerankMessage { task: "rerank_mix", mix_title: clean_meta(mix_title, 60), taste, candidates: shown };
     let user = serde_json::to_string(&message).unwrap_or_default();
     PickPrompt {
-        request: LlmRequest { system: SYSTEM_RERANK.to_string(), user, temperature: TEMPERATURE, max_tokens: 300 },
+        request: LlmRequest {
+            system: SYSTEM_RERANK.to_string(),
+            user,
+            temperature: TEMPERATURE,
+            max_tokens: 300,
+            shape: Shape::Rerank { candidates: aliases.len() },
+        },
         aliases,
     }
 }

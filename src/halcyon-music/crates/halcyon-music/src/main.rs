@@ -39,7 +39,7 @@ use halcyon_music_core::art::ArtSize;
 use halcyon_music_core::models::{
     Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, FullCapsule, HomeFeed, Lyrics, Playlist, Track,
 };
-use halcyon_music_core::protocol::{CommandBody, EventBody};
+use halcyon_music_core::protocol::{CommandBody, EventBody, MixFeedbackAction};
 use halcyon_music_core::state::{Bitrate, PlayerState};
 use shortcuts::ShortcutAction;
 use theme::{Density, HalcyonPalette, Mood};
@@ -157,7 +157,15 @@ struct HalcyonApp {
     /// Smart suggestions (optional LLM layer): what the daemon last said about it. Off until the
     /// user turns it on in Settings.
     llm_enabled: bool,
+    /// `local` (built-in model) or `ollama`.
+    llm_backend: String,
+    /// The Ollama model name.
     llm_model: String,
+    /// The built-in model in use (an id from the daemon's list).
+    llm_local_model: String,
+    llm_models: Vec<halcyon_music_core::models::LlmModelInfo>,
+    llm_engine: bool,
+    llm_download: Option<views::llm_settings::Download>,
     llm_reach: views::llm_settings::Reach,
     llm_hint: Option<String>,
     /// True once the model name has been taken from the daemon, so a later status never
@@ -173,6 +181,8 @@ struct HalcyonApp {
     /// the Home feed is replaced, like `mix_notes`.
     mix_orders: std::collections::HashMap<String, Vec<String>>,
     prompt_phase: views::prompt_card::Phase,
+    /// Part 6: ids of the songs Smart Shuffle added to the queue.
+    smart_marks: std::collections::HashSet<String>,
     prompt_pending: Option<String>,
     prompt_mix: Option<halcyon_music_core::models::MusicMix>,
     discover_feed: DiscoverFeed,
@@ -287,6 +297,13 @@ enum Message {
     TrackMenuPlay,
     TrackMenuPlayNext,
     TrackMenuEnqueue,
+    TrackMenuRadio,
+    TrackMenuLess,
+    TrackMenuNot,
+    /// Part 6: Refresh / Less like this / Not my taste on a generated mix.
+    MixAction(String, views::home::MixAction),
+    /// Part 6: "Not this" on a Smart Shuffle suggestion.
+    RejectSuggestion(String),
     TrackMenuGoToAlbum,
     UiEvent(Box<UiEvent>),
     Shortcut(ShortcutAction),
@@ -327,6 +344,13 @@ enum Message {
     ToggleLlm,
     LlmModelChanged(String),
     LlmModelSubmit,
+    /// `local` or `ollama`.
+    LlmBackend(&'static str),
+    /// Use this built-in model.
+    LlmPickModel(String),
+    LlmDownload(String),
+    LlmCancelDownload,
+    LlmDeleteModel(String),
     TestLlm,
     /// "Describe a mood" on Home.
     PromptTextChanged(String),
@@ -605,7 +629,12 @@ impl HalcyonApp {
             perf_overlay: perf_flag,
             home_feed: HomeFeed::default(),
             llm_enabled: false,
+            llm_backend: "local".to_string(),
             llm_model: String::new(),
+            llm_local_model: String::new(),
+            llm_models: Vec::new(),
+            llm_engine: false,
+            llm_download: None,
             llm_reach: views::llm_settings::Reach::Unknown,
             llm_hint: None,
             llm_model_synced: false,
@@ -613,6 +642,7 @@ impl HalcyonApp {
             prompt_text: String::new(),
             mix_orders: std::collections::HashMap::new(),
             prompt_phase: views::prompt_card::Phase::Idle,
+            smart_marks: std::collections::HashSet::new(),
             prompt_pending: None,
             prompt_mix: None,
             discover_feed: DiscoverFeed::default(),
@@ -683,8 +713,9 @@ impl HalcyonApp {
     fn send_llm_settings(&self) {
         self.send(CommandBody::SetLlmSettings {
             enabled: self.llm_enabled,
-            backend: "ollama".to_string(),
-            model: self.llm_model.clone(),
+            backend: self.llm_backend.clone(),
+            model: if self.llm_backend == "ollama" { self.llm_model.clone() } else { self.llm_local_model.clone() },
+            endpoint: String::new(),
         });
     }
 
@@ -1137,6 +1168,7 @@ impl HalcyonApp {
                         self.audio_stream_on = false;
                         // Cheap and local: is Smart suggestions on, and with which model?
                         self.send(CommandBody::GetLlmStatus);
+                        self.send(CommandBody::ListLlmModels);
                         if daemon_version != halcyon_music_core::CORE_VERSION {
                             self.notify(
                                 format!(
@@ -1196,10 +1228,27 @@ impl HalcyonApp {
                         self.animations.animate_toast_show();
                         Task::none()
                     }
-                    EventBody::LlmStatus { enabled, model, reachable, hint, .. } => {
+                    EventBody::LlmModels { models, engine, active, .. } => {
+                        self.llm_models = models;
+                        self.llm_engine = engine;
+                        if !active.is_empty() {
+                            self.llm_local_model = active;
+                        }
+                        Task::none()
+                    }
+                    EventBody::LlmDownload { id, state, done, total, error } => {
+                        self.llm_download = Some(views::llm_settings::Download { id, state, done, total, error });
+                        Task::none()
+                    }
+                    EventBody::LlmStatus { enabled, backend, model, reachable, hint } => {
                         self.llm_enabled = enabled;
                         if !self.llm_model_synced {
-                            self.llm_model = model;
+                            self.llm_backend = backend;
+                            if self.llm_backend == "ollama" {
+                                self.llm_model = model;
+                            } else {
+                                self.llm_local_model = model;
+                            }
                             self.llm_model_synced = true;
                         }
                         self.llm_reach = if reachable {
@@ -1238,6 +1287,24 @@ impl HalcyonApp {
                             self.prompt_pending = None;
                             self.prompt_phase = views::prompt_card::Phase::Failed(reason);
                         }
+                        Task::none()
+                    }
+                    EventBody::MixesUpdated { mixes, meta } => {
+                        views::home::merge_generated(&mut self.home_feed, mixes, meta);
+                        self.apply_mix_notes();
+                        Task::none()
+                    }
+                    EventBody::RadioStarted { mix, .. } => {
+                        self.notify(format!("Playing {}", mix.title), true);
+                        Task::none()
+                    }
+                    EventBody::RadioStopped { reason } => {
+                        self.notify(reason, false);
+                        Task::none()
+                    }
+                    EventBody::SmartShuffleStarted { name, suggested } => {
+                        self.notify(format!("Smart Shuffle on {} · {} suggestions added", views::ellipsize(&name, 30), suggested.len()), true);
+                        self.smart_marks = suggested.into_iter().collect();
                         Task::none()
                     }
                     EventBody::MixEnriched { mix_id, title, reason } => {
@@ -1689,6 +1756,44 @@ impl HalcyonApp {
                 }
                 Task::none()
             }
+            Message::TrackMenuRadio => {
+                if let Some(m) = self.track_menu.take() {
+                    self.notify(format!("Starting a radio from \"{}\"", views::ellipsize(&m.track.title, 40)), true);
+                    self.send(CommandBody::StartRadio { track: m.track });
+                }
+                Task::none()
+            }
+            Message::TrackMenuLess | Message::TrackMenuNot => {
+                let action = if matches!(message, Message::TrackMenuNot) { MixFeedbackAction::NotMyTaste } else { MixFeedbackAction::LessLikeThis };
+                if let Some(m) = self.track_menu.take() {
+                    let note = if action == MixFeedbackAction::NotMyTaste { "Got it, that song will not come back" } else { "Got it, fewer songs like that" };
+                    self.notify(note.to_string(), true);
+                    self.send(CommandBody::MixFeedback { mix_id: String::new(), track_id: Some(m.track.id), action });
+                }
+                Task::none()
+            }
+            Message::MixAction(id, action) => {
+                match action {
+                    views::home::MixAction::Refresh => {
+                        self.notify("Refreshing that mix".to_string(), true);
+                        self.send(CommandBody::RefreshMix { mix_id: id });
+                    }
+                    views::home::MixAction::LessLikeThis => {
+                        self.notify("Got it, fewer mixes like that".to_string(), true);
+                        self.send(CommandBody::MixFeedback { mix_id: id, track_id: None, action: MixFeedbackAction::LessLikeThis });
+                    }
+                    views::home::MixAction::NotMyTaste => {
+                        self.notify("Got it, rebuilding that mix".to_string(), true);
+                        self.send(CommandBody::MixFeedback { mix_id: id, track_id: None, action: MixFeedbackAction::NotMyTaste });
+                    }
+                }
+                Task::none()
+            }
+            Message::RejectSuggestion(id) => {
+                self.smart_marks.remove(&id);
+                self.send(CommandBody::MixFeedback { mix_id: "smart-shuffle".into(), track_id: Some(id), action: MixFeedbackAction::NotMyTaste });
+                Task::none()
+            }
             Message::TrackMenuGoToAlbum => {
                 let album = self.track_menu.take().and_then(|m| m.track.album_id);
                 match album {
@@ -1918,6 +2023,34 @@ impl HalcyonApp {
             }
             Message::LlmModelChanged(name) => {
                 self.llm_model = name;
+                Task::none()
+            }
+            Message::LlmBackend(b) => {
+                self.llm_backend = b.to_string();
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                self.send_llm_settings();
+                self.send(CommandBody::ListLlmModels);
+                Task::none()
+            }
+            Message::LlmPickModel(id) => {
+                self.llm_local_model = id;
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                self.send_llm_settings();
+                Task::none()
+            }
+            Message::LlmDownload(id) => {
+                self.llm_download = None;
+                self.send(CommandBody::DownloadLlmModel { id });
+                Task::none()
+            }
+            Message::LlmCancelDownload => {
+                self.send(CommandBody::CancelLlmDownload);
+                Task::none()
+            }
+            Message::LlmDeleteModel(id) => {
+                self.send(CommandBody::DeleteLlmModel { id });
                 Task::none()
             }
             Message::LlmModelSubmit => {
@@ -2709,6 +2842,8 @@ impl HalcyonApp {
                 self.viz.frame(Instant::now(), self.state.playing, self.animations.reduce_motion),
                 Message::ToggleQueue,
                 Message::Dequeue,
+                &self.smart_marks,
+                Message::RejectSuggestion,
             ))
             .width(views::queue_drawer::QUEUE_DRAWER_WIDTH * queue_open_amount)
             .height(Length::Fill)
@@ -2850,6 +2985,9 @@ impl HalcyonApp {
                 Message::TrackMenuPlayNext,
                 Message::TrackMenuEnqueue,
                 menu.track.album_id.is_some().then_some(Message::TrackMenuGoToAlbum),
+                Message::TrackMenuRadio,
+                Message::TrackMenuLess,
+                Message::TrackMenuNot,
             );
             layers.push(views::account::overlay(card, x, y, Message::CloseMenus));
         }
@@ -3118,6 +3256,7 @@ impl HalcyonApp {
                 Message::PlayMix,
                 Message::SaveMix,
                 Message::OpenMix,
+                Message::MixAction,
                 Message::NavSelected,
                 self.animations.shimmer_phase,
                 self.animations.page_progress(),
@@ -3365,15 +3504,29 @@ impl HalcyonApp {
                 Message::ToggleDiagnostics,
                 Message::CopyDiagnostics,
                 views::llm_settings::view(
-                    self.llm_enabled,
-                    &self.llm_model,
-                    self.llm_reach,
-                    self.llm_hint.as_deref(),
-                    self.palette,
-                    Message::ToggleLlm,
-                    Message::LlmModelChanged,
-                    Message::LlmModelSubmit,
-                    Message::TestLlm,
+                    views::llm_settings::Props {
+                        enabled: self.llm_enabled,
+                        backend: &self.llm_backend,
+                        ollama_model: &self.llm_model,
+                        local_model: &self.llm_local_model,
+                        models: &self.llm_models,
+                        engine: self.llm_engine,
+                        download: self.llm_download.as_ref(),
+                        reach: self.llm_reach,
+                        hint: self.llm_hint.as_deref(),
+                        palette: self.palette,
+                    },
+                    views::llm_settings::Msgs {
+                        toggle: Message::ToggleLlm,
+                        backend: Box::new(Message::LlmBackend),
+                        ollama_model: Box::new(Message::LlmModelChanged),
+                        ollama_submit: Message::LlmModelSubmit,
+                        test: Message::TestLlm,
+                        pick: Box::new(Message::LlmPickModel),
+                        download: Box::new(Message::LlmDownload),
+                        cancel: Message::LlmCancelDownload,
+                        delete: Box::new(Message::LlmDeleteModel),
+                    },
                 ),
             ),
             NavPage::Lyrics => views::lyrics::view(

@@ -22,6 +22,8 @@ pub fn view<'a, Message: Clone + 'static>(
     viz: VizFrame,
     on_close: Message,
     on_dequeue: impl Fn(usize) -> Message + 'a,
+    suggested: &'a std::collections::HashSet<String>,
+    on_reject: impl Fn(String) -> Message + 'a,
 ) -> Element<'a, Message> {
     let upcoming: Vec<(usize, &halcyon_music_core::Track)> = state
         .queue
@@ -130,6 +132,17 @@ pub fn view<'a, Message: Clone + 'static>(
                 .on_press(on_dequeue(idx))
                 .padding(6)
                 .style(crate::views::ghost(palette));
+            // Part 6, Smart Shuffle: a song Halcyon added is tagged, with a "Not this" button.
+            let is_suggestion = suggested.contains(&track.id);
+            let tag: Element<'a, Message> = if is_suggestion {
+                button(text("Suggested · Not this").size(10).color(palette.accent))
+                    .on_press(on_reject(track.id.clone()))
+                    .padding([2, 6])
+                    .style(crate::views::ghost(palette))
+                    .into()
+            } else {
+                Space::with_width(0).into()
+            };
             let line = row![
                 container(text(format!("{}", n + 1)).size(11).color(theme::alpha(palette.text_muted, 0.7)))
                     .width(20)
@@ -147,6 +160,7 @@ pub fn view<'a, Message: Clone + 'static>(
                 column![
                     text(super::ellipsize(&track.title, 28)).size(13).color(palette.text),
                     text(super::ellipsize(&track.artist, 32)).size(11).color(palette.text_muted),
+                    tag,
                 ]
                 .spacing(2)
                 .width(Length::Fill),

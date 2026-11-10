@@ -1,3 +1,71 @@
+## Part 7: built-in model, no Ollama needed (2026-11-10)
+
+Added: `llm/local.rs` (`LocalGgufBackend`, llama.cpp through `llama-cpp-2`, cargo feature `local-llm`,
+OFF by default), `llm/grammar.rs` (a GBNF grammar per answer shape; "Describe a mood" gets a fixed genre
+vocabulary and `seed_artists` forced to `[]`), `llm/models.rs` (catalogue of 4 models, resumable
+cancellable download, SHA-256 check, delete), `llm/bench.rs` + CLI `--model-check`, `--model-fetch ID`,
+`--model-bench`. The backend is now a real setting (`local` default for new installs; stored `ollama`
+settings stay `ollama`), Ollama's address is a setting (`ollama_endpoint`, was hard-coded), and each
+backend keeps its own model. Model loads on first use, unloads after 2 min idle, 1 to 4 threads, own
+low-priority thread, one job at a time, 90 s limit. Turning Smart suggestions on with the built-in model
+and no file starts the one-time download (the card shows the size first). Protocol, additive:
+`set_llm_settings.endpoint`, `list_llm_models`, `download_llm_model`, `cancel_llm_download`,
+`delete_llm_model`, events `llm_models`, `llm_download`. GUI: Smart suggestions card has Built-in or
+Ollama, a model list with Use / Download / Cancel / Delete, progress and checksum status.
+Docs: `docs/model-choice.md`, `docs/llm-layer.md`.
+
+Tested (Rust 1.99.1, conda-forge, 1 CPU core): daemon lib 396 pass + 4 FAIL (the same four as Part 6:
+model, rerank, tags, taste), plus the new bench test fixed afterwards; all integration files pass,
+including 10 new downloader tests against a local HTTP server (fresh, pinned/server/size checks,
+corrupt file, dropped connection then resume, server ignoring ranges, stale partial, cancel, 404,
+offline, disk full). 12 grammar tests with their own GBNF matcher. `--features local-llm` builds
+(needs cmake, a C++ compiler and libclang) and 3 end-to-end tests pass with real llama.cpp on a
+random-weight tiny Qwen2 model made for the test: every shape came back as JSON that passed the real
+validators, with genres inside the vocabulary and picks only from shown ids. GUI: check passes, 4 new
+view tests pass.
+
+NOT done or NOT verified: no real model was downloaded or run (the sandbox cannot reach Hugging Face), so
+the catalogue URLs, sizes and licences are from memory (run `--model-check`), no checksum is pinned,
+and nothing about word quality, latency or memory of a real model is known. The default
+(`qwen2.5-0.5b-instruct`) is provisional; `docs/model-choice.md` says how to measure and has an empty
+results table. Not built on Arch, Fedora or Nix (only Ubuntu-like); `local-llm` stays off by default until
+it is. The default build ships without the engine, so a default build says so and offers Ollama.
+GUI not run on screen.
+
+## Part 6: recommended playlists (2026-11-09)
+
+Added: `mixes/` (clock, mod, plan, store, build), Daily Mix 1-6, Discover Weekly (Monday), Release
+Radar (Friday), On Repeat, Repeat Rewind (Wednesday), Daylist (3 times a day), song radio, Smart
+Shuffle, "Less like this" / "Not my taste", Home shelves from `mixes-state.json`. Engine: `prepare` /
+`shelf_from` / `Extras` (one retrieval feeds many lists; `build_shelf` unchanged for callers),
+`retrieve::radio_candidates`. Protocol: new commands and events, `HomeFeed.mix_meta`, all additive.
+GUI: Refresh / Less like this / Not my taste under each generated mix, Start radio / Less like this /
+Not my taste in the song menu, "Suggested - Not this" in the queue. Docs: `docs/playlists.md`.
+
+Tested (this session, Rust 1.99.1, conda-forge): `cargo check` daemon and GUI; `cargo test -p
+halcyon-musicd -p halcyon-music-core`: core 35 pass; daemon lib 363 pass, 4 FAIL; all 15 integration
+test files pass (soak_harness needed a one-line import fix, `AuthMode` path). 53 new unit tests in
+`mixes/` pass (fake-clock Monday/Friday/Daylist schedule, titles, plans, caps, blocklist, store
+round trip and corruption, Smart Shuffle, refresh and "Not my taste" through the real reranker).
+Clippy: no findings in `mixes/`; the crate still fails `-D warnings` on older code (beat.rs,
+suggestions.rs, session_browse.rs, retrieve.rs, tags.rs indexing).
+
+The 4 failing lib tests are in code Part 6 does not change and were not investigated:
+`reco::model::replay_training_teaches_a_listener_who_changed_taste`,
+`reco::rerank::mmr_prefers_a_different_sound_when_scores_are_close`,
+`reco::tags::only_artists_without_fresh_tags_are_looked_up_once_and_within_budget`,
+`taste::the_profile_survives_a_restart_and_a_corrupt_file_is_moved_aside`.
+
+NOT RUN: GUI test binary (the wgpu test build ran out of disk; the GUI crate compiles with
+`cargo check --tests`, and `views::home::part6_tests` has not been executed); anything against a real
+Spotify session; `--eval` with the new mixes; the Connect backend (it still logs no skips). Not built:
+a mosaic cover (Home keeps the existing one-layer cover slideshow of the mix's song covers), a GUI for
+resetting feedback, a Smart Shuffle button on playlist pages (the command exists, no GUI sends it yet).
+
+Manual checks on a real session: open Home twice in a day (same mixes), tap Refresh on a Daily Mix
+(list changes), "Not my taste" on a song (gone from Home and the queue, not back after Refresh), start
+a radio from the song menu and let it run past 20 songs, check Monday/Friday after a clock change.
+
 # Changelog
 
 ## Unreleased: Part 5 (retrieve, rank, rerank)

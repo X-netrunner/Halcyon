@@ -74,7 +74,7 @@ async fn test_soak_simulation_with_fault_injection() {
         Some("http://127.0.0.1:9".into()),
         None,
     );
-    spotify.switch_mode(halcyon_musicd::auth_mode::AuthMode::OwnClientId).await;
+    spotify.switch_mode(halcyon_music_core::models::AuthMode::OwnClientId).await;
 
     let ctx = Arc::new(DaemonContext {
         player: player.clone(),

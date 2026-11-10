@@ -294,6 +294,11 @@ pub struct DaemonContext {
     pub login_cancel: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 }
 
+/// The "made for you" mixes the daemon last saved for Home (what Smart suggestions writes words about).
+pub fn load_home_mixes(cache: &Cache) -> Vec<halcyon_music_core::models::MusicMix> {
+    kv_load::<halcyon_music_core::models::HomeFeed>(cache, KV_HOME).map(|f| f.made_for_you).unwrap_or_default()
+}
+
 pub fn run() -> anyhow::Result<()> {
     let state_dir = paths::state_dir();
     std::fs::create_dir_all(&state_dir)?;
@@ -1182,7 +1187,8 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
         GetHomeFeed => {
             // Show the last finished Home page at once, then rebuild it.
             let previous = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME);
-            if let Some(seed) = previous.clone() {
+            if let Some(mut seed) = previous.clone() {
+                crate::mixes::build::attach(&mut seed);
                 // The words for these mixes (if the LLM layer is on) usually come from the cache
                 // and are sent now, so a returning visit shows them with the page, not after it.
                 crate::llm::spawn_enrichment(ctx.clone(), seed.made_for_you.clone());
@@ -1197,6 +1203,9 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     Some(old) => merge_home_feed(old, built),
                     None => built,
                 };
+                let mut feed = feed;
+                crate::mixes::build::attach(&mut feed);
+                tokio::spawn(crate::mixes::build::refresh(ctx_c.clone(), Vec::new()));
                 kv_store(&ctx_c.cache, KV_HOME, &feed);
                 let _ = ctx_c.events_tx.send(protocol::event(EventBody::HomeFeedResult(Box::new(feed.clone()))));
                 // Optional LLM layer: words for the mixes just built. Background, off by default,
@@ -1228,6 +1237,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                             let rebuilt =
                                 crate::suggestions::build_home_feed(&ctx_c.spotify, &ctx_c.cache, &ctx_c.http).await;
                             current = merge_home_feed(current, rebuilt);
+                            crate::mixes::build::attach(&mut current);
                             kv_store(&ctx_c.cache, KV_HOME, &current);
                             let _ = ctx_c
                                 .events_tx
@@ -1285,6 +1295,34 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                     mixes: feed.made_for_you,
                 }));
             });
+            return None;
+        }
+
+        // Part 6: stored mixes at once; whatever is due is rebuilt in the background.
+        GetMixes => {
+            let store = crate::mixes::store::MixStore::load_or_default(&crate::mixes::store::default_path()).0;
+            let _ = ctx.events_tx.send(protocol::event(crate::mixes::build::updated_event(&store)));
+            tokio::spawn(crate::mixes::build::refresh(ctx.clone(), Vec::new()));
+            return None;
+        }
+        RefreshMix { mix_id } => {
+            tokio::spawn(crate::mixes::build::refresh(ctx.clone(), vec![mix_id]));
+            return None;
+        }
+        MixFeedback { mix_id, track_id, action } => {
+            tokio::spawn(crate::mixes::build::feedback(ctx.clone(), mix_id, track_id, action));
+            return None;
+        }
+        StartRadio { track } => {
+            tokio::spawn(crate::mixes::build::start_radio(ctx.clone(), track));
+            return None;
+        }
+        StopRadio => {
+            crate::mixes::build::stop_radio();
+            return None;
+        }
+        SmartShuffle { name, tracks } => {
+            tokio::spawn(crate::mixes::build::start_smart_shuffle(ctx.clone(), name, tracks));
             return None;
         }
 
@@ -1644,19 +1682,36 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             return None;
         }
 
-        SetLlmSettings { enabled, backend: _, model } => {
-            let home = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME)
-                .map(|f| f.made_for_you)
-                .unwrap_or_default();
-            crate::llm::apply_settings(ctx, enabled, model, home);
+        SetLlmSettings { enabled, backend, model, endpoint } => {
+            crate::llm::apply_settings(ctx, enabled, &backend, &model, &endpoint);
             return None;
         }
 
         TestLlmConnection => {
-            let home = kv_load::<halcyon_music_core::models::HomeFeed>(&ctx.cache, KV_HOME)
-                .map(|f| f.made_for_you)
-                .unwrap_or_default();
+            let home = load_home_mixes(&ctx.cache);
             crate::llm::spawn_connection_test(ctx.clone(), home);
+            return None;
+        }
+
+        // Built-in model files (Part 7).
+        ListLlmModels => {
+            crate::llm::models::announce_models(ctx);
+            return None;
+        }
+
+        DownloadLlmModel { id } => {
+            crate::llm::models::spawn_download(ctx.clone(), id);
+            return None;
+        }
+
+        CancelLlmDownload => {
+            crate::llm::models::cancel_download();
+            return None;
+        }
+
+        DeleteLlmModel { id } => {
+            crate::llm::models::delete_model(ctx, &id);
+            crate::llm::announce_status(ctx);
             return None;
         }
 

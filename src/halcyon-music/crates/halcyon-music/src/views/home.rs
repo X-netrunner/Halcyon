@@ -40,6 +40,32 @@ fn status_chip<'a, Message: 'a>(status: HomeStatus, shimmer: f32, palette: Halcy
     .into()
 }
 
+/// What the three small buttons under a generated mix say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MixAction {
+    Refresh,
+    LessLikeThis,
+    NotMyTaste,
+}
+
+/// The mixes the daemon builds on a schedule (Part 6) can be refreshed and judged.
+pub fn is_generated_mix(id: &str) -> bool {
+    id.starts_with("daily-mix-") || matches!(id, "discover-weekly" | "release-radar" | "on-repeat" | "repeat-rewind" | "daylist")
+}
+
+const MIX_ACTION_H: f32 = 20.0;
+
+/// The daemon sends the full current set of generated mixes: they replace the generated mixes on
+/// Home (also ones that no longer exist, such as a Daily Mix whose cluster went away) and go in
+/// front; every other mix stays where it was.
+pub fn merge_generated(feed: &mut HomeFeed, mixes: Vec<MusicMix>, meta: Vec<halcyon_music_core::models::MixMeta>) {
+    let mut all = mixes;
+    feed.made_for_you.retain(|m| !is_generated_mix(&m.id));
+    all.append(&mut feed.made_for_you);
+    feed.made_for_you = all;
+    feed.mix_meta = meta;
+}
+
 /// Main Home page element builder.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
@@ -54,6 +80,7 @@ pub fn view<'a, Message: Clone + 'static>(
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
     on_open_mix: impl Fn(String) -> Message + 'a + Copy,
+    on_mix_action: impl Fn(String, MixAction) -> Message + 'a + Copy,
     on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
     shimmer: f32,
     progress: f32,
@@ -149,6 +176,7 @@ pub fn view<'a, Message: Clone + 'static>(
             on_play_mix,
             on_save_mix,
             on_open_mix,
+            on_mix_action,
             progress,
             clock,
         ));
@@ -170,6 +198,7 @@ pub fn view<'a, Message: Clone + 'static>(
             on_play_mix,
             on_save_mix,
             on_open_mix,
+            on_mix_action,
             progress,
             clock,
         ));
@@ -671,6 +700,7 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
     on_save_mix: impl Fn(String, Vec<String>) -> Message + 'a + Copy,
     on_open_mix: impl Fn(String) -> Message + 'a + Copy,
+    on_mix_action: impl Fn(String, MixAction) -> Message + 'a + Copy,
     progress: f32,
     clock: f32,
 ) -> Element<'a, Message> {
@@ -789,7 +819,23 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             .width(Length::Fixed(cover_px))
             .height(Length::Fixed(MIX_INFO_H));
 
-        let card = container(column![cover_btn, Space::with_height(10), strip])
+        // Refresh, "Less like this", "Not my taste": plain siblings under the strip (no layers).
+        let small = |label: &'static str, action: MixAction| {
+            button(text(label).size(10).color(palette.text_muted))
+                .padding([2, 4])
+                .on_press(on_mix_action(mix.id.clone(), action))
+                .style(crate::views::ghost(palette))
+        };
+        let judge: Element<'a, Message> = if is_generated_mix(&mix.id) {
+            row![small("Refresh", MixAction::Refresh), small("Less like this", MixAction::LessLikeThis), small("Not my taste", MixAction::NotMyTaste)]
+                .spacing(2)
+                .height(Length::Fixed(MIX_ACTION_H))
+                .into()
+        } else {
+            Space::with_height(MIX_ACTION_H).into()
+        };
+
+        let card = container(column![cover_btn, Space::with_height(10), strip, judge])
             .padding(MIX_PAD)
             .width(MIX_W)
             .style(move |_t| container::Style {
@@ -924,5 +970,35 @@ mod slideshow_tests {
     #[test]
     fn neighbouring_cards_are_out_of_step() {
         assert_ne!(slide_at(9.0, 0, 4), slide_at(9.0, 1, 4));
+    }
+}
+
+#[cfg(test)]
+mod part6_tests {
+    use super::*;
+
+    fn mix(id: &str, source: &str) -> MusicMix {
+        MusicMix { id: id.into(), title: id.into(), description: String::new(), source: source.into(), tracks: Vec::new(), art_url: None }
+    }
+
+    #[test]
+    fn generated_mixes_replace_the_old_ones_and_lead_the_shelf() {
+        let mut feed = HomeFeed {
+            made_for_you: vec![mix("on-repeat", "Halcyon Local"), mix("hidden-gems", "Halcyon Local"), mix("daily-mix-4", "Halcyon Local"), mix("deezer-global-chart", "Deezer")],
+            ..Default::default()
+        };
+        merge_generated(&mut feed, vec![mix("daily-mix-1", "Halcyon Local"), mix("on-repeat", "Halcyon Local")], Vec::new());
+        let ids: Vec<&str> = feed.made_for_you.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["daily-mix-1", "on-repeat", "hidden-gems", "deezer-global-chart"], "a vanished Daily Mix is gone, other mixes stay");
+    }
+
+    #[test]
+    fn only_scheduled_mixes_get_the_judging_buttons() {
+        for id in ["daily-mix-2", "discover-weekly", "release-radar", "on-repeat", "repeat-rewind", "daylist"] {
+            assert!(is_generated_mix(id), "{id}");
+        }
+        for id in ["hidden-gems", "liked-songs", "halcyon-mix", "top-100"] {
+            assert!(!is_generated_mix(id), "{id}");
+        }
     }
 }

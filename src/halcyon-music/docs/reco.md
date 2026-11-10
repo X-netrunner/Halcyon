@@ -62,7 +62,7 @@ The seed is the shelf and the day, so a list does not change on every launch. A 
 
 ## Not done here (Part 6 and later)
 
-- Nothing on Home calls `engine::build_shelf` yet. Part 6 builds the shelves on it.
+- Part 6 builds the shelves on it (`engine::prepare` + `shelf_from`), see `docs/playlists.md`.
 - No GUI for the reset, the ListenBrainz opt-in, or the debug view (CLI only).
 - Skips are only logged by the direct playback engine, not by the Connect backend (Part 4 finding).
 

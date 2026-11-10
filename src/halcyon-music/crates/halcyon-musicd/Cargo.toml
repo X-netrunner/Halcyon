@@ -50,8 +50,15 @@ librespot-oauth = { version = "=0.8.0", default-features = false, features = ["r
 # Same version and TLS backend as the other librespot crates.
 librespot-connect = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
 
+# Part 7 (built-in model), optional: llama.cpp is compiled from source, which needs cmake and a C++
+# compiler, so it is behind a feature until that is proven on every supported distro.
+# default-features = false: no OpenMP (libgomp) and no Android linking.
+llama-cpp-2 = { version = "=0.1.161", default-features = false, optional = true }
+
 [features]
 default = []
+# Run a small language model inside the daemon (`halcyon-musicd` without Ollama).
+local-llm = ["dep:llama-cpp-2"]
 # Registers Halcyon as a Spotify Connect device (spike: `halcyon-musicd --connect-spike`).
 connect = ["dep:librespot-connect"]
 
