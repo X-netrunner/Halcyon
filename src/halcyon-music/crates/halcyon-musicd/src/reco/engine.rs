@@ -10,10 +10,12 @@ use super::bandit::shelf_seed;
 use super::features::{explain_text, extract, is_unheard, FeatureCtx, Features};
 use super::model::{catch_up, default_path, RecoState, ReplayCfg};
 use super::rerank::{recent_map, rerank, Pick, RerankCfg, Scored};
-use super::retrieve::{gather, load_listenbrainz_config, Pool, RetrieveCfg, RetrieveEnv, SourceReport};
+use super::retrieve::{gather, merge, load_listenbrainz_config, Pool, RetrieveCfg, RetrieveEnv, SourceReport};
 use super::tags::{ensure_tags, TAGS_PER_BUILD};
 use super::{phase_for, Candidate, Phase, Source};
 use crate::api::SpotifyClient;
+use crate::mixes::plan::{apply_feedback, enforce_caps, first_big_enough, near_seed, play_stats, refresh_jitter, seed_boost, separate_neighbours, PlanCtx, PoolPlan};
+use crate::mixes::store::Feedback;
 use crate::cache::{Cache, PlayLogEntry};
 use crate::eval::{Item, Ranker, TrainCtx, K};
 use crate::taste::{bucket_of, TagTable, TasteProfile};
@@ -127,6 +129,8 @@ pub struct ShelfResult {
     pub phase: Option<PhaseTag>,
     /// How many uncached Spotify lookups were still needed (0 = a rebuild from caches only).
     pub lookups_used: usize,
+    /// Part 6: which of the plans given in [`Extras::plans`] was used (0 when there was only one).
+    pub plan_used: usize,
 }
 
 /// `Phase` without the dependency on its derive set, for printing.
@@ -188,15 +192,41 @@ pub fn score_pool(pool: &[Candidate], profile: &TasteProfile, state: &RecoState,
         .collect()
 }
 
-/// Build one list. Never fails: a source that does not answer is in `reports`, a pick that cannot
-/// be matched on Spotify is skipped, and with nothing at all the result is empty.
-pub async fn build_shelf(
-    spotify: &SpotifyClient,
-    cache: &Cache,
-    http: &reqwest::Client,
-    spec: &ShelfSpec,
-    tz_offset_secs: i64,
-) -> ShelfResult {
+/// What one rebuild shares between all the lists it makes: the history, the profile, the model and
+/// the candidate pool. Retrieval is the slow part (network, cached for hours), so a rebuild of
+/// several mixes does it once.
+pub struct Prepared {
+    pub now: u64,
+    pub tz: i64,
+    pub history: History,
+    pub merged: Vec<PlayLogEntry>,
+    pub profile: TasteProfile,
+    pub tags: TagTable,
+    pub phase: Phase,
+    pub state: RecoState,
+    pub pool: Vec<Candidate>,
+    pub reports: Vec<SourceReport>,
+}
+
+/// Part 6 additions to one list. The default is the Part 5 shelf: every candidate, no feedback.
+#[derive(Debug, Clone, Default)]
+pub struct Extras {
+    /// Which candidates the list may use, widest last. Empty = all of them.
+    pub plans: Vec<PoolPlan>,
+    /// A plan whose pool is smaller than this is skipped for the next one.
+    pub min_pool: usize,
+    /// What the listener ruled out.
+    pub feedback: Feedback,
+    /// Radio: the song the list starts from. Candidates close to it are kept and boosted.
+    pub seed: Option<Candidate>,
+    /// Radio: candidates gathered around the seed, added to the pool.
+    pub extra_pool: Vec<Candidate>,
+    /// Spotify ids that must not appear (already queued).
+    pub avoid: HashSet<String>,
+}
+
+/// Load history and the profile, bring the model up to date, gather the pool once, attach tags.
+pub async fn prepare(cache: &Cache, http: &reqwest::Client, tz_offset_secs: i64) -> Prepared {
     let now = now_secs();
     let history = load_history(cache);
     let mut tags = tag_table(cache, now);
@@ -229,30 +259,77 @@ pub async fn build_shelf(
             }
         }
     }
+    Prepared { now, tz: tz_offset_secs, history, merged, profile, tags, phase, state, pool: candidates, reports }
+}
 
-    let bucket = Some(bucket_of(now, tz_offset_secs));
-    let scored = score_pool(&candidates, &profile, &state, now, bucket);
+/// Build one list. Never fails: a source that does not answer is in `reports`, a pick that cannot
+/// be matched on Spotify is skipped, and with nothing at all the result is empty.
+pub async fn build_shelf(
+    spotify: &SpotifyClient,
+    cache: &Cache,
+    http: &reqwest::Client,
+    spec: &ShelfSpec,
+    tz_offset_secs: i64,
+) -> ShelfResult {
+    let mut prep = prepare(cache, http, tz_offset_secs).await;
+    shelf_from(&mut prep, spotify, cache, spec, &Extras::default()).await
+}
+
+/// One list from an already prepared pool: filter by plan, drop what was ruled out, score, rerank,
+/// match on Spotify, enforce the artist caps, and tell the exploration bandit what was served.
+pub async fn shelf_from(prep: &mut Prepared, spotify: &SpotifyClient, cache: &Cache, spec: &ShelfSpec, extras: &Extras) -> ShelfResult {
+    let now = prep.now;
+    let stats = play_stats(&prep.history.plays, now);
+    let base = if extras.extra_pool.is_empty() { prep.pool.clone() } else { merge(vec![prep.pool.clone(), extras.extra_pool.clone()]) };
+    let base = apply_feedback(base, &extras.feedback);
+    let base = match &extras.seed {
+        Some(seed) => {
+            let keep: HashSet<String> = extras.extra_pool.iter().map(|c| c.key()).collect();
+            near_seed(base, seed, &keep)
+        }
+        None => base,
+    };
+    let plans = if extras.plans.is_empty() { vec![PoolPlan::All] } else { extras.plans.clone() };
+    let (plan_used, pool) = {
+        let ctx = PlanCtx { profile: &prep.profile, now, stats: &stats };
+        first_big_enough(&plans, &base, &ctx, extras.min_pool).unwrap_or((0, Vec::new()))
+    };
+
+    let bucket = Some(bucket_of(now, prep.tz));
+    let mut scored = score_pool(&pool, &prep.profile, &prep.state, now, bucket);
+    if let Some(seed) = &extras.seed {
+        for s in &mut scored {
+            s.score += seed_boost(&s.cand, seed);
+        }
+    }
+    let list_seed = shelf_seed(&spec.id, now, spec.epoch);
+    for s in &mut scored {
+        s.score += refresh_jitter(spec.epoch, list_seed, &s.cand.key());
+    }
     let mut rcfg = spec.rerank.clone();
     rcfg.n = spec.n * OVERSHOOT_NUM / OVERSHOOT_DEN;
-    let picks = rerank(&scored, &recent_map(&merged), now, &rcfg, &spec.id, &state.bandit, shelf_seed(&spec.id, now, spec.epoch));
+    let picks = rerank(&scored, &recent_map(&prep.merged), now, &rcfg, &spec.id, &prep.state.bandit, shelf_seed(&spec.id, now, spec.epoch));
 
     crate::suggestions::grant_search_budget(LOOKUPS_PER_SHELF);
-    let mut result = resolve_picks(spotify, cache, &scored, &picks, spec.n).await;
-    result.reports = reports;
-    result.phase = Some(phase.into());
+    let mut result = resolve_picks(spotify, cache, &scored, &picks, spec.n, &extras.avoid).await;
+    result.reports = prep.reports.clone();
+    result.phase = Some(prep.phase.into());
+    result.plan_used = plan_used;
+    enforce_caps(&mut result, spec.rerank.max_per_artist, &extras.feedback);
+    separate_neighbours(&mut result);
 
     // Remember which songs were exploration slots, so a finish or a skip teaches the bandit.
     let mut changed = false;
     for (track, ex) in result.tracks.iter().zip(result.explore.iter()) {
         if *ex {
             if let Some(src) = picks_source(&scored, &picks, &track.id, &result) {
-                state.bandit.note_served(&track.id, &spec.id, src, now);
+                prep.state.bandit.note_served(&track.id, &spec.id, src, now);
                 changed = true;
             }
         }
     }
     if changed {
-        let _ = state.save(&path);
+        let _ = prep.state.save(&default_path());
     }
     result
 }
@@ -265,7 +342,7 @@ fn picks_source(scored: &[Scored], picks: &[Pick], track_id: &str, result: &Shel
     scored.get(pick.index)?.cand.primary_source()
 }
 
-async fn resolve_picks(spotify: &SpotifyClient, cache: &Cache, scored: &[Scored], picks: &[Pick], want: usize) -> ShelfResult {
+async fn resolve_picks(spotify: &SpotifyClient, cache: &Cache, scored: &[Scored], picks: &[Pick], want: usize, avoid: &HashSet<String>) -> ShelfResult {
     let mut out = ShelfResult::default();
     let mut seen: HashSet<String> = HashSet::new();
     for (pick_pos, p) in picks.iter().enumerate() {
@@ -292,7 +369,7 @@ async fn resolve_picks(spotify: &SpotifyClient, cache: &Cache, scored: &[Scored]
             }
         };
         let Some(track) = track else { continue };
-        if !seen.insert(track.id.clone()) {
+        if avoid.contains(&track.id) || !seen.insert(track.id.clone()) {
             continue;
         }
         out.reasons.push(reason_of(c, p.explore));

@@ -5,8 +5,8 @@ use iced::widget::{button, column, container, text};
 use iced::{Element, Length};
 
 pub const WIDTH: f32 = 208.0;
-/// Four rows plus padding; used to keep the menu inside the window.
-pub const HEIGHT: f32 = 4.0 * 36.0 + 2.0 * space::SM + 3.0 * 2.0;
+/// Seven rows plus padding; used to keep the menu inside the window.
+pub const HEIGHT: f32 = 7.0 * 36.0 + 2.0 * space::SM + 6.0 * 2.0;
 
 fn entry<'a, M: Clone + 'a>(label: &'static str, palette: HalcyonPalette, msg: Option<M>) -> Element<'a, M> {
     let enabled = msg.is_some();
@@ -43,6 +43,9 @@ pub fn card<'a, M: Clone + 'a>(
     play_next: M,
     enqueue: M,
     go_album: Option<M>,
+    start_radio: M,
+    less_like_this: M,
+    not_my_taste: M,
 ) -> Element<'a, M> {
     container(
         column![
@@ -50,6 +53,9 @@ pub fn card<'a, M: Clone + 'a>(
             entry("Play next", palette, Some(play_next)),
             entry("Add to queue", palette, Some(enqueue)),
             entry("Go to album", palette, go_album),
+            entry("Start radio", palette, Some(start_radio)),
+            entry("Less like this", palette, Some(less_like_this)),
+            entry("Not my taste", palette, Some(not_my_taste)),
         ]
         .spacing(2),
     )

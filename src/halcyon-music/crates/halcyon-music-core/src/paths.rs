@@ -79,6 +79,21 @@ pub fn config_dir() -> PathBuf {
     home_dir().join(".config").join(APP_DIR_NAME)
 }
 
+/// `~/.local/share/halcyon-music/` (XDG_DATA_HOME respected).
+pub fn data_dir() -> PathBuf {
+    if let Ok(v) = std::env::var("XDG_DATA_HOME") {
+        if !v.is_empty() {
+            return PathBuf::from(v).join(APP_DIR_NAME);
+        }
+    }
+    home_dir().join(".local/share").join(APP_DIR_NAME)
+}
+
+/// Where the built-in language model files live: `~/.local/share/halcyon-music/models/`.
+pub fn models_dir() -> PathBuf {
+    data_dir().join("models")
+}
+
 fn home_dir() -> PathBuf {
     std::env::var("HOME")
         .map(PathBuf::from)

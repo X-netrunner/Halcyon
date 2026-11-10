@@ -29,6 +29,7 @@ pub mod eval;
 pub mod faults;
 pub mod llm;
 pub mod lyrics;
+pub mod mixes;
 pub mod mpris;
 pub mod panic_hook;
 pub mod probe_cli;

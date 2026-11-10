@@ -13,6 +13,23 @@ use thiserror::Error;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// The shape of the JSON a request expects back. The embedded model turns it into a grammar so a
+/// tiny model cannot return broken JSON; Ollama only gets `format: "json"` and ignores the rest.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Shape {
+    /// Any JSON object.
+    #[default]
+    AnyJson,
+    /// `{"mixes":[{"id":"m1","title":"..","reason":".."}, ...]}` with exactly `mixes` entries.
+    WhyMix { mixes: usize },
+    /// The search plan for "Describe a mood".
+    Query,
+    /// `{"title":"..","reason":"..","picks":["t3","t1"]}` over `candidates` numbered songs.
+    Pick { candidates: usize },
+    /// `{"picks":["t3","t1"]}` over `candidates` numbered songs.
+    Rerank { candidates: usize },
+}
+
 /// One request to the model.
 #[derive(Debug, Clone)]
 pub struct LlmRequest {
@@ -20,6 +37,8 @@ pub struct LlmRequest {
     pub user: String,
     pub temperature: f32,
     pub max_tokens: u32,
+    /// What the answer must look like (see [`Shape`]).
+    pub shape: Shape,
 }
 
 /// Why a model call failed. Every message is plain language with a fix.
@@ -33,10 +52,26 @@ pub enum LlmError {
     Timeout,
     #[error("The model sent an answer Halcyon couldn't use ({0}). Try another model in Settings.")]
     BadResponse(String),
+    /// The built-in model is not on disk (not downloaded yet, or deleted).
+    #[error("The built-in model \"{0}\" isn't downloaded yet. Open Settings, then Smart suggestions, and tap Download.")]
+    LocalModelMissing(String),
+    /// This build has no embedded model engine.
+    #[error("This build of Halcyon Music has no built-in model engine. Rebuild it with `--features local-llm`, or switch Smart suggestions to Ollama in Settings.")]
+    EngineMissing,
+    /// The model file is there but cannot be loaded or used.
+    #[error("The built-in model could not be loaded ({0}). Delete it in Settings and download it again, or pick another model.")]
+    LocalModelBroken(String),
+}
+
+impl LlmError {
+    /// Asking again cannot fix this, so the caller does not retry.
+    pub fn is_permanent(&self) -> bool {
+        matches!(self, Self::ModelMissing(_) | Self::LocalModelMissing(_) | Self::EngineMissing | Self::LocalModelBroken(_))
+    }
 }
 
 pub trait TasteLlm: Send + Sync {
-    /// Short backend name shown in Settings (`ollama`).
+    /// Short backend name shown in Settings (`local` or `ollama`).
     fn backend_name(&self) -> &str;
     /// The model this backend asks.
     fn model(&self) -> &str;
@@ -44,6 +79,11 @@ pub trait TasteLlm: Send + Sync {
     fn complete<'a>(&'a self, req: &'a LlmRequest) -> BoxFuture<'a, Result<String, LlmError>>;
     /// `Ok(())` when the backend answers and has the model; otherwise the reason, with a fix.
     fn probe<'a>(&'a self) -> BoxFuture<'a, Result<(), LlmError>>;
+    /// How long one call may take before it counts as failed. A model running inside this
+    /// process on the CPU needs longer than a model server that is already warm.
+    fn call_timeout(&self) -> Duration {
+        Duration::from_secs(20)
+    }
 }
 
 /// Local Ollama over HTTP.

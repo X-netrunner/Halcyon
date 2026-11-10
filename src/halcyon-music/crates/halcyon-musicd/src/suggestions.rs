@@ -2534,6 +2534,7 @@ pub async fn build_home_feed(
         playlists,
         saved_albums,
         capsule_preview,
+        mix_meta: Vec::new(),
     }
 }
 

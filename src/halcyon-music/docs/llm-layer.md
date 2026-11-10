@@ -174,6 +174,31 @@ features and up to 50 `Artist - Title` lines. Never sent: the play log, timestam
 | Injection in a title or mix name | No effect | Escaped into one JSON string; the output is checked the same way |
 | Home is rebuilt with different songs | Fresh engine order until a new answer | The key changes with the mix's songs |
 
+## Part 7: the built-in model (no Ollama needed)
+
+The backend is now a real setting: `local` (default for new installs) or `ollama` (kept for
+anyone who already chose it; stored settings that say `ollama` stay `ollama`). Each backend keeps its
+own model choice, and answers are cached per model, so switching back loses nothing.
+
+- **Engine**: `LocalGgufBackend` (`llm/local.rs`) runs a small GGUF model in the daemon with
+  llama.cpp via the `llama-cpp-2` crate, behind the cargo feature `local-llm`. Without the feature,
+  Smart suggestions says plainly that the build has no engine and offers Ollama. Building it needs
+  cmake, a C++ compiler **and libclang** (bindgen).
+- **Grammar** (`llm/grammar.rs`): each prompt's answer shape becomes a GBNF grammar, so the model
+  cannot return broken JSON, extra keys or an id it was not shown. For "Describe a mood" it also fixes
+  the genre words to a vocabulary and forces `seed_artists` to `[]`: artists come from the
+  recommendation sources (Part 5), not from the model's memory. The validators still check everything.
+- **Model files** (`llm/models.rs`): one model is downloaded when Smart suggestions is turned on
+  (the card shows the size first), into `~/.local/share/halcyon-music/models/`. Resumable, cancellable,
+  deletable, checked against a SHA-256 (pinned in the catalogue if set, else the server's). It is the only network use.
+- **Resources**: loaded on first use, unloaded after 2 minutes idle, 1 to 4 threads (half the cores), run
+  on a separate thread at low priority, one job at a time, context 4096 tokens, 90 s call limit.
+- **Privacy**: unchanged. Off by default; prompts never leave the machine and are never logged.
+- Protocol (additive): `set_llm_settings.endpoint` (Ollama address, default 127.0.0.1:11434),
+  commands `list_llm_models`, `download_llm_model`, `cancel_llm_download`, `delete_llm_model`; events
+  `llm_models`, `llm_download`.
+- Comparing models: `docs/model-choice.md`.
+
 ## Privacy: what is sent and what is not
 
 | Sent to the model | Never sent |

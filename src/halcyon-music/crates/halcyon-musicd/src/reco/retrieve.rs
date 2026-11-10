@@ -389,6 +389,56 @@ async fn tag_neighbour_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg) -> Vec<C
     out
 }
 
+/// Part 6, song radio: songs around one song's artist. The artist's own best songs, songs by the
+/// artists Deezer lists as similar, and unheard artists whose cached tags are close to the seed's.
+/// Every source is cached like the others and a failing one gives nothing; the result may be empty.
+pub async fn radio_candidates(env: &RetrieveEnv<'_>, seed_artist: &str, seed_tags: &[(String, f64)]) -> Vec<Candidate> {
+    let mut out = Vec::new();
+    for (artist, title, dur) in artist_top_songs(env, seed_artist, 6).await {
+        let mut c = Candidate::new(&artist, &title, Source::Similar);
+        c.duration_ms = dur;
+        c.because = Some(format!("More from {seed_artist}"));
+        out.push(c);
+    }
+    tokio::time::sleep(POLITE_PAUSE).await;
+    for (artist, title, dur) in similar_songs(env, seed_artist).await {
+        let mut c = Candidate::new(&artist, &title, Source::Similar);
+        c.duration_ms = dur;
+        c.because = Some(format!("Similar to {seed_artist}"));
+        out.push(c);
+    }
+    if !seed_tags.is_empty() {
+        let seed_key = artist_key(seed_artist);
+        let seed = Candidate { artist: seed_artist.to_string(), tags: seed_tags.to_vec(), ..Default::default() };
+        let mut ranked: Vec<(String, f64)> = Vec::new();
+        for key in env.tags.keys() {
+            if key == seed_key {
+                continue;
+            }
+            let Some(tags) = env.tags.get(&key) else { continue };
+            let other = Candidate { artist: key.clone(), tags: tags.clone(), ..Default::default() };
+            let sim = super::rerank::similarity(&other, &seed);
+            if sim >= 0.2 {
+                ranked.push((key, sim));
+            }
+        }
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+        for (key, _) in ranked.into_iter().take(5) {
+            for (artist, title, dur) in artist_top_songs(env, &key, 3).await.into_iter().take(2) {
+                let mut c = Candidate::new(&artist, &title, Source::TagNeighbour);
+                c.duration_ms = dur;
+                if let Some(t) = env.tags.get(&key) {
+                    c.tags = t.clone();
+                }
+                c.because = Some(format!("Sounds like {seed_artist}"));
+                out.push(c);
+            }
+            tokio::time::sleep(POLITE_PAUSE).await;
+        }
+    }
+    out
+}
+
 async fn listenbrainz_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, lb: &ListenBrainzConfig) -> Result<Vec<Candidate>, String> {
     let key = format!("reco.lb.v1.{}", lb.user.to_lowercase());
     let songs: Vec<Song> = cached(env.cache, &key, LB_TTL, || async {
