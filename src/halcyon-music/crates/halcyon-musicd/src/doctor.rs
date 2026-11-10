@@ -85,6 +85,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
     checks.push(check_cache());
     checks.push(check_account_name());
     checks.push(check_connect_device());
+    checks.push(check_model());
     checks.push(check_streaming_token(&streaming));
     checks.push(check_session(&streaming));
     checks.push(check_browsing_sign_in(&streaming));
@@ -649,6 +650,88 @@ fn check_connect_device() -> Check {
 
 fn check_account_name() -> Check {
     judge_account_name(read_saved_account().as_ref())
+}
+
+/// The Smart suggestions settings the daemon saved, read straight from the cache file (read-only,
+/// so it works while the daemon runs). `None` when there is no cache or nothing saved yet.
+fn read_saved_llm_settings() -> Option<crate::llm::LlmSettings> {
+    let db_path = paths::cache_dir().join("cache.db");
+    if !db_path.exists() {
+        return None;
+    }
+    let conn = rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let json: String = conn
+        .query_row(
+            "SELECT value FROM kv WHERE key = ?1",
+            [crate::llm::SETTINGS_KEY],
+            |row| row.get(0),
+        )
+        .ok()?;
+    serde_json::from_str::<crate::llm::LlmSettings>(&json).ok().map(|s| s.normalised())
+}
+
+/// "model": is the model Smart suggestions would use there? The built-in model is downloaded the
+/// first time it is needed, never at install, so "not downloaded yet" is a WARN only when Smart
+/// suggestions are on. Nothing here touches the network or loads the model.
+fn judge_model(
+    settings: Option<&crate::llm::LlmSettings>,
+    engine: bool,
+    disk: Option<&crate::llm::models::DiskStatus>,
+) -> Check {
+    let Some(s) = settings.filter(|s| s.enabled) else {
+        return check(
+            "model",
+            Status::Info,
+            "Smart suggestions are off, so no model is needed (the built-in model downloads when you turn them on)",
+        );
+    };
+    if !s.uses_local() {
+        return check(
+            "model",
+            Status::Info,
+            format!("Smart suggestions use Ollama ({}); the built-in model is not used", s.model),
+        );
+    }
+    if !engine {
+        return check_hint(
+            "model",
+            Status::Warn,
+            "Smart suggestions are set to the built-in model, but this build has no built-in engine",
+            "switch to Ollama in Settings, or rebuild with: cargo build --release -p halcyon-musicd --features local-llm",
+        );
+    }
+    let fetch = format!("Settings > Smart suggestions > Download, or: halcyon-musicd --model-fetch {}", s.local_model);
+    match disk {
+        Some(d) if d.installed => {
+            let how = if d.verified.is_empty() { "not checked" } else { d.verified.as_str() };
+            check(
+                "model",
+                Status::Pass,
+                format!("{} is on disk ({} MB, checked: {how})", s.local_model, d.size / 1_000_000),
+            )
+        }
+        Some(d) if d.partial > 0 => check_hint(
+            "model",
+            Status::Warn,
+            format!("{} is half downloaded ({} MB so far)", s.local_model, d.partial / 1_000_000),
+            format!("finish it: {fetch}"),
+        ),
+        _ => check_hint(
+            "model",
+            Status::Warn,
+            format!("{} has not been downloaded yet", s.local_model),
+            format!("download it: {fetch}"),
+        ),
+    }
+}
+
+fn check_model() -> Check {
+    let settings = read_saved_llm_settings();
+    let disk = settings
+        .as_ref()
+        .and_then(|s| crate::llm::models::find(&s.local_model))
+        .map(|spec| crate::llm::models::disk_status(&crate::llm::models::models_dir(), spec.file));
+    judge_model(settings.as_ref(), crate::llm::local::engine_available(), disk.as_ref())
 }
 
 fn check_cache() -> Check {
@@ -1306,5 +1389,37 @@ mod tests {
         assert!(warn.detail.contains("ada123"));
         assert_eq!(judge_account_name(Some(&acc(Some("  "), None))).status, Status::Info);
         assert_eq!(judge_account_name(None).status, Status::Info);
+    }
+
+    #[test]
+    fn model_check_levels() {
+        use crate::llm::models::DiskStatus;
+        use crate::llm::LlmSettings;
+        let on = LlmSettings { enabled: true, ..LlmSettings::default() };
+        let on_ollama = LlmSettings { enabled: true, backend: "ollama".into(), ..LlmSettings::default() };
+        let on_disk = DiskStatus { installed: true, size: 400_000_000, partial: 0, verified: "server".into() };
+        let half = DiskStatus { installed: false, size: 0, partial: 120_000_000, verified: String::new() };
+        let none = DiskStatus::default();
+
+        // Off, or nothing saved yet: nothing is needed, so never a problem.
+        assert_eq!(judge_model(None, true, None).status, Status::Info);
+        assert_eq!(judge_model(Some(&LlmSettings::default()), true, None).status, Status::Info);
+        // Ollama: the built-in file is irrelevant.
+        assert_eq!(judge_model(Some(&on_ollama), false, Some(&none)).status, Status::Info);
+        // Built-in model chosen but the build cannot run it.
+        let no_engine = judge_model(Some(&on), false, Some(&on_disk));
+        assert_eq!(no_engine.status, Status::Warn);
+        assert!(no_engine.hint.is_some_and(|h| h.contains("local-llm")));
+        // On disk, half downloaded, missing.
+        let ok = judge_model(Some(&on), true, Some(&on_disk));
+        assert_eq!(ok.status, Status::Pass);
+        assert!(ok.detail.contains("400 MB") && ok.detail.contains("server"));
+        let partial = judge_model(Some(&on), true, Some(&half));
+        assert_eq!(partial.status, Status::Warn);
+        assert!(partial.detail.contains("120 MB"));
+        let missing = judge_model(Some(&on), true, Some(&none));
+        assert_eq!(missing.status, Status::Warn);
+        assert!(missing.hint.is_some_and(|h| h.contains("--model-fetch")));
+        assert_eq!(judge_model(Some(&on), true, None).status, Status::Warn);
     }
 }

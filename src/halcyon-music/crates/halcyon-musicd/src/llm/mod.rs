@@ -47,7 +47,7 @@ pub const DEFAULT_MODEL: &str = "qwen2.5:3b";
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 const RETRY_PAUSE: Duration = Duration::from_millis(400);
 
-const SETTINGS_KEY: &str = "llm.settings.v1";
+pub(crate) const SETTINGS_KEY: &str = "llm.settings.v1";
 const FOREVER_SECS: u64 = 10 * 365 * 86_400;
 /// Answers are kept for a month; they also stop matching as soon as the mix, the taste or the
 /// prompt wording changes, because all three are part of the key.

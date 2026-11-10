@@ -423,7 +423,10 @@ mod tests {
         b1.cand.tags = vec![("lo-fi".into(), 1.0)];
         let mut c1 = sc("Cedar", "c1", 0.96, false, Source::History);
         c1.cand.tags = vec![("metal".into(), 1.0)];
-        let pool = vec![a1, b1, c1];
+        // A weak fourth song widens the window, so 0.98 and 0.96 really are "close" next to the
+        // best score (the relevance is scaled to the window's spread).
+        let d1 = sc("Dune", "d1", 0.0, false, Source::History);
+        let pool = vec![a1, b1, c1, d1];
         let picks = run(&pool, &RerankCfg { lambda: 0.6, ..cfg(2) });
         assert_eq!(artists(&pool, &picks), vec!["Ash", "Cedar"], "the second pick should not sound like the first");
     }

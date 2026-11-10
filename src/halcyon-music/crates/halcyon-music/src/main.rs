@@ -156,6 +156,7 @@ struct HalcyonApp {
     home_feed: HomeFeed,
     /// Smart suggestions (optional LLM layer): what the daemon last said about it. Off until the
     /// user turns it on in Settings.
+    home_filter: views::home::HomeFilter,
     llm_enabled: bool,
     /// `local` (built-in model) or `ollama`.
     llm_backend: String,
@@ -323,6 +324,10 @@ enum Message {
     ToggleDiagnostics,
     CopyDiagnostics,
     ToggleDensity,
+    /// The Settings "Reduce motion" switch.
+    ToggleReduceMotion,
+    /// Home's filter chips (All, Music, New).
+    HomeFilter(views::home::HomeFilter),
     CycleMood,
     SetMood(Mood),
     AnimationTick,
@@ -588,7 +593,7 @@ impl HalcyonApp {
             |m| m,
         );
 
-        let mut animations = AnimationManager::default();
+        let mut animations = AnimationManager::with_preference(animation::load_preference());
         animations.perf_overlay = perf_flag;
 
         let mood = Mood::load();
@@ -628,6 +633,7 @@ impl HalcyonApp {
             search_query: String::new(),
             perf_overlay: perf_flag,
             home_feed: HomeFeed::default(),
+            home_filter: views::home::HomeFilter::All,
             llm_enabled: false,
             llm_backend: "local".to_string(),
             llm_model: String::new(),
@@ -1917,6 +1923,20 @@ impl HalcyonApp {
                 self.animations.animate_toast_show();
                 iced::clipboard::write(diag)
             }
+            Message::ToggleReduceMotion => {
+                if !self.animations.system_reduce_motion {
+                    let on = !self.animations.user_reduce_motion;
+                    self.animations.set_user_reduce_motion(on);
+                    animation::save_preference(on);
+                }
+                Task::none()
+            }
+            Message::HomeFilter(f) => {
+                self.home_filter = f;
+                // The new set of shelves rises into place like a page change.
+                self.animations.animate_page_switch();
+                Task::none()
+            }
             Message::ToggleDensity => {
                 self.density = match self.density {
                     Density::Comfortable => Density::Compact,
@@ -2689,7 +2709,15 @@ impl HalcyonApp {
         }
     }
 
+    /// Builds the interface and notes how long that took (shown in Diagnostics).
     fn view(&self) -> Element<'_, Message> {
+        let started = Instant::now();
+        let element = self.build_view();
+        self.animations.record_view(started.elapsed());
+        element
+    }
+
+    fn build_view(&self) -> Element<'_, Message> {
         let pal = self.palette;
         let connected = matches!(self.status, ConnStatus::Connected { .. });
         let logged_in = matches!(self.auth_status, AuthStatus::LoggedIn { .. });
@@ -2921,6 +2949,8 @@ impl HalcyonApp {
                 &self.auth_status,
                 &self.state,
                 self.last_error.as_deref(),
+                self.animations.frame_stats(),
+                self.animations.reduce_motion,
                 self.palette,
                 Message::CopyDiagnostics,
                 Message::ToggleDiagnostics,
@@ -3273,6 +3303,8 @@ impl HalcyonApp {
                     views::home::HomeStatus::Live
                 },
                 Message::RefreshHome,
+                self.home_filter,
+                Message::HomeFilter,
                 views::prompt_card::view(
                     self.llm_enabled,
                     &self.prompt_text,
@@ -3495,6 +3527,9 @@ impl HalcyonApp {
                 self.state.normalisation,
                 self.palette,
                 Message::ToggleDensity,
+                self.animations.user_reduce_motion,
+                self.animations.system_reduce_motion,
+                Message::ToggleReduceMotion,
                 Message::SetMood,
                 Message::SetBitrate,
                 Message::ToggleNormalisation,

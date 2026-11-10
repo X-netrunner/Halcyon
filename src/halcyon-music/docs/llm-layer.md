@@ -199,6 +199,20 @@ own model choice, and answers are cached per model, so switching back loses noth
   `llm_models`, `llm_download`.
 - Comparing models: `docs/model-choice.md`.
 
+### Part 9: install, doctor and soak
+
+- **Install**: `install.sh` never downloads a model. With `HALCYON_MUSIC_LOCAL_MODEL=1` it only builds
+  the engine (`--features local-llm`), and only when cmake, a C++ compiler and libclang are found;
+  otherwise it says so and builds the plain player. The model downloads the first time Smart
+  suggestions is turned on.
+- **Doctor**: `halcyon-musicd --doctor` has a `model` line. It is INFO when Smart suggestions are off
+  or use Ollama, PASS when the chosen built-in model is on disk (size and how it was checked), WARN
+  when it is missing, half downloaded, or the build has no engine. It reads the saved settings
+  read-only and never loads the model or touches the network.
+- **Soak**: `SOAK_MODEL=1 scripts/soak_test.sh 30` keeps asking for mixes and suggestions, then waits
+  for the model to unload and checks the daemon is back under 150 MB (the budget excludes the loaded model).
+- **Not measured yet**: memory, speed and word quality of a real model (see `docs/model-choice.md`).
+
 ## Privacy: what is sent and what is not
 
 | Sent to the model | Never sent |

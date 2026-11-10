@@ -3,6 +3,7 @@
 //! Provides plain-language explanations of daemon/player state and
 //! a single-click "Copy Diagnostics" button for reporting.
 
+use crate::animation::{motion, FrameStats};
 use crate::icons::{icon, Icon};
 use crate::client::ConnStatus;
 use crate::theme::HalcyonPalette;
@@ -11,11 +12,36 @@ use halcyon_music_core::state::PlayerState;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
+/// How often the animation ticks arrived while something moved.
+pub fn frame_cadence_line(f: &FrameStats) -> String {
+    if f.ticks == 0 {
+        return "not measured yet (nothing has animated)".to_string();
+    }
+    format!(
+        "{} ticks, average {:.1} ms, worst {:.1} ms, {} late",
+        f.ticks, f.avg_gap_ms, f.worst_gap_ms, f.late_ticks
+    )
+}
+
+/// How long building the interface took, against the 16 ms budget.
+pub fn view_build_line(f: &FrameStats) -> String {
+    if f.views == 0 {
+        return "not measured yet".to_string();
+    }
+    format!(
+        "{} builds, average {:.1} ms, worst {:.1} ms, {} over {} ms",
+        f.views, f.avg_view_ms, f.worst_view_ms, f.slow_views, motion::FRAME_BUDGET_MS as u32
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
     status: &'a ConnStatus,
     auth_status: &'a AuthStatus,
     state: &'a PlayerState,
     last_error: Option<&'a str>,
+    frame: FrameStats,
+    reduce_motion: bool,
     palette: HalcyonPalette,
     on_copy: Message,
     on_close: Message,
@@ -132,6 +158,9 @@ pub fn view<'a, Message: Clone + 'static>(
         info_row("Control Socket:", "$XDG_RUNTIME_DIR/halcyon-music/ctl.sock".to_string()),
         info_row("Cache Database:", "~/.cache/halcyon-music/cache.db".to_string()),
         info_row("Self-healing:", "Watchdog active (auto-recovers on stall)".to_string()),
+        info_row("Motion:", if reduce_motion { "Reduced (nothing animates)".to_string() } else { "On".to_string() }),
+        info_row("Frame cadence:", frame_cadence_line(&frame)),
+        info_row("Interface build:", view_build_line(&frame)),
         Space::with_height(20),
         row![
             button(
@@ -201,4 +230,23 @@ pub fn view<'a, Message: Clone + 'static>(
         ..Default::default()
     })
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn readout_says_when_nothing_was_measured() {
+        let f = FrameStats::default();
+        assert!(frame_cadence_line(&f).contains("not measured"));
+        assert!(view_build_line(&f).contains("not measured"));
+    }
+
+    #[test]
+    fn readout_shows_numbers_and_the_budget() {
+        let f = FrameStats { ticks: 120, avg_gap_ms: 16.7, worst_gap_ms: 31.2, late_ticks: 2, views: 300, avg_view_ms: 2.4, worst_view_ms: 9.1, slow_views: 0 };
+        assert_eq!(frame_cadence_line(&f), "120 ticks, average 16.7 ms, worst 31.2 ms, 2 late");
+        assert_eq!(view_build_line(&f), "300 builds, average 2.4 ms, worst 9.1 ms, 0 over 16 ms");
+    }
 }

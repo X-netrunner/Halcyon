@@ -66,6 +66,81 @@ pub fn merge_generated(feed: &mut HomeFeed, mixes: Vec<MusicMix>, meta: Vec<halc
     feed.mix_meta = meta;
 }
 
+/// Which shelves Home shows (Spotify's chips row at the top of Home).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HomeFilter {
+    #[default]
+    All,
+    /// Your music: Liked Songs, quick picks, jump back in, the mixes made for you.
+    Music,
+    /// New music: Discover, popular right now, new and fresh releases.
+    New,
+}
+
+/// A block of the Home page, for deciding what a filter shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    LikedPin,
+    QuickPicks,
+    JumpBackIn,
+    MadeForYou,
+    Discover,
+    Charts,
+    NewReleases,
+    FreshReleases,
+    Capsule,
+}
+
+impl HomeFilter {
+    pub const ALL: [HomeFilter; 3] = [HomeFilter::All, HomeFilter::Music, HomeFilter::New];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            HomeFilter::All => "All",
+            HomeFilter::Music => "Music",
+            HomeFilter::New => "New",
+        }
+    }
+
+    pub fn shows(&self, section: Section) -> bool {
+        use Section::*;
+        match self {
+            HomeFilter::All => true,
+            HomeFilter::Music => matches!(section, LikedPin | QuickPicks | JumpBackIn | MadeForYou | Capsule),
+            HomeFilter::New => matches!(section, Discover | Charts | NewReleases | FreshReleases),
+        }
+    }
+}
+
+/// The chips row: one pill per filter, the chosen one filled with the accent.
+fn filter_chips<'a, Message: Clone + 'static>(
+    current: HomeFilter,
+    palette: HalcyonPalette,
+    on_filter: impl Fn(HomeFilter) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let mut r = row![].spacing(8).align_y(Alignment::Center);
+    for f in HomeFilter::ALL {
+        let chosen = f == current;
+        r = r.push(
+            button(text(f.label()).size(13).color(if chosen { palette.on_accent() } else { palette.text }))
+                .padding([6, 16])
+                .on_press(on_filter(f))
+                .style(move |_t, s| button::Style {
+                    background: Some(if chosen {
+                        palette.accent_background()
+                    } else if s == button::Status::Hovered {
+                        crate::theme::alpha(palette.accent, 0.20).into()
+                    } else {
+                        crate::theme::alpha(palette.text, 0.07).into()
+                    }),
+                    border: iced::Border { radius: 999.0.into(), width: 1.0, color: crate::theme::alpha(palette.border, if chosen { 0.0 } else { 0.25 }) },
+                    ..Default::default()
+                }),
+        );
+    }
+    r.into()
+}
+
 /// Main Home page element builder.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
@@ -87,6 +162,8 @@ pub fn view<'a, Message: Clone + 'static>(
     clock: f32,
     status: HomeStatus,
     on_refresh: Message,
+    filter: HomeFilter,
+    on_filter: impl Fn(HomeFilter) -> Message + 'a + Copy,
     prompt_card: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(28).padding([16, 24]);
@@ -114,19 +191,23 @@ pub fn view<'a, Message: Clone + 'static>(
             status_chip(status, shimmer, palette),
             Space::with_width(8),
             button(icon(Icon::Refresh, 14.0, if status == HomeStatus::Loading { palette.text_muted } else { palette.accent }))
-                .on_press_maybe(if status == HomeStatus::Loading { None } else { Some(on_refresh) })
+                .on_press_maybe(if status == HomeStatus::Loading { None } else { Some(on_refresh.clone()) })
                 .padding(8)
                 .style(crate::views::ghost(palette)),
         ]
         .align_y(Alignment::Center),
     );
 
+    page = page.push(filter_chips(filter, palette, on_filter));
+
     // "Describe a mood" (Smart suggestions): a text box, a one-line status and, once there is one,
     // the mix it made. Its height does not change while it works.
     page = page.push(prompt_card);
 
     // Liked Songs is a playlist that is always pinned to the top of Home.
-    page = page.push(view_liked_pin(liked_tracks, palette, on_play_context, on_navigate));
+    if filter.shows(Section::LikedPin) {
+        page = page.push(view_liked_pin(liked_tracks, palette, on_play_context, on_navigate));
+    }
 
     // Nothing has arrived yet: show grey placeholders instead of a blank page.
     if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
@@ -134,7 +215,7 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 2. Greeting + Quick Picks Grid (6-8 big tiles)
-    if !feed.quick_picks.is_empty() {
+    if filter.shows(Section::QuickPicks) && !feed.quick_picks.is_empty() {
         page = page.push(view_quick_picks(
             &feed.quick_picks,
             palette,
@@ -149,7 +230,7 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 3. Jump Back In Shelf
-    if !feed.jump_back_in.is_empty() {
+    if filter.shows(Section::JumpBackIn) && !feed.jump_back_in.is_empty() {
         page = page.push(view_shelf(
             "Jump back in",
             "Pick up where you left off",
@@ -165,7 +246,7 @@ pub fn view<'a, Message: Clone + 'static>(
     // 4. Made For You: mixes built from your own library and listening
     let personal: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source == "Halcyon Local").collect();
     let outside: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source != "Halcyon Local").collect();
-    if !personal.is_empty() {
+    if filter.shows(Section::MadeForYou) && !personal.is_empty() {
         page = page.push(view_made_for_you_mixes(
             personal,
             "Made for you",
@@ -187,7 +268,7 @@ pub fn view<'a, Message: Clone + 'static>(
         || !feed.popular_charts.is_empty()
         || !feed.new_releases.is_empty()
         || !feed.fresh_releases.is_empty();
-    if !outside.is_empty() {
+    if filter.shows(Section::Discover) && !outside.is_empty() {
         page = page.push(view_made_for_you_mixes(
             outside,
             "Discover",
@@ -202,7 +283,7 @@ pub fn view<'a, Message: Clone + 'static>(
             progress,
             clock,
         ));
-    } else if !feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty() {
+    } else if filter.shows(Section::Discover) && (!feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty()) {
         // Nothing from outside yet: say so, so the gap does not look like a bug.
         let note = match status {
             HomeStatus::Loading => "Looking for new and popular music…",
@@ -226,7 +307,7 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // Discover shelves (global charts, fresh releases)
-    if !feed.popular_charts.is_empty() {
+    if filter.shows(Section::Charts) && !feed.popular_charts.is_empty() {
         page = page.push(view_shelf(
             "Popular right now",
             "Trending worldwide, resolved to Spotify",
@@ -240,7 +321,7 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 6. New from Artists You Follow
-    if !feed.new_releases.is_empty() {
+    if filter.shows(Section::NewReleases) && !feed.new_releases.is_empty() {
         page = page.push(view_shelf(
             "New from artists you follow",
             "Latest singles and albums from your favorite artists",
@@ -254,7 +335,7 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 7. Fresh Releases (ListenBrainz)
-    if !feed.fresh_releases.is_empty() {
+    if filter.shows(Section::FreshReleases) && !feed.fresh_releases.is_empty() {
         page = page.push(view_shelf(
             "Fresh releases you may like",
             "Curated by ListenBrainz explore engine",
@@ -268,8 +349,18 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 8. Your Capsule Preview Card
-    if let Some(ref capsule) = feed.capsule_preview {
+    if let Some(capsule) = feed.capsule_preview.as_ref().filter(|_| filter.shows(Section::Capsule)) {
         page = page.push(view_capsule_card(capsule, palette, on_navigate));
+    }
+
+    // The New chip with nothing to show: one line and one action, not a blank page.
+    if filter == HomeFilter::New && !has_discover {
+        page = page.push(crate::views::empty_state(
+            Icon::Sparkles,
+            "Nothing new has loaded yet.",
+            Some(("Refresh", on_refresh.clone())),
+            palette,
+        ));
     }
 
     // Bottom breathing room
@@ -1000,5 +1091,44 @@ mod part6_tests {
         for id in ["hidden-gems", "liked-songs", "halcyon-mix", "top-100"] {
             assert!(!is_generated_mix(id), "{id}");
         }
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    const EVERY: [Section; 9] = [
+        Section::LikedPin,
+        Section::QuickPicks,
+        Section::JumpBackIn,
+        Section::MadeForYou,
+        Section::Discover,
+        Section::Charts,
+        Section::NewReleases,
+        Section::FreshReleases,
+        Section::Capsule,
+    ];
+
+    #[test]
+    fn all_shows_everything() {
+        assert!(EVERY.iter().all(|s| HomeFilter::All.shows(*s)));
+    }
+
+    #[test]
+    fn music_and_new_split_the_page_without_overlap_or_gaps() {
+        for s in EVERY {
+            let (m, n) = (HomeFilter::Music.shows(s), HomeFilter::New.shows(s));
+            assert!(m ^ n, "{s:?} must belong to exactly one of Music and New");
+        }
+        assert!(HomeFilter::Music.shows(Section::MadeForYou) && !HomeFilter::Music.shows(Section::Charts));
+        assert!(HomeFilter::New.shows(Section::NewReleases) && !HomeFilter::New.shows(Section::LikedPin));
+    }
+
+    #[test]
+    fn labels_match_spotify_chips() {
+        let labels: Vec<_> = HomeFilter::ALL.iter().map(HomeFilter::label).collect();
+        assert_eq!(labels, ["All", "Music", "New"]);
+        assert_eq!(HomeFilter::default(), HomeFilter::All);
     }
 }

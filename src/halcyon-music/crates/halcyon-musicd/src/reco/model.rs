@@ -13,7 +13,7 @@
 //! - **catch-up**: afterwards, every new play or skip the daemon sees is one more step.
 
 use super::bandit::Bandit;
-use super::features::{dot, extract, Features, FeatureCtx, NF, PRIOR_WEIGHTS};
+use super::features::{dot, extract, Features, FeatureCtx, NF, PRIOR_WEIGHTS, SKIP_RATE};
 use super::{Candidate, Source};
 use crate::cache::PlayLogEntry;
 use crate::eval::{label_play, Label};
@@ -84,6 +84,12 @@ impl OnlineModel {
             let prior = PRIOR_WEIGHTS.get(i).copied().unwrap_or(0.0);
             *w -= LEARN_RATE * (g * x + L2 * (*w - prior));
             *w = w.clamp(-WEIGHT_LIMIT, WEIGHT_LIMIT);
+            // A rule, not a guess: being skipped lately always counts against an artist. When a
+            // listener's taste turns, an artist they used to skip becomes one they finish, and
+            // the replay would otherwise teach the model that skipping predicts liking.
+            if i == SKIP_RATE {
+                *w = w.min(0.0);
+            }
         }
         self.bias = (self.bias - LEARN_RATE * g).clamp(-WEIGHT_LIMIT, WEIGHT_LIMIT);
         self.updates += 1;

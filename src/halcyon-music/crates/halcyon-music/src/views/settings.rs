@@ -109,6 +109,9 @@ pub fn view<'a, M: Clone + 'a>(
     normalisation: bool,
     palette: HalcyonPalette,
     on_toggle_density: M,
+    reduce_motion: bool,
+    motion_locked: bool,
+    on_toggle_reduce_motion: M,
     on_set_mood: impl Fn(Mood) -> M + 'a + Copy,
     on_set_bitrate: impl Fn(Bitrate) -> M + 'a + Copy,
     on_toggle_normalisation: M,
@@ -218,6 +221,28 @@ pub fn view<'a, M: Clone + 'a>(
                     None,
                     palette,
                     on_toggle_density,
+                ),
+            ]
+            .align_y(Alignment::Center),
+            Space::with_height(space::LG),
+            row![
+                column![
+                    text("Reduce motion").size(type_size::BODY).color(palette.text),
+                    text(if motion_locked {
+                        "Your system asks for no animation (GTK_ENABLE_ANIMATIONS=0), so nothing moves."
+                    } else {
+                        "Turns off every animation, the glow and the visualiser. Things change at once."
+                    })
+                    .size(type_size::SMALL)
+                    .color(palette.text_muted),
+                ]
+                .spacing(2),
+                Space::with_width(Length::Fill),
+                action(
+                    if motion_locked || reduce_motion { "On" } else { "Off" },
+                    None,
+                    palette,
+                    on_toggle_reduce_motion,
                 ),
             ]
             .align_y(Alignment::Center),

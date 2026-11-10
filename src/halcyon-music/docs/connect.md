@@ -133,3 +133,16 @@ compile against.
 6. Close the GUI: music keeps playing, the device stays listed.
 7. Kill the daemon: the device disappears within about a minute; restart: it comes back.
 8. Turn off wifi for 20 s and on again: the device re-registers by itself.
+
+## Part 9: install and release status
+
+- `install.sh` builds the Connect code only when asked: `HALCYON_MUSIC_CONNECT=1 ./install.sh --yes`.
+  It then writes a systemd drop-in `~/.config/systemd/user/halcyon-musicd.service.d/halcyon-connect.conf`
+  (`Environment=HALCYON_CONNECT=1`) and remembers the choice in `~/.config/halcyon-music/build.conf`.
+  `=0` removes the drop-in. If the build with `--features connect` fails, the installer builds the plain player.
+- **It is not on by default.** The plan says to switch it on once Part 2 parity is proven. That proof is
+  rows 4 to 7 and 11 to 13 of `docs/manual-test.md` plus the phone checklist above, on a real Premium
+  session, with a build that has been compiled with `--features connect`. When they pass, set
+  `MUSIC_CONNECT_DEFAULT=1` in `install.sh`.
+- `halcyon-musicd --doctor` shows `connect device` (registered / stale / not enabled / asked for but not registered).
+- `SOAK_CONNECT=1 scripts/soak_test.sh 30` fails if the device drops or the daemon restarts during the run.

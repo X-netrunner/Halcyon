@@ -101,8 +101,11 @@ pub async fn fetch_artist_tags(http: &reqwest::Client, artist: &str) -> Result<V
 
 /// The artists of `wanted` that have no fresh tags in `table`, each once, at most `budget`.
 pub fn missing(table: &TagTable, tried: &HashSet<String>, wanted: &[String], budget: usize) -> Vec<String> {
-    let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::new();
+    if budget == 0 {
+        return out;
+    }
+    let mut seen: HashSet<String> = HashSet::new();
     for a in wanted {
         let key = artist_key(a);
         if key.is_empty() || table.get(&key).is_some() || tried.contains(&key) || !seen.insert(key) {
