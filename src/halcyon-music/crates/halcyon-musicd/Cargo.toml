@@ -12,7 +12,7 @@ path = "src/main.rs"
 halcyon-music-core = { version = "=0.2.0", path = "../halcyon-music-core" }
 tokio = { version = "=1.44.2", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "fs", "signal", "process"] }
 serde = { version = "=1.0.219", features = ["derive"] }
-serde_json = "=1.0.140"
+serde_json = { version = "=1.0.140", features = ["float_roundtrip"] }
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.19", features = ["env-filter", "fmt"] }
 tracing-appender = "=0.2.3"

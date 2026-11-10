@@ -75,11 +75,7 @@ pub fn human_size(bytes: u64) -> String {
 
 /// How far a download is, as a whole percent (0 when the size is unknown).
 pub fn percent(done: u64, total: u64) -> u64 {
-    if total == 0 {
-        0
-    } else {
-        (done.saturating_mul(100) / total).min(100)
-    }
+    done.saturating_mul(100).checked_div(total).map_or(0, |p| p.min(100))
 }
 
 fn model_line(info: &LlmModelInfo) -> String {

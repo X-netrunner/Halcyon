@@ -1,3 +1,84 @@
+## Part 9: hardening, docs, release (2026-11-10) - NOT a release yet
+
+Started although the plan's own gate was not met: Part 8's acceptance is NOT met (see below) and
+`scripts/check.sh` has never exited 0 (clippy `-D warnings` fails on older code). So this part
+delivers the release tooling and docs; the release itself waits for the items under "Blocks the release".
+
+Done
+- `--doctor` `model` check (`doctor.rs`: `judge_model`, `check_model`, `read_saved_llm_settings`;
+  `llm::SETTINGS_KEY` made `pub(crate)`). INFO when Smart suggestions are off or use Ollama, PASS when the
+  built-in model is on disk (size, how it was checked), WARN when missing, half downloaded, or the build has
+  no engine. Read-only, never loads the model, no network. The other checks the plan lists already existed:
+  account name, connect device, audio output (`audio output`), token (`streaming token`), session (`spotify session`).
+- `scripts/soak_test.sh`: `SOAK_CONNECT=1` (fails if the Connect device is not registered at the start, or gone / a
+  different process at the end), `SOAK_MODEL=1` (asks for mixes and suggestions all the time, then waits
+  `SOAK_IDLE_WAIT` seconds, default 150, for the model to unload and fails if the daemon is still above 150 MB; the
+  loaded model is excluded from the budget as the plan says), and an open-files check (start vs end, fails above +100).
+- `install.sh`: `HALCYON_MUSIC_CONNECT=1` and `HALCYON_MUSIC_LOCAL_MODEL=1` (remembered in
+  `~/.config/halcyon-music/build.conf`, so `update.sh` keeps them; `=0` turns off). Connect writes the systemd drop-in
+  `halcyon-connect.conf` (never `override.conf`). The local engine is skipped with a warning when cmake / a C++ compiler /
+  libclang are missing. A build with an extra that fails is retried plain. The model is never downloaded by the installer.
+  `MUSIC_CONNECT_DEFAULT` and `MUSIC_LOCAL_MODEL_DEFAULT` are the two lines to flip for new installs.
+- Docs: `README.md` (install extras, doctor table, soak, release checklist), `docs/llm-layer.md` (Part 9 section),
+  `docs/connect.md` (install and release status), `docs/profile.md`, new `docs/manual-test.md` (13 rows, 15 minutes).
+
+Decision that differs from the plan: Connect is NOT on by default. The plan says "once Part 2 parity is proven"; it is not
+(Step B glue was never run against a phone, the Connect backend still logs no skips). Opt-in until `docs/manual-test.md`
+passes, then flip `MUSIC_CONNECT_DEFAULT`. The built-in model engine is also opt-in at install (not built on Arch, Fedora or Nix).
+
+Tested (this session; no Rust toolchain, no network, no Spotify)
+- `soak_test.sh` run for real, 1 minute, against a FAKE daemon (a renamed `sleep` process and a socket that answers hello,
+  with a hand-made `connect.json`): PASS with `SOAK_CONNECT=1 SOAK_MODEL=1`, 371 commands, 0 send failures; FAIL with the
+  right message when the Connect file is missing at the start (exit 2 before the loop) and when it disappears mid-run
+  (exit 1, "no longer registered at the end"). `bash -n` on `soak_test.sh`, `install.sh`, `update.sh`.
+- The installer helpers (`music_build_flag`, `save_music_build_conf`) run in isolation: default 0, env override,
+  remembered value, env `=0` over remembered `=1`, default flip, config file contents.
+
+NOT RUN
+- Everything in Rust: `cargo check`, `cargo test`, `cargo clippy`, `scripts/check.sh`. The new doctor code and its test
+  `model_check_levels` were read carefully but never compiled.
+- The soak test against the real daemon (30 minutes, Connect on, model on): so there is NO peak-memory number yet. The
+  150 MB budget is unmeasured for the Connect and model builds. No leaks or restarts were looked for in a real run.
+- `install.sh` end to end (only the helpers and syntax). The `cargo build --features halcyon-musicd/connect,...` form
+  through the workspace manifest has not been tried. Not run on Arch, Fedora, Debian or Nix.
+- `docs/manual-test.md` has not been done by anyone; its `/etc/hosts` way to simulate a blocked Web API is untested.
+
+Blocks the release (all from earlier parts, not fixed here)
+1. `scripts/check.sh` must exit 0: clippy `-D warnings` fails on older code (`beat.rs`, `suggestions.rs`,
+   `session_browse.rs`, `retrieve.rs`, `tags.rs`, `search_dropdown.rs:59`, `main.rs:915` and `:1023`), and 4 daemon lib tests
+   fail (`reco::model::replay_training_teaches_a_listener_who_changed_taste`,
+   `reco::rerank::mmr_prefers_a_different_sound_when_scores_are_close`,
+   `reco::tags::only_artists_without_fresh_tags_are_looked_up_once_and_within_budget`,
+   `taste::the_profile_survives_a_restart_and_a_corrupt_file_is_moved_aside`).
+2. Part 8 acceptance not met: staggered shelves, hover lift, cover morph, lyric easing, queue drag, collapsing playlist
+   header, focus ring and the walkthrough are not done; no real frame times.
+3. Part 2: the Connect backend (`connect_backend.rs`) has never run against a phone, and logs no skips.
+4. Part 7: no real model was downloaded or run; catalogue URLs, sizes and licences are from memory (`--model-check`); no checksum pinned.
+5. You: run the soak test, `docs/manual-test.md`, then record the real peak and idle memory here.
+
+## Part 8: UI/UX and animation pass (partial, 2026-11-10)
+
+Done: one motion language in `animation.rs` (`motion::FAST/BASE/SLOW_MS` = 120/220/420, easings
+`Standard` and `Emphasised`, the existing `Spring` for the queue drawer); every animation moved onto
+the tokens (they were 260, 320, 380, 240, 420 ms with mixed curves). Settings "Reduce motion" switch,
+saved, on top of `GTK_ENABLE_ANIMATIONS=0` (which still wins); switching it on stops what is moving.
+Diagnostics shows frame cadence and interface build time against the 16 ms budget. Home filter chips
+All / Music / New with an empty state (one line, one action; `views::empty_state`). `docs/ui-audit.md`.
+
+NOT done (listed in the audit, not started): staggered shelf rise, card hover lift and hover play button,
+cover to full-screen morph, lyric line easing, queue drag to reorder and "From your phone" tag,
+collapsing playlist header and sticky action row, shared-element cover transition, visible focus ring
+everywhere, moving other screens onto `empty_state`, the 60-second recorded walkthrough, real frame-time
+numbers. So the Part 8 acceptance is NOT met.
+
+Tested (Rust 1.99.1, 1 CPU core, no display): `cargo check -p halcyon-music --tests` passes; `cargo test
+-p halcyon-music`: 87 pass (new: easing curves, tokens, reduce-motion on/off and system override, frame
+stats, Home filters split the page with no overlap, diagnostics wording). `cargo clippy -p
+halcyon-music --all-targets`: 3 ERRORS in code I did not touch (`search_dropdown.rs:59`, `main.rs:915`
+and `:1023`, indexing/slicing lints) and about 20 warnings, mostly older; I fixed the three in my own
+code. NOT run: anything on screen, `cargo clippy --workspace -D warnings` (fails on the above),
+`cargo test --workspace` after this change (daemon untouched since Part 7).
+
 ## Part 7: built-in model, no Ollama needed (2026-11-10)
 
 Added: `llm/local.rs` (`LocalGgufBackend`, llama.cpp through `llama-cpp-2`, cargo feature `local-llm`,

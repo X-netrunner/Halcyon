@@ -62,3 +62,6 @@ updates live.
 4. Replace `~/.config/Halcyon/avatar.png`: the circle changes within about 5 seconds.
 5. If the name is missing, look in `journalctl --user -u halcyon-musicd` for `profile:` lines and send
    me the `body_head` text; that is all the parser needs.
+
+This check is rows 1 to 3 of `docs/manual-test.md` (sign in, name and avatar, avatar choice), part of the
+Part 9 release run.

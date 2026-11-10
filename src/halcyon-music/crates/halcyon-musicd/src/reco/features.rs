@@ -46,6 +46,9 @@ pub const PRIOR_WEIGHTS: [f64; NF] = [
     0.12,  // comeback
 ];
 
+/// Where "recent skip rate" sits in [`Features`]. Its weight may never turn positive (see `model.rs`).
+pub const SKIP_RATE: usize = 8;
+
 pub type Features = [f64; NF];
 
 /// When the list is for.
@@ -180,6 +183,7 @@ mod tests {
     fn prior_weights_and_names_line_up() {
         assert_eq!(FEATURE_NAMES.len(), NF);
         assert_eq!(PRIOR_WEIGHTS.len(), NF);
+        assert_eq!(FEATURE_NAMES.get(SKIP_RATE), Some(&"recent skip rate"));
         let skip = FEATURE_NAMES.iter().position(|n| *n == "recent skip rate");
         assert!(skip.and_then(|i| PRIOR_WEIGHTS.get(i)).is_some_and(|w| *w < 0.0), "a skip rate must count against");
     }

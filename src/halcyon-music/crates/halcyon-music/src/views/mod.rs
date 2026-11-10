@@ -426,3 +426,26 @@ mod tests {
         assert_eq!(ellipsize("日本語のタイトルです", 4), "日本語…");
     }
 }
+
+/// One friendly line and one action: the shape of every empty, error and offline state.
+/// `message` says what happened in plain words; `action` is the single thing to do about it.
+pub fn empty_state<'a, M: Clone + 'a>(
+    icon_kind: crate::icons::Icon,
+    message: &'a str,
+    action: Option<(&'static str, M)>,
+    palette: crate::theme::HalcyonPalette,
+) -> iced::Element<'a, M> {
+    use iced::widget::{column, container, text, Space};
+    use iced::{Alignment, Length};
+    let mut col = column![
+        crate::icons::icon(icon_kind, 28.0, palette.text_muted),
+        Space::with_height(theme::space::MD),
+        text(message).size(theme::type_size::BODY).color(palette.text_muted),
+    ]
+    .align_x(Alignment::Center);
+    if let Some((label, msg)) = action {
+        col = col.push(Space::with_height(theme::space::LG));
+        col = col.push(settings::action(label, None, palette, msg));
+    }
+    container(col).width(Length::Fill).padding(theme::space::XXL).center_x(Length::Fill).into()
+}

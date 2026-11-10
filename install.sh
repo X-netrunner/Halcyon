@@ -55,6 +55,11 @@
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
 #   --music ID[,ID]        halcyon-music | spotify | spotify-player | ncspot | none              (the first one is SUPER+M; several are fine)
+#                          Halcyon Music extras, both OFF unless you ask (environment variables, remembered in ~/.config/halcyon-music/build.conf):
+#                            HALCYON_MUSIC_CONNECT=1      show Halcyon in Spotify's Devices list (builds the Connect code, sets HALCYON_CONNECT=1 for the service)
+#                            HALCYON_MUSIC_LOCAL_MODEL=1  build the engine for the built-in small model (needs cmake, a C++ compiler, libclang).
+#                                                         The model itself is never downloaded by the installer: it downloads when you turn on Smart suggestions
+#                          =0 turns one back off. Example: HALCYON_MUSIC_CONNECT=1 ./install.sh --yes
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Security is then greyed out and disabled)
@@ -2409,6 +2414,35 @@ restart_halcyon_musicd() {
     fi
 }
 
+# Halcyon Music extras (Part 9). Both are OFF unless asked for: Connect until docs/manual-test.md has passed on a real
+# Premium session, and the built-in model engine because it needs a C++ toolchain. The answer comes from the environment
+# (HALCYON_MUSIC_CONNECT / HALCYON_MUSIC_LOCAL_MODEL, 1 or 0) or else from what an earlier run saved in build.conf.
+music_build_conf() { echo "$TARGET_HOME/.config/halcyon-music/build.conf"; }
+# What a fresh install gets when nothing was asked for and nothing was saved. Flip MUSIC_CONNECT_DEFAULT to 1
+# once docs/manual-test.md has passed on a real Premium session (the Part 2 parity proof).
+MUSIC_CONNECT_DEFAULT=0
+MUSIC_LOCAL_MODEL_DEFAULT=0
+music_build_flag() {   # music_build_flag <key in build.conf> <env var> <default 0|1>  ->  prints 1 or 0
+    local key="$1" env_name="$2" v="" conf; conf="$(music_build_conf)"
+    v="${!env_name:-}"
+    if [[ -z "$v" && -r "$conf" ]]; then v="$(sed -n "s/^${key}=//p" "$conf" | tail -n1)"; fi
+    [[ -n "$v" ]] || v="${3:-0}"
+    [[ "$v" == 1 ]] && echo 1 || echo 0
+}
+# The engine behind the built-in model is llama.cpp, built from source by the llama-cpp-2 crate.
+local_llm_toolchain_ok() {
+    command -v cmake >/dev/null 2>&1 || return 1
+    command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || return 1
+    command -v llvm-config >/dev/null 2>&1 && return 0
+    ldconfig -p 2>/dev/null | grep -q libclang && return 0
+    compgen -G "/usr/lib*/llvm*/lib*/libclang*" >/dev/null 2>&1
+}
+save_music_build_conf() {   # save_music_build_conf <connect 0|1> <local_model 0|1>
+    local conf; conf="$(music_build_conf)"
+    run_as_user mkdir -p "$(dirname "$conf")"
+    run_as_user bash -c 'printf "connect=%s\nlocal_model=%s\n" "$2" "$3" > "$1"' _ "$conf" "$1" "$2"
+}
+
 # Halcyon Music: native Rust client & daemon
 setup_halcyon_music() {
     local src="$TARGET_RICE/src/halcyon-music"
@@ -2417,12 +2451,30 @@ setup_halcyon_music() {
 
     log_info "Building ${BOLD}halcyon-music${RESET} (native client & daemon)..."
     local build_ok=false
+    local want_connect want_local_llm
+    want_connect="$(music_build_flag connect HALCYON_MUSIC_CONNECT "$MUSIC_CONNECT_DEFAULT")"
+    want_local_llm="$(music_build_flag local_model HALCYON_MUSIC_LOCAL_MODEL "$MUSIC_LOCAL_MODEL_DEFAULT")"
+    if [[ "$want_local_llm" == 1 ]] && ! local_llm_toolchain_ok; then
+        warn_later "Built-in model engine skipped: it needs cmake, a C++ compiler and libclang (install them, then run again with HALCYON_MUSIC_LOCAL_MODEL=1). Smart suggestions can use Ollama instead."
+        want_local_llm=0
+    fi
+    local feats=() feat_args=()
+    [[ "$want_connect" == 1 ]] && feats+=("halcyon-musicd/connect")
+    [[ "$want_local_llm" == 1 ]] && feats+=("halcyon-musicd/local-llm")
+    if (( ${#feats[@]} > 0 )); then feat_args=(--features "$(IFS=,; echo "${feats[*]}")"); log_info "Halcyon Music extras: ${feats[*]}"; fi
     if [[ "$DRY_RUN" == "true" ]]; then
         build_ok=true
     else
         if rust_ok; then
-            if run_as_user_cmd "cargo build --release: halcyon-music" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$src/Cargo.toml"; then
+            if run_as_user_cmd "cargo build --release: halcyon-music" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$src/Cargo.toml" ${feat_args[@]+"${feat_args[@]}"}; then
                 build_ok=true
+            elif (( ${#feats[@]} > 0 )); then
+                # An extra failed to build: never leave the machine without a player. Build the plain one.
+                warn_later "Halcyon Music did not build with ${feats[*]}; building it without them (nothing else changes)."
+                want_connect=0; want_local_llm=0
+                if run_as_user_cmd "cargo build --release: halcyon-music (plain)" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$src/Cargo.toml"; then
+                    build_ok=true
+                fi
             fi
         else
             warn_later "No Rust toolchain: skipped building halcyon-music. Install Rust, then cargo build --release --manifest-path $src/Cargo.toml"
@@ -2450,6 +2502,17 @@ setup_halcyon_music() {
                 local svc_dir="$TARGET_HOME/.config/systemd/user"
                 run_as_user mkdir -p "$svc_dir"
                 run_as_user install -m644 "$src/packaging/halcyon-musicd.service" "$svc_dir/halcyon-musicd.service"
+                # Connect is switched on by a drop-in of our own (never override.conf, which is the user's).
+                local dropin="$svc_dir/halcyon-musicd.service.d/halcyon-connect.conf"
+                if [[ "$want_connect" == 1 ]]; then
+                    run_as_user mkdir -p "$svc_dir/halcyon-musicd.service.d"
+                    run_as_user bash -c 'printf "[Service]\nEnvironment=HALCYON_CONNECT=1\n" > "$1"' _ "$dropin"
+                    log_success "Halcyon will show up under Devices in Spotify (HALCYON_CONNECT=1)"
+                else
+                    run_as_user rm -f "$dropin"
+                fi
+                save_music_build_conf "$want_connect" "$want_local_llm"
+                [[ "$want_local_llm" == 1 ]] && log_info "The built-in model is not downloaded now: it downloads the first time you turn on Smart suggestions (Settings shows the size first)."
                 if user_bus_ready; then
                     run_as_user systemctl --user daemon-reload >/dev/null 2>&1 || true
                     run_as_user systemctl --user enable halcyon-musicd.service >/dev/null 2>&1 || true

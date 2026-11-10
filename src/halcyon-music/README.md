@@ -54,6 +54,24 @@ daemon starts the next time you open the app.
 Both binaries answer `--version`. The app also shows a toast if it meets a daemon of another
 version: restart it with `systemctl --user restart halcyon-musicd`.
 
+**Two extras, both off unless you ask** (set the variable for one run; the choice is remembered in
+`~/.config/halcyon-music/build.conf`, so `update.sh` keeps it; `=0` turns it off again):
+
+| Variable | What it does |
+| --- | --- |
+| `HALCYON_MUSIC_CONNECT=1` | Builds the Spotify Connect code and sets `HALCYON_CONNECT=1` for the service (a drop-in named `halcyon-connect.conf`, never your own `override.conf`), so Halcyon is listed under Devices on your phone. See `docs/connect.md`. |
+| `HALCYON_MUSIC_LOCAL_MODEL=1` | Builds the engine for the built-in small model (needs cmake, a C++ compiler and libclang; without them the installer says so and builds without it). |
+
+```sh
+HALCYON_MUSIC_CONNECT=1 HALCYON_MUSIC_LOCAL_MODEL=1 ./install.sh --yes
+```
+
+The model file is never downloaded by the installer. It downloads the first time you turn on
+Smart suggestions (Settings shows the size first). If a build with an extra fails, the installer
+builds the plain player instead, so an update never leaves you without one. Connect is off by
+default because its phone checklist (`docs/manual-test.md`) has not been completed on a real
+session yet; once it has, a single line in `install.sh` (`MUSIC_CONNECT_DEFAULT`) turns it on for new installs.
+
 ## `halcyon-musicd --doctor`
 
 One line per check, PASS / WARN / FAIL (or INFO for facts that are not about the install, such
@@ -68,6 +86,9 @@ no FAIL, 1 when there is one. It checks:
 | spotify session | connects a Spotify session with the saved token and asks for a token, as a track load does | Spotify rejects the sign-in (`INVALID_CREDENTIALS`), Free account, or no connection |
 | audio output | opens the default audio output once | no PipeWire / PulseAudio device |
 | browsing sign-in | the token browsing uses, by sign-in mode | Client ID mode without a saved sign-in |
+| account name | the Spotify name the daemon has saved (read from the cache, no Web API) | never FAIL: WARN when only the username is known yet |
+| connect device | whether Halcyon is registered as a Spotify Connect device | never FAIL: WARN when it was asked for but is not registered, INFO when off |
+| model | whether the built-in model is on disk, when Smart suggestions use it | never FAIL: WARN when it is chosen but missing, half downloaded, or this build has no engine; INFO when Smart suggestions are off or use Ollama |
 
 The doctor never renews the token (the running daemon does), and never prints it. The session
 check opens a second, short Spotify session with its own device id; whether that can interrupt
@@ -77,8 +98,20 @@ a track playing at that moment has not been tested, so run `--doctor` while idle
 
 `scripts/soak_test.sh [minutes]` sends random commands to the running daemon and writes
 `docs/soak_report.md` from what it measured: commands that could not be sent, daemon restarts,
-peak memory against the 150 MB budget, and whether the daemon still answers. It exits 1 on any
-problem. It does not inject faults (start the daemon with `HALCYON_MUSIC_FAULTS` for that).
+peak memory against the 150 MB budget, open files at the start and the end (a leak signal), and
+whether the daemon still answers. It exits 1 on any problem. It does not inject faults (start the
+daemon with `HALCYON_MUSIC_FAULTS` for that).
+
+The release run uses both extras:
+
+```sh
+SOAK_CONNECT=1 SOAK_MODEL=1 scripts/soak_test.sh 30
+```
+
+`SOAK_CONNECT=1` fails the run if the Connect device is not registered at the start, or is gone
+or a different process at the end. `SOAK_MODEL=1` keeps asking for mixes and suggestions so the
+built-in model works; the 150 MB budget excludes the loaded model, so the script then waits for
+it to unload (2 minutes idle) and fails if the daemon is still above 150 MB.
 
 State lives in `~/.local/state/halcyon-music/`, the cache in
 `~/.cache/halcyon-music/`, and the socket in `$XDG_RUNTIME_DIR/halcyon-music/`.
@@ -87,6 +120,12 @@ the GUI decodes it off the UI thread (`art.rs` in both crates).
 
 Playback is librespot's: the position, play/pause state and errors shown in the app come from
 the engine's own events.
+
+## Release checklist
+
+`scripts/check.sh` (check, test, clippy `-D warnings`), the soak run above, and the 15-minute
+checklist in `docs/manual-test.md` on a real Premium session. Other docs: `docs/connect.md`,
+`docs/profile.md`, `docs/llm-layer.md`, `docs/playlists.md`, `docs/reco.md`.
 
 ## Look and feel
 

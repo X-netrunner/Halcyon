@@ -187,6 +187,22 @@ pub fn artist_matches(track: &Track, wanted: &str) -> bool {
     })
 }
 
+/// The lower-case words of `s`, split on anything that is not a letter or a digit.
+fn words_of(s: &str) -> Vec<String> {
+    s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect()
+}
+
+/// A catalogue text search for a genre word also returns songs that merely have the word in their
+/// title ("Downtempo" by four different artists, "Paparazzi (Dubstep)"). That says nothing about
+/// how the song sounds, so such songs are dropped from a genre or mood search.
+pub fn title_only_matches_tag(track: &Track, tag: &str) -> bool {
+    let want = words_of(tag);
+    if want.is_empty() {
+        return false;
+    }
+    words_of(&track.title).windows(want.len()).any(|w| w == want.as_slice())
+}
+
 /// Take one song from each list in turn, skipping songs already taken, until every list is empty.
 /// Keeps the candidate list from being all one artist's songs.
 pub fn merge_round_robin(lists: Vec<Vec<Track>>) -> Vec<Track> {
@@ -252,7 +268,7 @@ pub async fn gather_candidates(catalogue: &dyn Catalogue, spec: &QuerySpec) -> G
         out.answered += 1;
         let kept: Vec<Track> = match kind {
             SearchKind::Artist(name) => found.into_iter().filter(|t| artist_matches(t, name)).collect(),
-            SearchKind::Tag(_) => found,
+            SearchKind::Tag(tag) => found.into_iter().filter(|t| !title_only_matches_tag(t, tag)).collect(),
         };
         lists.push(kept);
     }
@@ -586,6 +602,16 @@ mod tests {
         let tags = p.iter().filter(|k| matches!(k, SearchKind::Tag(_))).count();
         assert!(tags >= 2, "two slots stay free for tags");
         assert!(plan_searches(&spec(&[], &[])).is_empty());
+    }
+
+    #[test]
+    fn a_song_that_only_has_the_genre_word_in_its_title_is_not_a_match() {
+        assert!(title_only_matches_tag(&track("1", "D", "Downtempo"), "downtempo"));
+        assert!(title_only_matches_tag(&track("2", "Alximo", "Paparazzi (Dubstep)"), "dubstep"));
+        assert!(title_only_matches_tag(&track("3", "X", "Sad Songs for Rainy Days"), "sad"));
+        assert!(!title_only_matches_tag(&track("4", "RudyWade", "Trapped in a Dream"), "trap"), "a different word");
+        assert!(!title_only_matches_tag(&track("5", "Massive Attack", "Angel"), "downtempo"));
+        assert!(!title_only_matches_tag(&track("6", "X", "Anything"), ""), "an empty tag matches nothing");
     }
 
     #[test]
