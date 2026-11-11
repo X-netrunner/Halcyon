@@ -355,13 +355,13 @@ mod tests {
 
     #[test]
     fn classic_options_are_the_bar_as_it_was() {
-        const _: () = assert!(!BarOptions::CLASSIC.times_below);
-        const _: () = assert!(BarOptions::CLASSIC.show_volume);
+        assert!(!BarOptions::CLASSIC.times_below);
+        assert!(BarOptions::CLASSIC.show_volume);
         assert!(
             BarOptions::CLASSIC.mini.is_none(),
             "Classic never gets the mini visualizer"
         );
-        const _: () = assert!(
+        assert!(
             !BarOptions::CLASSIC.calm,
             "Classic keeps its accent-lit toggles"
         );
