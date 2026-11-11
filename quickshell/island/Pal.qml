@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Tokens.js" as Tok
 
 // Wallpaper-derived palette + the design tokens every component shares.
 // `hx palette` writes ~/.cache/island/palette.json, we tail it so colours animate
@@ -296,18 +297,21 @@ Scope {
     function capOf(t) { return zen ? cap(t) : t }
 
     // ---------- shape (concentric: inner radius = outer radius - padding) ----------
-    readonly property int rSm: calm ? 12 : 10
-    readonly property int rMd: calm ? 16 : 14
-    readonly property int rLg: zen ? 20 : calm ? 22 : 20
-    readonly property int rXl: zen ? 28 : calm ? 30 : 28
+    readonly property int rSm: calm ? Tok.radius.sm : 10
+    readonly property int rMd: calm ? Tok.radius.md : 14
+    readonly property int rLg: calm ? Tok.radius.lg : 20
+    readonly property int rXl: calm ? Tok.radius.xl : 28
 
     // ---------- space (4px rhythm) ----------
-    readonly property int s1: 4
-    readonly property int s2: 8
-    readonly property int s3: 12
-    readonly property int s4: 16
-    readonly property int s5: 20
-    readonly property int s6: 28
+    readonly property int s1: Tok.space.xs
+    readonly property int s2: Tok.space.sm
+    readonly property int s3: Tok.space.md
+    readonly property int s4: Tok.space.lg
+    readonly property int s5: Tok.space.xl
+    readonly property int hitMin: Tok.size.hit_min
+    readonly property int focusRing: Tok.size.focus_ring
+    readonly property var shadowTok: Tok.shadow
+    function iconFor(component) { return Tok.icon[component] !== undefined ? Tok.icon[component] : Tok.icon.halcyon }
 
     // ---------- edge boxes: the utilities panel (bottom-right) and the notification centre (right edge) share these,
     // so their width, inner padding and distance from the screen edge always match ----------
@@ -338,10 +342,11 @@ Scope {
         return "Serif"
     }
     // size scale: caption / body / title / display
-    readonly property int tCap: 11
-    readonly property int tBody: 13
-    readonly property int tTitle: zen ? 18 : calm ? 16 : 15
-    readonly property int tDisplay: calm ? 24 : 22
+    readonly property int tCap: Tok.type.caption
+    readonly property int tSmall: Tok.type.small
+    readonly property int tBody: Tok.type.body
+    readonly property int tTitle: zen ? Tok.type.title : calm ? 16 : 15
+    readonly property int tDisplay: calm ? Tok.type.display : 22
     // a small heading: "POWER MODE" stays as written in the legacy style, the calm one says "Power mode"
     // (short words people only know in capitals stay that way: CPU, GPU, RAM, AI ...)
     readonly property var acronyms: ["CPU", "GPU", "RAM", "AI", "PSS", "BT", "DND", "VPN", "IP", "OSD", "USB", "PDF", "GTK", "QT", "SSH", "UI", "PIN"]
@@ -388,7 +393,7 @@ Scope {
 
     // ---------- motion ----------
     // The motion set is the one the Caelestia shell uses (its "expressive" Material 3 tokens), which is what makes it feel fluid:
-    // movement and size changes use a spring that slips a little past its target and then settles over about half a second, while
+    // movement and size changes use a spring that slips a little past its target and then settles within the 120-240 ms motion tokens (design/tokens.toml), while
     // fades and colour changes use a spring-less curve and are quicker. Everything in the island reads these, so tune them here.
     //   curveSoft   spatial spring (move, grow, slide). Overshoots about 8 %. Raise the second number for a bouncier feel (1.21 = Caelestia).
     //   curveCalm   no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
@@ -410,12 +415,14 @@ Scope {
     // squash and stretch on moving panels (Jelly.qml): Settings > Motion > "Jelly motion"; jellyAmt scales how much (1 = normal)
     property bool jelly: true
     property real jellyAmt: 1.0
-    readonly property int dFast: Math.round(200 * motion)         // fades, hovers, colours (Caelestia: default effects 200)
-    readonly property int dMed: Math.round(400 * motion)          // small moves and resizes (fast spatial 350)
-    readonly property int dSlow: Math.round(600 * motion)         // boxes opening, cards sliding, lists re-flowing (default spatial 500)
+    readonly property int dFast: Math.round(Tok.motion.fast * motion)
+    readonly property int dMed: Math.round(Tok.motion.base * motion)
+    readonly property int dSlow: Math.round(Tok.motion.slow * motion)
     // boxes folding back in: a touch quicker than they came out, and a gentle ease-in-out (starts soft, settles soft) instead of the sharp ease-out they open with
-    readonly property int dClose: Math.round(420 * motion)
+    readonly property int dClose: Math.round(Tok.motion.close * motion)
     readonly property var curveClose: [0.45, 0, 0.3, 1, 1, 1]
+    readonly property var curveOut: Tok.motion.ease_out.concat([1, 1])
+    readonly property var curveIn: Tok.motion.ease_in.concat([1, 1])
 
     Behavior on bg { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }
     Behavior on surface { ColorAnimation { duration: 900; easing.type: Easing.InOutSine } }

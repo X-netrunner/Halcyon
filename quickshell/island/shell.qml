@@ -571,6 +571,21 @@ ShellRoot {
     // Settings window (all remembered): look + motion + behaviour
     property real glassShift: 0
     property real motion: 1
+    property bool reduceMotion: false
+    Process {
+        running: true
+        command: ["gsettings", "get", "org.gnome.desktop.interface", "enable-animations"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.reduceMotion = text.trim() === "false"
+                reduceMotionFlag.running = true
+            }
+        }
+    }
+    Process {
+        id: reduceMotionFlag
+        command: ["sh", "-c", "d=\"${XDG_STATE_HOME:-$HOME/.local/state}/halcyon\"; mkdir -p \"$d\"; if [ \"$1\" = 1 ]; then : > \"$d/reduce-motion\"; else rm -f \"$d/reduce-motion\"; fi", "sh", root.reduceMotion ? "1" : "0"]
+    }
     property int rounding: 18
     property int gaps: 8
     property bool blur: true
@@ -659,8 +674,8 @@ ShellRoot {
         deskWin: root.opt.windowMode === "desktop"
         boxShadow: root.opt.boxShadow !== false
         glassShift: root.glassShift
-        motion: root.lean ? 0 : (root.gaming ? 0.25 : root.motion)
-        jelly: root.opt.jelly !== false && !root.gaming
+        motion: root.lean || root.reduceMotion ? 0 : (root.gaming ? 0.25 : root.motion)
+        jelly: root.opt.jelly !== false && !root.gaming && !root.reduceMotion
         jellyAmt: root.opt.jellyAmt !== undefined ? root.opt.jellyAmt : 1
         growth: root.growth
         growthOn: root.growthOn

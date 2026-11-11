@@ -98,7 +98,7 @@ Scope {
     readonly property bool planBusy: planProc.running
     function cancelOp() { opProc.running = false }
     function lastLines(n) { return opLines.slice(Math.max(0, opLines.length - n)).join("\n") }
-    function iconFor(id) { return id === "luna" ? 0xF0594 : id === "ai-antivirus" ? 0xF0565 : id === "ai-firewall" ? 0xF0238 : 0xF06B0 }
+    function iconFor(id) { return pal.iconFor(id) }
     function tagOf(c) { return c && c.installed && c.installed.tags && c.installed.tags.length > 0 ? c.installed.tags[0] : "" }
     // how old the installed commit is next to the newest one ("5 days old"); empty when either date is not known
     function ageText(c) {

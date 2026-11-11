@@ -6,7 +6,6 @@ Rectangle {
     property var vc
     id: card
     property var comp
-    property bool menuOpen: false
     readonly property bool greyed: comp.state === "not-chosen" || comp.state === "missing"
     readonly property bool pacman: comp.state === "pacman"
     readonly property var lst: vc.lists[comp.id] || null
@@ -56,11 +55,16 @@ Rectangle {
                 disabled: vc.locked
                 onClicked: vc.askInstallNew(card.comp.id)
             }
-            VersionCorner {
+            VersionActions {
                 pal: vc.pal
                 visible: !card.greyed && !card.pacman
-                open: card.menuOpen
-                onClicked: card.menuOpen = !card.menuOpen
+                comp: card.comp
+                lst: card.lst
+                blocked: vc.locked || vc.planBusy
+                onUpdateClicked: vc.askUpdate(card.comp.id)
+                onRollbackClicked: vc.askRollback(card.comp.id)
+                onPinClicked: vc.pinToggle(card.comp.id)
+                onCommitsClicked: vc.toggleList(card.comp.id)
             }
         }
 
@@ -84,17 +88,6 @@ Rectangle {
             text: "This one came from a pacman package, so pacman looks after it. Nothing here will change it."
         }
 
-        VersionActions {
-            pal: vc.pal
-            shown: card.menuOpen && !card.greyed && !card.pacman
-            comp: card.comp
-            lst: card.lst
-            blocked: vc.locked || vc.planBusy
-            onUpdateClicked: vc.askUpdate(card.comp.id)
-            onRollbackClicked: vc.askRollback(card.comp.id)
-            onPinClicked: vc.pinToggle(card.comp.id)
-            onCommitsClicked: vc.toggleList(card.comp.id)
-        }
         VersionLog { vc: card.vc; comp: card.comp; lst: card.lst; res: card.res; mine: card.mine }
         VersionCommits { vc: card.vc; comp: card.comp; lst: card.lst }
     }

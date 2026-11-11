@@ -6,7 +6,7 @@ const rd = p => fs.readFileSync(path.join(root, p), 'utf8')
 let n = 0, bad = 0
 function ok(label, cond) { n++; if (!cond) { bad++; console.log('FAIL ' + label) } else console.log('ok   ' + label) }
 
-const vcMain = rd('quickshell/island/VersionCenter.qml'), vc = vcMain + ['Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'), auto = rd('quickshell/island/SetVersionsAuto.qml')
+const vcMain = rd('quickshell/island/VersionCenter.qml'), vc = vcMain + ['Card', 'Hero', 'Log', 'Commits', 'Actions', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'), auto = rd('quickshell/island/SetVersionsAuto.qml')
 const shell = rd('quickshell/island/shell.qml'), launcher = rd('quickshell/island/Launcher.qml'), settings = rd('quickshell/island/Settings.qml')
 const notch = rd('quickshell/island/NotchBar.qml')
 
@@ -41,12 +41,12 @@ ok('slow, calm animations come from the palette (dMed / dSlow), no fixed fast on
 
 // ---- the two-column layout with the star corner menu
 ok('Halcyon has its own big card (Hero) and the companions are LUNA, ai-antivirus, ai-firewall in that order', /delegate: VersionHero/.test(vc) && /model: root\.loaded \? \["luna", "ai-antivirus", "ai-firewall"\]/.test(vc))
-ok('the actions sit behind a corner button that is the Halcyon star (HalMark), on both card kinds', /HalMark \{[^}]*rotation: cb\.open \? 90/.test(rd('quickshell/island/VersionCorner.qml')) && (vc.match(/VersionCorner \{/g) || []).length >= 2)
-ok('the actions pill holds Update, Roll back, Pin, Commits and takes no room while closed', (() => { const a = rd('quickshell/island/VersionActions.qml'); return /implicitHeight: shown \? 36 : 0/.test(a) && /label: "Roll back"/.test(a) && /label: "Pin"|"Unpin" : "Pin"/.test(a) })())
+ok('the actions are one button that expands into a pill row (ActionPill), on both card kinds', /ActionPill \{/.test(rd('quickshell/island/VersionActions.qml')) && (vc.match(/VersionActions \{/g) || []).length >= 2)
+ok('the actions pill holds Update, Roll back, Pin, Commits and closes on Esc or an outside click', (() => { const a = rd('quickshell/island/VersionActions.qml'), p = rd('quickshell/island/ActionPill.qml'); return /label: "Roll back"/.test(a) && /"Unpin" : "Pin"/.test(a) && /Qt\.Key_Escape/.test(p) && /if \(!inBtn && !inTray\) ap\.close\(\)/.test(p) })())
 ok('the Halcyon card shows installed, latest, behind by, pin and the distance bar', ['"Installed"', '"Latest on main"', '"Behind by"', '"Pin"', 'lagPos'].every(x => vc.includes(x)))
 
 ok('the Halcyon card has no pointer-following light: the whole panels (Halcyon card and the companion cards) tip under the pointer with HoverTilt, the tiles inside stay flat', (() => { const h = rd('quickshell/island/VersionHero.qml'), t = rd('quickshell/island/VersionTile.qml'), c = rd('quickshell/island/VersionCard.qml'), l = rd('quickshell/island/HoverTilt.qml'); return !/WGlow|Behavior on gx|HoverLift/.test(h + t) && /HoverTilt/.test(h) && /HoverTilt/.test(c) && /Matrix4x4 \{ matrix: tilt\.matrix \}/.test(h) && /Matrix4x4 \{ matrix: tilt\.matrix \}/.test(c) && !/HoverTilt|Matrix4x4/.test(t) && /HoverHandler/.test(l) && /Qt\.matrix4x4/.test(l) })())
-ok('Version Center is unslopped: no gradient, no tracked capitals, tags are rounded rectangles not pills, one accent', (() => { const all = ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'); return !/Gradient|AllUppercase|letterSpacing|accent2/.test(all) && /Math\.min\(hgt \/ 2, 8\)/.test(rd('quickshell/island/VersionBadge.qml')) && /radius: 8/.test(rd('quickshell/island/VersionPill.qml')) })())
+ok('Version Center is unslopped: no gradient, no tracked capitals, tags are rounded rectangles not pills, one accent', (() => { const all = ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].map(n => rd('quickshell/island/Version' + n + '.qml')).join('\n'); return !/Gradient|AllUppercase|letterSpacing|accent2/.test(all) && /Math\.min\(hgt \/ 2, 8\)/.test(rd('quickshell/island/VersionBadge.qml')) && /radius: 8/.test(rd('quickshell/island/VersionPill.qml')) })())
 // ---- braces balance in the new QML (a cheap compile guard where Quickshell is not installed)
 function balanced(src) {
   let d = 0, inStr = null, esc = false, line = false, block = false
@@ -64,7 +64,7 @@ function balanced(src) {
   }
   return d === 0 && !inStr
 }
-ok('VersionCenter.qml and the Version*.qml pieces: brackets balance', ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Corner', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].every(n => balanced(rd('quickshell/island/Version' + n + '.qml'))))
+ok('VersionCenter.qml and the Version*.qml pieces: brackets balance', ['Center', 'Card', 'Hero', 'Log', 'Commits', 'Actions', 'Pill', 'Tile', 'Badge', 'Btn', 'Text'].every(n => balanced(rd('quickshell/island/Version' + n + '.qml'))))
 ok('SetVersionsAuto.qml: brackets balance', balanced(auto))
 ok('every id used by the QML processes is declared once', ['statusProc', 'logProc', 'tagsProc', 'planProc', 'autoProc', 'opProc'].every(id => (vc.match(new RegExp('id: ' + id + '\\b', 'g')) || []).length === 1))
 
