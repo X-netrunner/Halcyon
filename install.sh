@@ -3160,7 +3160,12 @@ aifw_take_over() {
     done
     after=$(as_root systemctl show -p NRestarts --value ai-firewall.service 2>/dev/null)
     if [[ $steady -lt 3 || "$before" != "$after" ]]; then
-        warn_later "ai-firewall did not stay running, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
+        as_root systemctl disable --now ai-firewall.service >/dev/null 2>&1 || true
+        local fallback
+        for fallback in ufw.service firewalld.service; do
+            if as_root systemctl is-enabled --quiet "$fallback"; then as_root systemctl start "$fallback" >/dev/null 2>&1 || true; fi
+        done
+        warn_later "ai-firewall did not stay running, so it was stopped and ufw / firewalld were started again. Check: journalctl -u ai-firewall"
         return 1
     fi
     if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
