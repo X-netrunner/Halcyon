@@ -7,7 +7,44 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::Command;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const NOTIFY_COOLDOWN: Duration = Duration::from_secs(30);
+
+struct NotifyLimiter {
+    last: HashMap<&'static str, Instant>,
+    held: HashMap<&'static str, u32>,
+}
+
+impl NotifyLimiter {
+    fn new() -> Self {
+        Self {
+            last: HashMap::new(),
+            held: HashMap::new(),
+        }
+    }
+
+    fn allow(&mut self, signature: &'static str, now: Instant) -> Option<u32> {
+        let ready = self
+            .last
+            .get(signature)
+            .is_none_or(|t| now.duration_since(*t) >= NOTIFY_COOLDOWN);
+        if ready {
+            self.last.insert(signature, now);
+            Some(self.held.remove(signature).unwrap_or(0))
+        } else {
+            *self.held.entry(signature).or_insert(0) += 1;
+            None
+        }
+    }
+}
+
+fn shorten(text: &str, max_chars: usize) -> &str {
+    match text.char_indices().nth(max_chars) {
+        Some((i, _)) => &text[..i],
+        None => text,
+    }
+}
 
 fn build_sig(pattern: &str) -> Regex {
     RegexBuilder::new(pattern)
@@ -169,7 +206,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
     });
 }
 
-fn log_alert(alert_log: &str, signature_name: &str, raw_log: &str) {
+fn log_alert(alert_log: &str, signature_name: &str, raw_log: &str, notify: Option<u32>) {
     if let Some(parent) = Path::new(alert_log).parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -182,14 +219,22 @@ fn log_alert(alert_log: &str, signature_name: &str, raw_log: &str) {
         );
     }
 
-    let summary = if raw_log.len() > 100 {
-        &raw_log[..100]
+    let Some(held) = notify else {
+        return;
+    };
+    let more = if held > 0 {
+        format!("\n({held} more since the last alert)")
     } else {
-        raw_log
+        String::new()
     };
     run_notify_send(
         "IDS Attack Detected",
-        &format!("Signature: {}\nLog: {}...", signature_name, summary),
+        &format!(
+            "Signature: {}\nLog: {}...{}",
+            signature_name,
+            shorten(raw_log, 100),
+            more
+        ),
         "critical",
         "security-high",
     );
@@ -257,14 +302,24 @@ fn main() {
         }
     };
 
+    let mut inode = file.metadata().map(|m| m.ino()).unwrap_or(0);
     let mut reader = BufReader::new(file);
     let _ = reader.seek(SeekFrom::End(0));
+    let mut limiter = NotifyLimiter::new();
 
     let mut line = String::new();
     loop {
         line.clear();
         match reader.read_line(&mut line) {
             Ok(0) => {
+                let rotated = fs::metadata(&log_file_path).is_ok_and(|m| m.ino() != inode);
+                if rotated {
+                    if let Ok(f) = File::open(&log_file_path) {
+                        inode = f.metadata().map(|m| m.ino()).unwrap_or(0);
+                        reader = BufReader::new(f);
+                        continue;
+                    }
+                }
                 if let Ok(meta) = reader.get_ref().metadata() {
                     if let Ok(pos) = reader.stream_position() {
                         if pos > meta.len() {
@@ -279,7 +334,8 @@ fn main() {
                 if !trimmed.is_empty() {
                     for (sig_name, reg) in &signatures {
                         if reg.is_match(trimmed) {
-                            log_alert(&alert_log_path, sig_name, trimmed);
+                            let notify = limiter.allow(sig_name, Instant::now());
+                            log_alert(&alert_log_path, sig_name, trimmed, notify);
                             break;
                         }
                     }
@@ -295,6 +351,24 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notifications_are_limited_per_signature() {
+        let mut l = NotifyLimiter::new();
+        let t0 = Instant::now();
+        assert_eq!(l.allow("scan", t0), Some(0));
+        assert_eq!(l.allow("scan", t0 + Duration::from_secs(1)), None);
+        assert_eq!(l.allow("scan", t0 + Duration::from_secs(2)), None);
+        assert_eq!(l.allow("sqli", t0 + Duration::from_secs(2)), Some(0));
+        assert_eq!(l.allow("scan", t0 + NOTIFY_COOLDOWN), Some(2));
+    }
+
+    #[test]
+    fn shortening_never_splits_a_character() {
+        let text = "é".repeat(150);
+        assert_eq!(shorten(&text, 100).chars().count(), 100);
+        assert_eq!(shorten("short", 100), "short");
+    }
 
     #[test]
     fn test_signatures() {
