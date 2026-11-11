@@ -12,6 +12,7 @@ use halcyon_music_core::models::{FullCapsule, Track};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
     capsule: &'a FullCapsule,
     month_offset: u32,

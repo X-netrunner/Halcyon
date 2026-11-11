@@ -201,7 +201,18 @@ Scope {
     }
     function delNote(id) { act(["del", String(id)]) }
     function pinNote(id) { act(["pin", String(id)]) }
-    function toggleDone(id) { act(["done", String(id)]) }
+    function toggleDone(id) {
+        // the box flips at once; the script then does the real work (repeating tasks, reminders) and the list is read again
+        var sid = String(id)
+        root.notes = root.notes.map(function (n) {
+            if (String(n.id) !== sid) return n
+            var c = {}
+            for (var k in n) c[k] = n[k]
+            c.done = !n.done
+            return c
+        })
+        act(["done", sid])
+    }
 
     readonly property int openCount: notes.filter(function (n) { return !n.done }).length
     readonly property int pinnedCount: notes.filter(function (n) { return n.pinned }).length
@@ -272,6 +283,36 @@ Scope {
                   .sort(function (a, b) { return ((b.n.pinned ? 1 : 0) - (a.n.pinned ? 1 : 0)) || (a.i - b.i) })
                   .map(function (e) { return e.n })
     }
+
+    // ---- the list the window shows. It used to be the filtered array itself, so every reload (a tick, a pin, any change) handed the
+    // ListView a NEW array: it rebuilt every row, scrolled back to the top and closed every row that was open. Now the view holds a
+    // ListModel of note ids that is brought in line with the filtered list (rows removed, added or moved, nothing else), and each row
+    // looks its note up by id. A tick changes one note; the list stays where it is and the open rows stay open.
+    readonly property var noteMap: {
+        var m = {}
+        for (var i = 0; i < notes.length; i++) m[String(notes[i].id)] = notes[i]
+        return m
+    }
+    ListModel { id: rowModel }
+    function syncRows() {
+        var ids = filteredNotes.map(function (n) { return String(n.id) })
+        var want = {}
+        for (var a = 0; a < ids.length; a++) want[ids[a]] = true
+        for (var i = rowModel.count - 1; i >= 0; i--) if (!want[rowModel.get(i).nid]) rowModel.remove(i)
+        for (var k = 0; k < ids.length; k++) {
+            if (k < rowModel.count && rowModel.get(k).nid === ids[k]) continue
+            var found = -1
+            for (var m = k + 1; m < rowModel.count; m++) if (rowModel.get(m).nid === ids[k]) { found = m; break }
+            if (found >= 0) rowModel.move(found, k, 1)
+            else rowModel.insert(k, { nid: ids[k] })
+        }
+    }
+    function noteAbove(i) {          // the note in the row above row i (null for the first row, or while a row is leaving)
+        if (i <= 0 || i - 1 >= rowModel.count) return null
+        var n = noteMap[String(rowModel.get(i - 1).nid)]
+        return n === undefined ? null : n
+    }
+    onFilteredNotesChanged: syncRows()
 
     // when a task is due, in the same words: "Today 18:00" / "Tomorrow 09:00" / "20 Oct 14:30"
     function dueText(ts) {
@@ -365,7 +406,7 @@ Scope {
         }
     }
     Timer { interval: 3000; repeat: true; running: root.isRecording; onTriggered: if (!recStatProc.running) recStatProc.running = true }
-    Component.onCompleted: recStatProc.running = true
+    Component.onCompleted: { recStatProc.running = true; syncRows() }
 
     // the dots: start -> the panel leaves and a small card stays on every workspace until Stop; Stop -> saved, written down, sorted by the AI
     function toggleRecord(text) {
@@ -644,26 +685,20 @@ Scope {
                     anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
                     spacing: 14
 
-                    RowLayout {
+                    // header: one glyph, the name, one line (the note count; "Saved" or an error replaces it for a moment)
+                    CalmHeader {
                         Layout.fillWidth: true
-                        spacing: 10
-                        Rectangle {
-                            visible: !root.pal.zen || root.flash        // new: only the "saved" blink, no ornament at rest
-                            width: 8; height: 8; radius: 4
-                            color: root.flash ? root.pal.good : root.pal.accent
-                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                        }
-                        // the notice (an error) or "Saved" shows whole under the title, not cut off at the right
-                        BoxTitle {
+                        pal: root.pal
+                        glyph: root.flash ? 0xF012C : 0xF09A8
+                        titleSize: 18
+                        title: "New note"
+                        sub: root.notice !== "" ? root.notice : (root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes")))
+                        subTone: root.notice !== "" ? "bad" : (root.flash ? "good" : "muted")
+                        CalmIconBtn {
                             pal: root.pal
-                            title: "New note"
-                            sub: root.notice !== "" ? root.notice : (root.flash ? "Saved" : (root.notes.length + (root.notes.length === 1 ? " note" : " notes")))
-                            subColor: root.notice !== "" ? root.pal.bad : (root.flash ? root.pal.good : root.pal.muted)
-                        }
-                        RoundBtn {
-                            pal: root.pal
-                            size: 28
-                            glyph: String.fromCodePoint(0xF0156)
+                            size: 32
+                            glyph: 0xF0156
+                            tip: "Close"
                             onClicked: root.hide()
                         }
                     }
@@ -699,11 +734,11 @@ Scope {
                         }
                     }
 
-                    // the text of the note
+                    // the text of the note, with Voice and Save inside the box (no button row under it)
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.max(88, Math.min(190, qin.contentHeight + 28))
-                        radius: root.pal.rMd
+                        Layout.preferredHeight: Math.max(112, Math.min(210, qin.contentHeight + 28 + 44))
+                        radius: root.pal.rLg
                         color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                         border.width: root.pal.zen && !qin.activeFocus ? 0 : 1
                         border.color: qin.activeFocus ? root.pal.accent : root.pal.lineSoft
@@ -711,8 +746,7 @@ Scope {
 
                         Flickable {
                             id: fl
-                            anchors.fill: parent
-                            anchors.margins: 14
+                            anchors { fill: parent; margins: 16; bottomMargin: 46 }
                             contentWidth: width
                             contentHeight: qin.contentHeight
                             clip: true
@@ -756,6 +790,28 @@ Scope {
                                 }
                             }
                         }
+                        Row {
+                            anchors { right: parent.right; bottom: parent.bottom; rightMargin: 8; bottomMargin: 8 }
+                            spacing: 4
+                            CalmIconBtn {
+                                pal: root.pal
+                                size: 32
+                                glyph: 0xF036D
+                                danger: root.isRecording
+                                active: root.isRecording
+                                tip: root.isRecording ? "Stop recording" : "Voice note"
+                                onClicked: { root.toggleRecord(qin.text); if (root.isRecording) qin.text = "" }
+                            }
+                            CalmIconBtn {
+                                pal: root.pal
+                                size: 32
+                                glyph: 0xF048A
+                                primary: qin.text.trim().length > 0
+                                enabledBtn: qin.text.trim().length > 0
+                                tip: "Save (Enter)"
+                                onClicked: { if (root.saveQuick(qin.text)) qin.text = "" }
+                            }
+                        }
                     }
 
                     // the latest notes, one line each
@@ -763,12 +819,30 @@ Scope {
                         Layout.fillWidth: true
                         spacing: 6
                         visible: root.notes.length > 0
-                        Text {
-                            text: root.pal.cap("LATEST")
-                            color: Qt.alpha(root.pal.muted, 0.8)
-                            font.family: root.pal.uiFont
-                            font.pixelSize: 10
-                            font.letterSpacing: 0
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.pal.cap("LATEST")
+                                color: Qt.alpha(root.pal.muted, 0.8)
+                                font.family: root.pal.uiFont
+                                font.pixelSize: 10
+                                font.letterSpacing: 0
+                            }
+                            Text {
+                                text: "All notes  \u203a"
+                                color: allMa.containsMouse ? root.pal.accent : root.pal.muted
+                                font.family: root.pal.uiFont
+                                font.pixelSize: root.pal.tCap
+                                font.weight: Font.Medium
+                                MouseArea {
+                                    id: allMa
+                                    anchors { fill: parent; margins: -6 }
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.openAll()
+                                }
+                            }
                         }
                         Repeater {
                             model: root.notes.filter(function (n) { return !n.done }).slice(0, 3)
@@ -805,37 +879,11 @@ Scope {
                     Hint {
                         pal: root.pal
                         Layout.fillWidth: true
-                        text: "Enter saves   \u00b7   Ctrl + V adds an image, then type its note   \u00b7   Shift + Enter new line   \u00b7   Esc closes"
-                        color: Qt.alpha(root.pal.muted, 0.85)
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "Enter saves   \u00b7   Shift + Enter new line   \u00b7   Ctrl + V adds an image"
+                        color: Qt.alpha(root.pal.muted, 0.8)
                         fontFamily: root.pal.uiFont
                         pixelSize: 10
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        Item { Layout.fillWidth: true }
-                        ActionChip {
-                            pal: root.pal
-                            glyph: String.fromCodePoint(0xF036D)
-                            label: root.isRecording ? "Stop rec" : "Voice"
-                            on: root.isRecording
-                            implicitHeight: 30
-                            onClicked: { root.toggleRecord(qin.text); if (root.isRecording) qin.text = "" }
-                        }
-                        ActionChip {
-                            pal: root.pal
-                            label: "All notes"
-                            implicitHeight: 30
-                            onClicked: root.openAll()
-                        }
-                        ActionChip {
-                            pal: root.pal
-                            label: "Save"
-                            implicitHeight: 30
-                            on: qin.text.trim().length > 0
-                            onClicked: { if (root.saveQuick(qin.text)) qin.text = "" }
-                        }
                     }
                 }
             }
@@ -885,22 +933,42 @@ Scope {
                     anchors.margins: 24
                     spacing: 14
 
-                    // header
-                    RowLayout {
+                    // header: one glyph, the name, one line under it, the actions as icons (names in a tooltip)
+                    CalmHeader {
                         Layout.fillWidth: true
-                        spacing: 10
-                        Rectangle { visible: !root.pal.zen; width: 8; height: 8; radius: 4; color: root.pal.accent }
-                        BoxTitle {
+                        pal: root.pal
+                        glyph: 0xF09A8
+                        titleSize: 20
+                        title: "Notes"
+                        sub: root.openCount + " open" + (root.taskCount > 0 ? "   \u00b7   " + root.taskCount + (root.taskCount === 1 ? " task" : " tasks") : "") + (root.doneCount > 0 ? "   \u00b7   " + root.doneCount + " done" : "")
+
+                        CalmIconBtn {
                             pal: root.pal
-                            size: 18
-                            title: "Notes"
-                            sub: root.openCount + " open" + (root.taskCount > 0 ? "   \u00b7   " + root.taskCount + (root.taskCount === 1 ? " task" : " tasks") : "") + (root.doneCount > 0 ? "   \u00b7   " + root.doneCount + " done" : "")
+                            glyph: 0xF06B0
+                            visible: root.notes.length >= 2
+                            active: root.orgOpen
+                            tip: root.orgOpen ? "Close Organise" : "Organise: tags, groups, duplicates"
+                            onClicked: root.orgOpen ? (root.orgOpen = false) : root.organise()
                         }
-                        // (Organise, New note and Clear completed sit together at the bottom left, so the top stays quiet)
-                        RoundBtn {
+                        CalmIconBtn {
                             pal: root.pal
-                            size: 30
-                            glyph: String.fromCodePoint(0xF0156)
+                            glyph: 0xF01B4
+                            visible: root.doneCount > 0
+                            tip: "Clear completed"
+                            onClicked: root.act(["clear"])
+                        }
+                        CalmIconBtn {
+                            pal: root.pal
+                            glyph: 0xF0415
+                            primary: !root.composing
+                            active: root.composing
+                            tip: root.composing ? "Close the writing box" : "New note"
+                            onClicked: root.toggleCompose()
+                        }
+                        CalmIconBtn {
+                            pal: root.pal
+                            glyph: 0xF0156
+                            tip: "Close"
                             onClicked: root.hide()
                         }
                     }
@@ -908,15 +976,15 @@ Scope {
                     // search
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 38
-                        radius: root.pal.rMd
+                        Layout.preferredHeight: 42
+                        radius: height / 2
                         color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.bg, 0.55)
                         border.width: root.pal.zen && !sin.activeFocus ? 0 : 1
                         border.color: sin.activeFocus ? root.pal.accent : root.pal.lineSoft
                         Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                         Text {
                             id: sGlyph
-                            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+                            anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
                             text: String.fromCodePoint(0xF0349)
                             color: sin.activeFocus ? root.pal.accent : root.pal.muted
                             font.family: root.pal.font; font.pixelSize: 15
@@ -933,8 +1001,8 @@ Scope {
                         TextInput {
                             id: sin
                             anchors.fill: parent
-                            anchors.leftMargin: 40
-                            anchors.rightMargin: 36
+                            anchors.leftMargin: 46
+                            anchors.rightMargin: 40
                             verticalAlignment: TextInput.AlignVCenter
                             color: root.pal.text
                             selectionColor: Qt.alpha(root.pal.accent, 0.45)
@@ -994,7 +1062,7 @@ Scope {
                     // filter (and the groups Organise made)
                     Flow {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: 6
                         Repeater {
                             model: [
                                 { id: "all", t: "All", n: root.notes.length },
@@ -1008,21 +1076,30 @@ Scope {
                             delegate: Rectangle {
                                 required property var modelData
                                 readonly property bool on: root.filter === modelData.id
-                                width: fl2.implicitWidth + 24
+                                width: flRow.implicitWidth + 22
                                 height: 28
                                 radius: 14
-                                color: on ? Qt.alpha(root.pal.accent, 0.18) : (fma.containsMouse ? Qt.alpha(root.pal.surfaceHi, 0.9) : Qt.alpha(root.pal.surface, 0.7))
-                                border.width: root.pal.zen && !(on) ? 0 : 1
-                                border.color: on ? Qt.alpha(root.pal.accent, 0.5) : root.pal.lineSoft
+                                color: on ? Qt.alpha(root.pal.accent, 0.18) : (fma.containsMouse ? Qt.alpha(root.pal.text, 0.07) : "transparent")
                                 Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                Text {
-                                    id: fl2
+                                Row {
+                                    id: flRow
                                     anchors.centerIn: parent
-                                    text: modelData.t + "  " + modelData.n
-                                    color: parent.on ? root.pal.accent : root.pal.muted
-                                    font.family: root.pal.uiFont
-                                    font.pixelSize: root.pal.tCap
-                                    font.weight: parent.on ? Font.Medium : Font.Normal
+                                    spacing: 6
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.t
+                                        color: on ? root.pal.accent : root.pal.text
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap + 1
+                                        font.weight: on ? Font.DemiBold : Font.Medium
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.n
+                                        color: on ? Qt.alpha(root.pal.accent, 0.8) : Qt.alpha(root.pal.muted, 0.85)
+                                        font.family: root.pal.uiFont
+                                        font.pixelSize: root.pal.tCap - 1
+                                    }
                                 }
                                 MouseArea {
                                     id: fma
@@ -1036,23 +1113,34 @@ Scope {
                     }
 
                     // the list
-                    ListView {
-                        id: listView
+                    Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                    ListView {
+                        id: listView
+                        anchors.fill: parent
                         clip: true
                         spacing: 8
-                        model: root.filteredNotes
+                        model: rowModel
                         boundsBehavior: Flickable.StopAtBounds
+                        reuseItems: false
+                        // rows move smoothly when one is added, removed or re-sorted (a pin), instead of jumping
+                        displaced: Transition { NumberAnimation { properties: "y"; duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 5 }
 
                         delegate: Item {
                             id: wrap
-                            required property var modelData
+                            required property string nid
                             required property int index
+                            // the note, looked up by id; it keeps the last one it had while the row is on its way out
+                            readonly property var fresh: root.noteMap[nid]
+                            property var modelData: ({})
+                            onFreshChanged: if (fresh !== undefined) modelData = fresh
+                            Component.onCompleted: if (fresh !== undefined) modelData = fresh
                             readonly property string sec: root.sectionOf(modelData)
-                            readonly property bool firstOfSec: sec !== "" && (index === 0 || root.sectionOf(root.filteredNotes[index - 1]) !== sec)
+                            readonly property bool firstOfSec: sec !== "" && (index === 0 || root.sectionOf(root.noteAbove(index)) !== sec)
                             width: listView.width
-                            height: (firstOfSec ? secHead.height + 8 : 0) + noteRow.height
+                            height: (firstOfSec ? secHead.height + 10 : 0) + noteRow.height
                             Text {
                                 id: secHead
                                 visible: wrap.firstOfSec
@@ -1065,10 +1153,18 @@ Scope {
                                 font.weight: Font.Medium
                                 font.letterSpacing: root.pal.calm ? 0.2 : 1.0
                             }
+                            Rectangle {          // a hairline after the section's name
+                                visible: wrap.firstOfSec
+                                x: secHead.implicitWidth + 14
+                                y: secHead.height / 2
+                                width: Math.max(0, wrap.width - x - 4); height: 1
+                                color: root.pal.lineSoft
+                            }
                         Rectangle {
                             id: noteRow
-                            y: wrap.firstOfSec ? secHead.height + 8 : 0
+                            y: wrap.firstOfSec ? secHead.height + 10 : 0
                             readonly property var modelData: wrap.modelData
+                            readonly property bool hot: rowHover.hovered || aiOpen || picking
                             property bool expanded: false              // a long note shows its first lines until "Show more"
                             property bool aiOpen: false                // the AI / picture actions (Overview, Summarise, Describe ...) are shown
                             property bool copied: false
@@ -1077,12 +1173,15 @@ Scope {
                             Timer { id: ocrCopyT; interval: 1400; onTriggered: noteRow.copiedOcr = false }
                             function markCopied() { copied = true; copiedT.restart() }
                             width: listView.width
-                            height: Math.max(58, noteCol.implicitHeight + 32)
+                            height: Math.max(58, noteCol.implicitHeight + 28)
                             radius: root.pal.rMd
-                            color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.11) : Qt.alpha(root.pal.bg, 0.5)
-                            border.width: root.pal.zen && !(modelData.pinned) ? 0 : 1
-                            border.color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.40) : root.pal.lineSoft
+                            color: modelData.pinned ? Qt.alpha(root.pal.accent, hot ? 0.15 : 0.10)
+                                   : (hot ? Qt.alpha(root.pal.surfaceHi, 0.60) : Qt.alpha(root.pal.bg, 0.42))
+                            border.width: root.pal.zen && !(modelData.pinned) && !hot ? 0 : 1
+                            border.color: modelData.pinned ? Qt.alpha(root.pal.accent, 0.38) : (hot ? Qt.alpha(root.pal.accent, 0.22) : root.pal.lineSoft)
                             clip: true
+                            Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                            Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                             HoverHandler { id: rowHover }
                             Timer { id: copiedT; interval: 1300; onTriggered: noteRow.copied = false }
 
@@ -1102,14 +1201,15 @@ Scope {
 
                                 // done box
                                 MouseArea {
-                                    Layout.preferredWidth: 22
-                                    Layout.preferredHeight: 22
-                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.preferredWidth: 26
+                                    Layout.preferredHeight: 26
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: 14
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: root.toggleDone(noteRow.modelData.id)
                                     Rectangle {
                                         anchors.centerIn: parent
-                                        width: 18; height: 18; radius: 5
+                                        width: 20; height: 20; radius: 10
                                         color: noteRow.modelData.done ? root.pal.accent : "transparent"
                                         border.width: 1.5
                                         border.color: noteRow.modelData.done ? root.pal.accent : root.pal.muted
@@ -1142,7 +1242,9 @@ Scope {
                                     Layout.fillWidth: true
                                     Layout.preferredWidth: 0
                                     Layout.minimumWidth: 0
-                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: 14
+                                    Layout.bottomMargin: 14
                                     spacing: 10
                                     // ---- the note itself: the voice player, then what you wrote or said, then when ----
                                     // audio player
@@ -1395,98 +1497,130 @@ Scope {
                                         }
                                     }
 
-                                    // actions: faint until the pointer is over the note. Yours first, a thin line, then the ones that ask the AI or read a picture
+                                    // the AI and picture actions: only while "AI" is open (the main actions float at the top right of the note)
                                     Flow {
+                                        visible: noteRow.aiOpen
                                         Layout.fillWidth: true
                                         Layout.preferredWidth: 0
                                         spacing: 2
-                                        opacity: (rowHover.hovered || noteRow.aiOpen || noteRow.picking) ? 1 : 0.4
-                                        Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                         Repeater {
                                             model: [
-                                                { k: "edit", t: "Edit" },
-                                                { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin" },
-                                                { k: "task", t: noteRow.modelData.task ? "Note" : "Task" },
-                                                { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
-                                                { k: "copy", t: noteRow.copied ? "Copied" : "Copy" },
-                                                { k: "del", t: "Delete" },
-                                                { k: "ai", t: noteRow.aiOpen ? "AI  \u25B4" : "AI  \u25BE" },
-                                                { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.aiOpen || !noteRow.modelData.audio },
-                                                { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Overview", hide: !noteRow.aiOpen },
-                                                { k: "summary", t: root.summaryBusy(noteRow.modelData) ? "Writing" : (noteRow.modelData.summary && noteRow.modelData.summary.state === "done" ? "Summarise again" : "Summarise"), hide: !noteRow.aiOpen },
-                                                { k: "describe", t: root.descBusy(noteRow.modelData) ? "Looking" : (noteRow.modelData.describe && noteRow.modelData.describe.state === "done" ? "Describe again" : "Describe"), hide: !noteRow.aiOpen || !noteRow.modelData.image || !root.vlmOn },
-                                                { k: "ocr", t: root.ocrBusy(noteRow.modelData) ? "Reading" : "Read text", hide: !noteRow.aiOpen || !noteRow.modelData.image || root.ocrText(noteRow.modelData) !== "" },
-                                                { k: "copyocr", t: noteRow.copiedOcr ? "Copied" : "Copy text", hide: !noteRow.aiOpen || root.ocrText(noteRow.modelData) === "" }
+                                                { k: "stt", t: root.sttBusy(noteRow.modelData) ? "Writing" : "To text", hide: !noteRow.modelData.audio },
+                                                { k: "think", t: root.aiThinking(noteRow.modelData) ? "Thinking" : "Overview", hide: false },
+                                                { k: "summary", t: root.summaryBusy(noteRow.modelData) ? "Writing" : (noteRow.modelData.summary && noteRow.modelData.summary.state === "done" ? "Summarise again" : "Summarise"), hide: false },
+                                                { k: "describe", t: root.descBusy(noteRow.modelData) ? "Looking" : (noteRow.modelData.describe && noteRow.modelData.describe.state === "done" ? "Describe again" : "Describe"), hide: !noteRow.modelData.image || !root.vlmOn },
+                                                { k: "ocr", t: root.ocrBusy(noteRow.modelData) ? "Reading" : "Read text", hide: !noteRow.modelData.image || root.ocrText(noteRow.modelData) !== "" },
+                                                { k: "copyocr", t: noteRow.copiedOcr ? "Copied" : "Copy text", hide: root.ocrText(noteRow.modelData) === "" }
                                             ]
-                                            delegate: Item {
-                                                required property var modelData
-                                                visible: !modelData.hide
-                                                width: visible ? (modelData.k === "sep" ? 13 : at.implicitWidth + 16) : 0
-                                                height: 26
-                                                Rectangle {          // the thin line between the two groups
-                                                    visible: modelData.k === "sep"
-                                                    anchors.centerIn: parent
-                                                    width: 1; height: 14
-                                                    color: Qt.alpha(root.pal.muted, 0.35)
-                                                }
-                                                Rectangle {
-                                                    visible: modelData.k !== "sep"
-                                                    anchors.fill: parent
-                                                    radius: 13
-                                                    color: ama.containsMouse ? Qt.alpha(modelData.k === "del" ? root.pal.bad : root.pal.accent, 0.16) : "transparent"
-                                                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                                                    Text {
-                                                        id: at
-                                                        anchors.centerIn: parent
-                                                        text: modelData.t || ""
-                                                        color: ama.containsMouse || (modelData.k === "ai" && noteRow.aiOpen) ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
-                                                        font.family: root.pal.uiFont
-                                                        font.pixelSize: 10
-                                                        font.weight: Font.Medium
-                                                    }
-                                                    MouseArea {
-                                                        id: ama
-                                                        anchors.fill: parent
-                                                        hoverEnabled: true
-                                                        cursorShape: Qt.PointingHandCursor
-                                                        onClicked: {
-                                                            var n = noteRow.modelData
-                                                            if (modelData.k === "edit") root.startEdit(n)
-                                                            else if (modelData.k === "pin") root.pinNote(n.id)
-                                                            else if (modelData.k === "del") root.delNote(n.id)
-                                                            else if (modelData.k === "task") root.toggleTask(n.id)
-                                                            else if (modelData.k === "stt") { if (!root.sttBusy(n)) root.transcribeNote(n.id) }
-                                                            else if (modelData.k === "think") { if (!root.aiThinking(n)) root.thinkNote(n.id) }
-                                                            else if (modelData.k === "summary") { if (!root.summaryBusy(n)) root.summaryNote(n.id) }
-                                                            else if (modelData.k === "describe") { if (!root.descBusy(n)) root.describeNote(n.id) }
-                                                            else if (modelData.k === "ocr") { if (!root.ocrBusy(n)) root.ocrNote(n.id) }
-                                                            else if (modelData.k === "copyocr") { Quickshell.execDetached(["wl-copy", root.ocrText(n)]); noteRow.copiedOcr = true; ocrCopyT.restart() }
-                                                            else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
-                                                            else if (modelData.k === "ai") noteRow.aiOpen = !noteRow.aiOpen
-                                                            else {
-                                                                Quickshell.execDetached(["wl-copy", n.text || ""])
-                                                                noteRow.markCopied()
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            delegate: actDel
                                         }
                                     }
                                 }
 
                             }
+
+                            // the main actions: a small floating bar at the top right, only while the pointer is over the note (or AI / Remind is open)
+                            Rectangle {
+                                id: tools
+                                z: 5
+                                anchors { top: parent.top; right: parent.right; topMargin: 8; rightMargin: 10 }
+                                height: 28
+                                width: toolRow.implicitWidth + 8
+                                radius: 14
+                                color: Qt.alpha(root.pal.surfaceHi, 0.97)
+                                border.width: 1
+                                border.color: root.pal.lineSoft
+                                opacity: noteRow.hot ? 1 : 0
+                                visible: opacity > 0.01
+                                Behavior on opacity { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                Row {
+                                    id: toolRow
+                                    anchors.centerIn: parent
+                                    Repeater {
+                                        model: [
+                                            { k: "edit", t: "Edit", hide: false },
+                                            { k: "pin", t: noteRow.modelData.pinned ? "Unpin" : "Pin", hide: false },
+                                            { k: "task", t: noteRow.modelData.task ? "Note" : "Task", hide: false },
+                                            { k: "remind", t: noteRow.picking ? "Close" : "Remind", hide: !noteRow.modelData.task },
+                                            { k: "copy", t: noteRow.copied ? "Copied" : "Copy", hide: false },
+                                            { k: "del", t: "Delete", hide: false },
+                                            { k: "ai", t: noteRow.aiOpen ? "AI  \u25B4" : "AI  \u25BE", hide: false }
+                                        ]
+                                        delegate: actDel
+                                    }
+                                }
+                            }
+
+                            // one action button (used by the floating bar and by the AI row)
+                            Component {
+                                id: actDel
+                                Item {
+                                    required property var modelData
+                                    visible: !modelData.hide
+                                    width: visible ? at.implicitWidth + 16 : 0
+                                    height: 26
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 0
+                                        radius: 13
+                                        color: ama.containsMouse ? Qt.alpha(modelData.k === "del" ? root.pal.bad : root.pal.accent, 0.16) : "transparent"
+                                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                        Text {
+                                            id: at
+                                            anchors.centerIn: parent
+                                            text: modelData.t || ""
+                                            color: ama.containsMouse || (modelData.k === "ai" && noteRow.aiOpen) ? (modelData.k === "del" ? root.pal.bad : root.pal.accent) : root.pal.muted
+                                            font.family: root.pal.uiFont
+                                            font.pixelSize: 10
+                                            font.weight: Font.Medium
+                                        }
+                                        MouseArea {
+                                            id: ama
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                var n = noteRow.modelData
+                                                if (modelData.k === "edit") root.startEdit(n)
+                                                else if (modelData.k === "pin") root.pinNote(n.id)
+                                                else if (modelData.k === "del") root.delNote(n.id)
+                                                else if (modelData.k === "task") root.toggleTask(n.id)
+                                                else if (modelData.k === "stt") { if (!root.sttBusy(n)) root.transcribeNote(n.id) }
+                                                else if (modelData.k === "think") { if (!root.aiThinking(n)) root.thinkNote(n.id) }
+                                                else if (modelData.k === "summary") { if (!root.summaryBusy(n)) root.summaryNote(n.id) }
+                                                else if (modelData.k === "describe") { if (!root.descBusy(n)) root.describeNote(n.id) }
+                                                else if (modelData.k === "ocr") { if (!root.ocrBusy(n)) root.ocrNote(n.id) }
+                                                else if (modelData.k === "copyocr") { Quickshell.execDetached(["wl-copy", root.ocrText(n)]); noteRow.copiedOcr = true; ocrCopyT.restart() }
+                                                else if (modelData.k === "remind") noteRow.picking = !noteRow.picking
+                                                else if (modelData.k === "ai") noteRow.aiOpen = !noteRow.aiOpen
+                                                else {
+                                                    Quickshell.execDetached(["wl-copy", n.text || ""])
+                                                    noteRow.markCopied()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                         }
 
+                    }
+
                         // empty state
                         Item {
+                            anchors.fill: parent
                             visible: root.filteredNotes.length === 0
-                            width: listView.width
-                            height: 200
                             Column {
                                 anchors.centerIn: parent
-                                spacing: 8
+                                spacing: 10
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: String.fromCodePoint(root.search || root.filter !== "all" ? 0xF0349 : 0xF09A8)
+                                    color: Qt.alpha(root.pal.muted, 0.55)
+                                    font.family: root.pal.font
+                                    font.pixelSize: 34
+                                }
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: root.search || root.filter !== "all" ? "Nothing matches" : "No notes yet"
@@ -1506,36 +1640,15 @@ Scope {
                         }
                     }
 
-                    // footer
-                    RowLayout {
+                    // footer: one quiet line (Organise, Clear completed and New note are icons in the header now)
+                    Hint {
+                        pal: root.pal
                         Layout.fillWidth: true
-                        spacing: 8
-                        ActionChip {
-                            pal: root.pal
-                            label: "Organise"
-                            implicitHeight: 32
-                            visible: root.notes.length >= 2
-                            on: root.orgOpen
-                            onClicked: root.orgOpen ? (root.orgOpen = false) : root.organise()
-                        }
-                        ActionChip {
-                            pal: root.pal
-                            label: "Clear completed"
-                            implicitHeight: 32
-                            visible: root.doneCount > 0
-                            onClicked: root.act(["clear"])
-                        }
-                        Item { Layout.fillWidth: true }
-                        Hint {
-                            pal: root.pal
-                            Layout.fillWidth: false
-                            text: "From a terminal:  notes <text>"
-                            color: Qt.alpha(root.pal.muted, 0.85)
-                            fontFamily: root.pal.uiFont
-                            pixelSize: 10
-                        }
-                        // a new note: the writing box opens right under this window, the list stays
-                        RoundBtn { pal: root.pal; primary: true; size: 32; glyph: root.composing ? "✕" : "+"; onClicked: root.toggleCompose() }
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "Hover a note for its actions   \u00b7   From a terminal:  notes <text>"
+                        color: Qt.alpha(root.pal.muted, 0.8)
+                        fontFamily: root.pal.uiFont
+                        pixelSize: 10
                     }
                 }
             }

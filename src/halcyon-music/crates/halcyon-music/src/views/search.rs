@@ -4,7 +4,7 @@
 use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, Density, HalcyonPalette};
 use halcyon_music_core::models::{Album, Artist, DetailedSearchResults, Playlist, Track};
-use iced::widget::{button, column, container, row, text, text_input, Space};
+use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,7 +51,7 @@ impl SearchCategory {
 
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
-    query: &'a str,
+    _query: &'a str,
     category: SearchCategory,
     results: Option<&'a DetailedSearchResults>,
     recent_searches: &'a [String],

@@ -17,6 +17,9 @@ struct Notch {
     outline: Color,
 }
 
+/// Control-point distance for a quarter circle drawn as one cubic curve (0.5523 of the radius).
+const K: f32 = 0.5523;
+
 impl<M> canvas::Program<M> for Notch {
     type State = ();
 
@@ -29,30 +32,51 @@ impl<M> canvas::Program<M> for Notch {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        let (w, h) = (bounds.width, bounds.height);
+        let w = bounds.width;
+        // The line is 1 px wide and centred on its path. Paths run half a pixel inside the
+        // canvas (top and bottom) so no half of the line is cut off by the canvas edge, which is
+        // what made the old outline look thin and broken where it met the page.
+        let top = 0.5;
+        let bottom = bounds.height - 0.5;
         let (left, right) = (EAR, w - EAR);
         let p = Point::new;
+        let ear_k = EAR * (1.0 - K);
+        let corner_k = CORNER * (1.0 - K);
 
-        // The edge only (what gets the outline): left ear, left side, bottom, right side, right ear.
+        // The edge only (what gets the outline): left ear, left wall, bottom, right wall, right
+        // ear. Every bend is a true quarter circle, so the line has no flat or pinched spots.
         let edge = |b: &mut canvas::path::Builder| {
-            b.move_to(p(0.0, 0.0));
-            b.quadratic_curve_to(p(left, 0.0), p(left, EAR));
-            b.line_to(p(left, h - CORNER));
-            b.quadratic_curve_to(p(left, h), p(left + CORNER, h));
-            b.line_to(p(right - CORNER, h));
-            b.quadratic_curve_to(p(right, h), p(right, h - CORNER));
-            b.line_to(p(right, EAR));
-            b.quadratic_curve_to(p(right, 0.0), p(w, 0.0));
+            b.move_to(p(-1.0, top));
+            b.line_to(p(0.0, top));
+            // Left ear: from the page's top edge, curving down into the wall.
+            b.bezier_curve_to(p(EAR * K, top), p(left, top + ear_k), p(left, top + EAR));
+            b.line_to(p(left, bottom - CORNER));
+            // Left lower corner.
+            b.bezier_curve_to(p(left, bottom - corner_k), p(left + corner_k, bottom), p(left + CORNER, bottom));
+            b.line_to(p(right - CORNER, bottom));
+            // Right lower corner.
+            b.bezier_curve_to(p(right - corner_k, bottom), p(right, bottom - corner_k), p(right, bottom - CORNER));
+            b.line_to(p(right, top + EAR));
+            // Right ear: from the wall, curving out along the page's top edge.
+            b.bezier_curve_to(p(right, top + ear_k), p(w - EAR * K, top), p(w, top));
+            b.line_to(p(w + 1.0, top));
         };
         // The fill adds a strip above the page's edge so its own outline is covered there.
         let shape = Path::new(|b| {
             edge(b);
-            b.line_to(p(w, -3.0));
-            b.line_to(p(0.0, -3.0));
+            b.line_to(p(w + 1.0, -3.0));
+            b.line_to(p(-1.0, -3.0));
             b.close();
         });
         frame.fill(&shape, self.fill);
-        frame.stroke(&Path::new(|b| edge(b)), Stroke::default().with_width(1.0).with_color(self.outline));
+        frame.stroke(
+            &Path::new(|b| edge(b)),
+            Stroke::default()
+                .with_width(1.0)
+                .with_color(self.outline)
+                .with_line_cap(canvas::LineCap::Round)
+                .with_line_join(canvas::LineJoin::Round),
+        );
         vec![frame.into_geometry()]
     }
 }

@@ -227,7 +227,7 @@ Scope {
     // the running command's output arrives in pieces: whole lines go to the list, the unfinished last one is shown live
     property string partial: ""
     property int liveIdx: -1              // row of `out` that shows `partial` (-1 = none)
-    function clean(l) { return l.substring(l.lastIndexOf("\r") + 1).replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\x1b\][^\x07]*\x07/g, "") }
+    function clean(l) { l = l.replace(/\r+$/, ""); return l.substring(l.lastIndexOf("\r") + 1).replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\x1b\][^\x07]*\x07/g, "") }
     function chunk(d) {
         var parts = (partial + d).split("\n")
         partial = parts.pop()
@@ -339,7 +339,13 @@ Scope {
             return
         }
         // setsid: its own process group, so Ctrl+C can stop everything it starts (the group id is written to pidFile)
-        runner.command = ["setsid", "-w", "bash", "-c", "echo $$ > \"$HALCYON_CONSOLE_PID\"; cb=\"$HOME/.config/Halcyon/scripts/console-bin\"; [ -f \"$cb/sudo\" ] && [ ! -x \"$cb/sudo\" ] && chmod +x \"$cb/sudo\" 2>/dev/null; export PATH=\"$cb:$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; " + p.cmd]
+        // The command runs on a pseudo-terminal (`script`): programs then behave as in a real terminal, so pacman / yay / apt / cargo
+        // print every line as it happens (download names, progress, hooks) instead of nothing until they end. Echo is off (the console
+        // shows what you type itself and sudo's password stays hidden); pagers are off so git / systemctl / man never wait for a key.
+        // Without `script` the command runs as before, on a pipe.
+        runner.command = ["setsid", "-w", "bash", "-c", "echo $$ > \"$HALCYON_CONSOLE_PID\"; cb=\"$HOME/.config/Halcyon/scripts/console-bin\"; [ -f \"$cb/sudo\" ] && [ ! -x \"$cb/sudo\" ] && chmod +x \"$cb/sudo\" 2>/dev/null; export PATH=\"$cb:$HOME/.local/bin:$HOME/.config/Halcyon/bin:$PATH\"; exec 2>&1; "
+            + "export PAGER=cat GIT_PAGER=cat MANPAGER=cat SYSTEMD_PAGER= SYSTEMD_COLORS=0; "
+            + "if command -v script >/dev/null 2>&1; then SHELL=/bin/bash exec script -qefc \"stty -echo cols 120 rows 40 2>/dev/null; $1\" /dev/null; else eval \"$1\"; fi", "_", p.cmd]
         runner.environment = { HALCYON_SUDO_PROMPT: pwMarker, HALCYON_CONSOLE_PID: pidFile }
         runner.running = true
     }

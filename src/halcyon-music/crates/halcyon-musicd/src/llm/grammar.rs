@@ -455,7 +455,7 @@ mod tests {
         let spec = validate::parse_query(out).expect("plan parses");
         assert_eq!(spec.genres, vec!["dance", "workout"]);
         assert!(spec.seed_artists.is_empty());
-        assert_eq!(spec.era.is_some(), true);
+        assert!(spec.era.is_some());
     }
 
     #[test]

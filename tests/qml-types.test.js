@@ -65,6 +65,8 @@ for (const f of files) {
       const name = m[1] || m[2]
       if (/^(anchors|font|border|layer|radius|easing)$/.test(name)) continue     // grouped properties use name.x, not name twice
       const decl = !!m[1]
+      // a property declared with the name of a FINAL Item property stops the island loading ("Cannot override FINAL property")
+      if (decl && /^(layer|children|transform|states|transitions|baselineOffset)$/.test(name)) fail(`${f}:${lineOf(s, lineStart)}: "property ... ${name}" clashes with a built-in Item property: "Cannot override FINAL property" stops the island loading`)
       const key = (decl ? "decl:" : "set:") + name
       const ln = lineOf(s, lineStart)
       if (top.names.has(key)) fail(`${f}:${ln}: "${name}" is ${decl ? "declared" : "set"} twice in the same object (first on line ${top.names.get(key)}): "Property value set multiple times" stops the island loading`)

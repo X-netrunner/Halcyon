@@ -328,7 +328,7 @@ fn sha256_file(path: &Path, cancel: &AtomicBool, mut on_block: impl FnMut(u64)) 
         if n == 0 {
             break;
         }
-        hasher.update(&buf[..n]);
+        hasher.update(buf.get(..n).unwrap_or(&[]));
         done += n as u64;
         on_block(done);
     }

@@ -181,9 +181,6 @@ pub fn view<'a, Message: Clone + 'static>(
                 text(greeting_text)
                     .size(density.heading_size() + 10.0)
                     .color(palette.text),
-                text("Slow down. Let the music do the rest.")
-                    .size(13)
-                    .color(palette.text_muted),
             ]
             .spacing(4),
             Space::with_width(Length::Fill),
@@ -231,7 +228,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // 3. Jump Back In Shelf
     if filter.shows(Section::JumpBackIn) && !feed.jump_back_in.is_empty() {
-        page = page.push(view_shelf(
+        page = page.push(view_feed_shelf(
             "Jump back in",
             "Pick up where you left off",
             &feed.jump_back_in,
@@ -308,7 +305,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // Discover shelves (global charts, fresh releases)
     if filter.shows(Section::Charts) && !feed.popular_charts.is_empty() {
-        page = page.push(view_shelf(
+        page = page.push(view_feed_shelf(
             "Popular right now",
             "Trending worldwide, resolved to Spotify",
             &feed.popular_charts,
@@ -322,7 +319,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // 6. New from Artists You Follow
     if filter.shows(Section::NewReleases) && !feed.new_releases.is_empty() {
-        page = page.push(view_shelf(
+        page = page.push(view_feed_shelf(
             "New from artists you follow",
             "Latest singles and albums from your favorite artists",
             &feed.new_releases,
@@ -336,7 +333,7 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // 7. Fresh Releases (ListenBrainz)
     if filter.shows(Section::FreshReleases) && !feed.fresh_releases.is_empty() {
-        page = page.push(view_shelf(
+        page = page.push(view_feed_shelf(
             "Fresh releases you may like",
             "Curated by ListenBrainz explore engine",
             &feed.fresh_releases,
@@ -369,6 +366,257 @@ pub fn view<'a, Message: Clone + 'static>(
     container(page).width(Length::Fill).into()
 }
 
+/// The Home page of the Dock layout: the greeting, Liked Songs as a large heart cover with a round
+/// play and a round shuffle button (icons only), and one "Recent" shelf. Nothing else: no filter
+/// chips, no status line, no sub-lines. The "Describe a mood" card stays below, so that feature is
+/// not lost. The refresh button is a plain muted icon beside the greeting.
+#[allow(clippy::too_many_arguments)]
+pub fn view_dock<'a, Message: Clone + 'static>(
+    feed: &'a HomeFeed,
+    palette: HalcyonPalette,
+    density: Density,
+    liked: &'a [Track],
+    on_play_track: impl Fn(Track) -> Message + 'a + Copy,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
+    on_shuffle_liked: Message,
+    on_refresh: Message,
+    loading: bool,
+    shimmer: f32,
+    prompt_card: Element<'a, Message>,
+) -> Element<'a, Message> {
+    view_shelf(
+        true,
+        feed,
+        palette,
+        density,
+        liked,
+        on_play_track,
+        on_play_context,
+        on_play_playlist,
+        on_open_playlist,
+        on_navigate,
+        on_shuffle_liked,
+        on_refresh,
+        loading,
+        shimmer,
+        prompt_card,
+    )
+}
+
+/// The calm Home of the Top tabs and Library list layouts: the greeting, then (Top tabs only,
+/// `with_hero`) the Liked Songs hero, then one shelf, "Recent". It is the Dock layout's Home;
+/// Library list leaves the hero out ("greeting and one shelf"). The "Describe a mood" card stays
+/// below, so that feature is not lost.
+#[allow(clippy::too_many_arguments)]
+pub fn view_shelf<'a, Message: Clone + 'static>(
+    with_hero: bool,
+    feed: &'a HomeFeed,
+    palette: HalcyonPalette,
+    density: Density,
+    liked: &'a [Track],
+    on_play_track: impl Fn(Track) -> Message + 'a + Copy,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
+    on_shuffle_liked: Message,
+    on_refresh: Message,
+    loading: bool,
+    shimmer: f32,
+    prompt_card: Element<'a, Message>,
+) -> Element<'a, Message> {
+    let mut page = column![].spacing(28).padding([16, 24]);
+
+    page = page.push(greeting_row(feed, palette, density, loading, on_refresh));
+
+    if with_hero {
+        page = page.push(dock_hero(liked, palette, on_play_context, on_navigate, on_shuffle_liked));
+    }
+
+    if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
+        page = page.push(view_skeleton(palette, shimmer));
+    }
+    if !feed.jump_back_in.is_empty() {
+        page = page.push(view_shelf_with(
+            true,
+            "Recent",
+            "",
+            &feed.jump_back_in,
+            palette,
+            on_play_track,
+            on_play_context,
+            on_play_playlist,
+            on_open_playlist,
+        ));
+    }
+
+    page = page.push(prompt_card);
+    page = page.push(Space::with_height(32));
+    container(page).width(Length::Fill).into()
+}
+
+/// The greeting with the refresh button (a plain muted icon) at the right. Shared by the Dock and
+/// Player panel Home pages.
+fn greeting_row<'a, Message: Clone + 'a>(
+    feed: &'a HomeFeed,
+    palette: HalcyonPalette,
+    density: Density,
+    loading: bool,
+    on_refresh: Message,
+) -> Element<'a, Message> {
+    let greeting = if feed.greeting.is_empty() { "Welcome to Halcyon Music" } else { &feed.greeting };
+    row![
+        text(greeting).size(density.heading_size() + 10.0).color(palette.text),
+        Space::with_width(Length::Fill),
+        button(icon(Icon::Refresh, 14.0, palette.text_muted))
+            .on_press_maybe((!loading).then_some(on_refresh))
+            .padding(8)
+            .style(crate::views::ghost(palette)),
+    ]
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The Home page of the Player panel layout: the greeting, Liked Songs as the hero (the same one
+/// the Dock layout draws), then the up-next list: title and artist, no label. The up-next list is
+/// this layout's queue. With nothing queued yet it gives way to the "Recent" shelf, so Home is
+/// never bare. The "Describe a mood" card stays below, so that feature is not lost.
+#[allow(clippy::too_many_arguments)]
+pub fn view_panel<'a, Message: Clone + 'static>(
+    feed: &'a HomeFeed,
+    palette: HalcyonPalette,
+    density: Density,
+    liked: &'a [Track],
+    player: &'a halcyon_music_core::state::PlayerState,
+    on_play_track: impl Fn(Track) -> Message + 'a + Copy,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
+    on_shuffle_liked: Message,
+    on_refresh: Message,
+    loading: bool,
+    shimmer: f32,
+    prompt_card: Element<'a, Message>,
+) -> Element<'a, Message> {
+    let mut page = column![].spacing(28).padding([16, 24]);
+    page = page.push(greeting_row(feed, palette, density, loading, on_refresh));
+    page = page.push(dock_hero(liked, palette, on_play_context, on_navigate, on_shuffle_liked));
+
+    if !crate::views::up_next::is_empty(player) {
+        page = page.push(crate::views::up_next::list(player, palette));
+    } else {
+        if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
+            page = page.push(view_skeleton(palette, shimmer));
+        }
+        if !feed.jump_back_in.is_empty() {
+            page = page.push(view_shelf_with(
+                true,
+                "Recent",
+                "",
+                &feed.jump_back_in,
+                palette,
+                on_play_track,
+                on_play_context,
+                on_play_playlist,
+                on_open_playlist,
+            ));
+        }
+    }
+
+    page = page.push(prompt_card);
+    page = page.push(Space::with_height(32));
+    container(page).width(Length::Fill).into()
+}
+
+/// Edge of the heart cover in the Dock layout's Home.
+pub const DOCK_HERO_COVER: f32 = 96.0;
+/// Edge of the round play and shuffle buttons next to it.
+pub const DOCK_HERO_BUTTON: f32 = 40.0;
+
+fn round_button<'a, Message: Clone + 'a>(
+    glyph: Icon,
+    filled: bool,
+    palette: HalcyonPalette,
+    msg: Message,
+) -> Element<'a, Message> {
+    let px = DOCK_HERO_BUTTON;
+    button(
+        container(icon(glyph, 18.0, if filled { palette.on_accent() } else { palette.text }))
+            .width(px)
+            .height(px)
+            .center_x(px)
+            .center_y(px),
+    )
+    .padding(0)
+    .on_press(msg)
+    .style(move |_t, status| button::Style {
+        background: Some(if filled {
+            palette.accent_background()
+        } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+            crate::theme::alpha(palette.text, 0.14).into()
+        } else {
+            crate::theme::alpha(palette.text, 0.08).into()
+        }),
+        border: iced::Border { radius: (px / 2.0).into(), ..Default::default() },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn dock_hero<'a, Message: Clone + 'static>(
+    liked: &'a [Track],
+    palette: HalcyonPalette,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_navigate: impl Fn(NavPage) -> Message + 'a + Copy,
+    on_shuffle_liked: Message,
+) -> Element<'a, Message> {
+    let tint = palette.dim_tint();
+    let cover = container(icon(Icon::Heart, DOCK_HERO_COVER * 0.42, palette.text))
+        .width(DOCK_HERO_COVER)
+        .height(DOCK_HERO_COVER)
+        .center_x(DOCK_HERO_COVER)
+        .center_y(DOCK_HERO_COVER)
+        .style(move |_t| container::Style {
+            background: Some(tint.into()),
+            border: iced::Border { radius: crate::theme::radius::HERO.into(), ..Default::default() },
+            ..Default::default()
+        });
+    let open = on_navigate(NavPage::Liked);
+    let cover_btn = button(cover).padding(0).on_press(open.clone()).style(|_t, _s| button::Style::default());
+
+    let count = if liked.is_empty() { String::new() } else { format!("{} songs", liked.len()) };
+    let title_btn = button(
+        column![
+            text("Liked Songs").size(22).color(palette.text),
+            text(count).size(13).color(palette.text_muted),
+        ]
+        .spacing(4),
+    )
+    .padding(0)
+    .on_press(open.clone())
+    .style(|_t, _s| button::Style::default());
+
+    // Before the songs have loaded, play just opens the page, as the Classic card does.
+    let play_msg = if liked.is_empty() { open } else { on_play_context(liked.to_vec(), 0) };
+    let buttons = row![
+        round_button(Icon::Play, true, palette, play_msg),
+        round_button(Icon::Shuffle, false, palette, on_shuffle_liked),
+    ]
+    .spacing(10);
+
+    row![
+        cover_btn,
+        Space::with_width(18),
+        column![title_btn, Space::with_height(12), buttons].align_x(Alignment::Start),
+    ]
+    .align_y(Alignment::Center)
+    .into()
+}
+
 /// Grey blocks in the shape of the quick picks and one shelf.
 /// The pinned Liked Songs playlist: one wide card, always first on Home.
 fn view_liked_pin<'a, Message: Clone + 'static>(
@@ -380,7 +628,7 @@ fn view_liked_pin<'a, Message: Clone + 'static>(
     let subtitle = if liked.is_empty() {
         "Your favourite songs".to_string()
     } else {
-        format!("Playlist · {} songs", liked.len())
+        format!("{} songs", liked.len())
     };
 
     let body = button(
@@ -393,9 +641,6 @@ fn view_liked_pin<'a, Message: Clone + 'static>(
             ]
             .spacing(4)
             .width(Length::Fill),
-            container(text("Pinned").size(11).color(palette.accent))
-                .padding([4, 10])
-                .style(crate::views::chip(palette)),
         ]
         .align_y(Alignment::Center)
         .padding([10, 14]),
@@ -493,6 +738,7 @@ fn view_skeleton<'a, Message: 'a>(palette: HalcyonPalette, shimmer: f32) -> Elem
 }
 
 /// Quick Picks Grid: 2 rows of 3-4 tiles.
+#[allow(clippy::too_many_arguments)]
 fn view_quick_picks<'a, Message: Clone + 'static>(
     picks: &'a [QuickPick],
     palette: HalcyonPalette,
@@ -569,7 +815,7 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             )
             .padding(0)
             .on_press(play_msg)
-            .style(move |_t, s| button::Style {
+            .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
                 border: iced::Border { radius: 15.0.into(), ..Default::default() },
                 ..Default::default()
@@ -598,7 +844,8 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
 }
 
 /// Horizontal shelf for Albums, Artists, Charts.
-fn view_shelf<'a, Message: Clone + 'static>(
+#[allow(clippy::too_many_arguments)]
+fn view_feed_shelf<'a, Message: Clone + 'static>(
     header_title: &'static str,
     subtitle: &'static str,
     items: &'a [ShelfItem],
@@ -608,11 +855,37 @@ fn view_shelf<'a, Message: Clone + 'static>(
     on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
     on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
 ) -> Element<'a, Message> {
-    let header = column![
-        text(header_title).size(18).color(palette.text),
-        text(subtitle).size(12).color(palette.text_muted),
-    ]
-    .spacing(2);
+    view_shelf_with(
+        false,
+        header_title,
+        subtitle,
+        items,
+        palette,
+        on_play_track,
+        on_play_context,
+        on_play_playlist,
+        on_open_playlist,
+    )
+}
+
+/// A shelf of covers. `compact` leaves out the line under the shelf name and the line under each
+/// cover's title (the Dock layout's Home keeps one label per shelf and nothing else).
+#[allow(clippy::too_many_arguments)]
+fn view_shelf_with<'a, Message: Clone + 'static>(
+    compact: bool,
+    header_title: &'static str,
+    subtitle: &'static str,
+    items: &'a [ShelfItem],
+    palette: HalcyonPalette,
+    on_play_track: impl Fn(Track) -> Message + 'a + Copy,
+    on_play_context: impl Fn(Vec<Track>, usize) -> Message + 'a + Copy,
+    on_play_playlist: impl Fn(String) -> Message + 'a + Copy,
+    on_open_playlist: impl Fn(String) -> Message + 'a + Copy,
+) -> Element<'a, Message> {
+    let mut header = column![text(header_title).size(18).color(palette.text)].spacing(2);
+    if !compact {
+        header = header.push(text(subtitle).size(12).color(palette.text_muted));
+    }
 
     let mut cards_row = row![].spacing(14).padding([4, 0]);
 
@@ -626,7 +899,7 @@ fn view_shelf<'a, Message: Clone + 'static>(
                 text(super::ellipsize(&item.title, 17))
                     .size(13)
                     .color(palette.text),
-                text(super::ellipsize(&item.subtitle, 20))
+                text(if compact { String::new() } else { super::ellipsize(&item.subtitle, 20) })
                     .size(11)
                     .color(palette.text_muted),
             ]
@@ -784,8 +1057,8 @@ fn mix_cover<'a, Message: 'a>(
 fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     mixes: Vec<&'a MusicMix>,
     title: &'static str,
-    byline: &'static str,
-    subtitle: &'static str,
+    _byline: &'static str,
+    _subtitle: &'static str,
     palette: HalcyonPalette,
     _density: Density,
     on_play_mix: impl Fn(Vec<Track>, String) -> Message + 'a + Copy,
@@ -795,41 +1068,15 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
     progress: f32,
     clock: f32,
 ) -> Element<'a, Message> {
-    let header = column![
-        row![
-            icon(Icon::Sparkles, 16.0, palette.accent),
-            Space::with_width(8),
-            text(title).size(18).color(palette.text),
-            Space::with_width(8),
-            text(byline).size(13).color(palette.accent),
-        ]
-        .align_y(Alignment::Center),
-        text(subtitle)
-            .size(12)
-            .color(palette.text_muted),
-    ]
-    .spacing(2);
+    // One label per shelf: no "by Halcyon", no explanatory sub-line.
+    let header = text(title).size(18).color(palette.text);
 
     let cover_px = MIX_W - MIX_PAD * 2.0;
     let mut mix_row = row![].spacing(16).padding([4, 0]);
 
     for (i, mix) in mixes.into_iter().enumerate() {
-        let track_count = mix.tracks.len();
         let uris: Vec<String> = mix.tracks.iter().map(|t| t.uri.clone()).collect();
         let tracks = mix.tracks.clone();
-
-        // Where the songs came from: a small coloured dot and the name, not a boxed badge.
-        let dot_color = match mix.source.as_str() {
-            "ListenBrainz" => Color::from_rgb8(235, 116, 52),
-            "Deezer" => Color::from_rgb8(176, 110, 214),
-            "Spotify" => Color::from_rgb8(30, 215, 96),
-            _ => palette.accent,
-        };
-        let dot = container(Space::new(6, 6)).style(move |_t| container::Style {
-            background: Some(dot_color.into()),
-            border: iced::Border { radius: 3.0.into(), ..Default::default() },
-            ..Default::default()
-        });
 
         // No overlay layers: a stacked layer is not clipped by the scroll area and draws its
         // buttons over the player bar when the card is scrolled out of view. Everything here
@@ -859,26 +1106,8 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
         } else {
             title_btn.into()
         };
-        let info = column![
-            title_el,
-            row![
-                dot,
-                Space::with_width(6),
-                text(format!(
-                        "{} · {} songs",
-                        if mix.source == "Halcyon Local" { "Halcyon" } else { mix.source.as_str() },
-                        track_count
-                    ))
-                    .size(11)
-                    .color(palette.text_muted),
-            ]
-            .align_y(Alignment::Center),
-            text(super::ellipsize(&mix.description, 30))
-                .size(11)
-                .color(crate::theme::alpha(palette.text_muted, 0.85)),
-        ]
-        .spacing(3)
-        .width(Length::Fixed(text_w));
+        // Just the title under the cover; the longer description stays one hover away.
+        let info = column![title_el].spacing(3).width(Length::Fixed(text_w));
 
         // Round Save and Play buttons beside the text.
         let save_btn = button(
@@ -1130,5 +1359,108 @@ mod filter_tests {
         let labels: Vec<_> = HomeFilter::ALL.iter().map(HomeFilter::label).collect();
         assert_eq!(labels, ["All", "Music", "New"]);
         assert_eq!(HomeFilter::default(), HomeFilter::All);
+    }
+}
+
+#[cfg(test)]
+mod dock_home_tests {
+    use super::*;
+
+    #[test]
+    fn the_dock_home_builds_with_an_empty_feed_and_with_songs() {
+        let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
+        let feed = HomeFeed::default();
+        let build = |feed: &HomeFeed, liked: &[Track], loading: bool| {
+            let _: Element<'_, ()> = view_dock(
+                feed,
+                palette,
+                Density::Comfortable,
+                liked,
+                |_| (),
+                |_, _| (),
+                |_| (),
+                |_| (),
+                |_| (),
+                (),
+                (),
+                loading,
+                0.0,
+                Space::new(0, 0).into(),
+            );
+        };
+        build(&feed, &[], false);
+        build(&feed, &[], true);
+        let songs = vec![Track::simple("a".into(), "A".into(), "X".into(), "Y".into(), 1000)];
+        build(&feed, &songs, false);
+        // With a Recent shelf: a playlist (round play button under it) and an album.
+        let mut full = HomeFeed::default();
+        for (i, kind) in ["playlist", "album"].iter().enumerate() {
+            full.jump_back_in.push(ShelfItem {
+                id: format!("s{i}"),
+                title: "A shelf title that is long".into(),
+                subtitle: "Sub line".into(),
+                art_url: None,
+                uri: String::new(),
+                context_type: (*kind).into(),
+                tracks: songs.clone(),
+            });
+        }
+        build(&full, &songs, false);
+    }
+
+    #[test]
+    fn a_compact_shelf_builds() {
+        let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
+        let _: Element<'_, ()> =
+            view_shelf_with(true, "Recent", "", &[], palette, |_| (), |_, _| (), |_| (), |_| ());
+    }
+
+    #[test]
+    fn the_panel_home_builds_with_nothing_queued_and_with_songs_up_next() {
+        use halcyon_music_core::state::PlayerState;
+        let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
+        let songs: Vec<Track> = (0..4)
+            .map(|i| Track::simple(format!("t{i}"), format!("Song {i}"), "X".into(), "Y".into(), 1000))
+            .collect();
+        let mut feed = HomeFeed::default();
+        feed.jump_back_in.push(ShelfItem {
+            id: "s".into(),
+            title: "A shelf".into(),
+            subtitle: String::new(),
+            art_url: None,
+            uri: String::new(),
+            context_type: "playlist".into(),
+            tracks: songs.clone(),
+        });
+        let build = |feed: &HomeFeed, player: &PlayerState, loading: bool| {
+            let _: Element<'_, ()> = view_panel(
+                feed,
+                palette,
+                Density::Comfortable,
+                &songs,
+                player,
+                |_| (),
+                |_, _| (),
+                |_| (),
+                |_| (),
+                |_| (),
+                (),
+                (),
+                loading,
+                0.0,
+                Space::new(0, 0).into(),
+            );
+        };
+        // Nothing queued: the Recent shelf (or the skeleton while the feed is empty).
+        let idle = PlayerState::default();
+        build(&HomeFeed::default(), &idle, true);
+        build(&feed, &idle, false);
+        // Songs up next: the list.
+        let mut playing = PlayerState::default();
+        playing.queue = songs.clone();
+        playing.queue_pos = 0;
+        playing.track = songs.first().cloned();
+        assert!(!crate::views::up_next::is_empty(&playing));
+        build(&feed, &playing, false);
     }
 }

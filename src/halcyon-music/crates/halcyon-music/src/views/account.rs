@@ -7,7 +7,7 @@ use iced::widget::{button, column, container, mouse_area, row, stack, text, Spac
 use iced::{Alignment, Element, Length, Padding};
 
 pub const AVATAR_SIZE: f32 = 32.0;
-pub const MENU_WIDTH: f32 = 248.0;
+pub const MENU_WIDTH: f32 = 276.0;
 
 /// The first letter to show when there is no picture. Never empty.
 pub fn initial(name: &str) -> String {
@@ -71,17 +71,31 @@ pub fn avatar_button<'a, M: Clone + 'a>(
         .into()
 }
 
+/// One row of the menu: the icon in a soft rounded tile, the name, and optionally a small
+/// trailing icon. `danger` tints the row for the destructive entry (Sign out).
 fn item<'a, M: Clone + 'a>(
     glyph: Icon,
     label: &'static str,
     palette: HalcyonPalette,
     trailing: Option<Icon>,
+    danger: bool,
     msg: M,
 ) -> Element<'a, M> {
+    let ink = if danger { palette.danger } else { palette.text };
+    let tile = container(icon(glyph, 15.0, if danger { palette.danger } else { palette.text_muted }))
+        .width(TILE)
+        .height(TILE)
+        .center_x(TILE)
+        .center_y(TILE)
+        .style(move |_t| container::Style {
+            background: Some(alpha(if danger { palette.danger } else { palette.text }, 0.07).into()),
+            border: iced::Border { radius: 10.0.into(), ..Default::default() },
+            ..Default::default()
+        });
     let mut content = row![
-        icon(glyph, 16.0, palette.text_muted),
+        tile,
         Space::with_width(space::MD),
-        text(label).size(type_size::BODY).color(palette.text).width(Length::Fill),
+        text(label).size(type_size::BODY).color(ink).width(Length::Fill),
     ]
     .align_y(Alignment::Center);
     if let Some(t) = trailing {
@@ -90,37 +104,57 @@ fn item<'a, M: Clone + 'a>(
     button(content)
         .on_press(msg)
         .width(Length::Fill)
-        .padding([space::SM, space::MD])
-        .style(move |_t, status| button::Style {
-            background: Some(
-                if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                    palette.surface_variant
-                } else {
-                    iced::Color::TRANSPARENT
-                }
-                .into(),
-            ),
-            text_color: palette.text,
-            border: iced::Border { radius: radius::SM.into(), ..Default::default() },
-            ..Default::default()
+        .padding([6, 8])
+        .style(move |_t, status| {
+            let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(
+                    if hot {
+                        alpha(if danger { palette.danger } else { palette.text }, if danger { 0.12 } else { 0.07 })
+                    } else {
+                        iced::Color::TRANSPARENT
+                    }
+                    .into(),
+                ),
+                text_color: ink,
+                border: iced::Border { radius: 14.0.into(), ..Default::default() },
+                ..Default::default()
+            }
         })
         .into()
 }
+
+/// Size of the icon tile in a row.
+const TILE: f32 = 30.0;
 
 /// A small pill with the plan ("Premium" / "Free").
 fn plan_chip<'a, M: 'a>(plan: String, palette: HalcyonPalette) -> Element<'a, M> {
     container(text(plan).size(type_size::CAPTION).color(palette.accent))
-        .padding([1, 7])
+        .padding([1, 8])
         .style(move |_t| container::Style {
             background: Some(alpha(palette.accent, 0.14).into()),
-            border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+            border: iced::Border { radius: radius::PILL.into(), ..Default::default() },
             ..Default::default()
         })
         .into()
 }
 
-/// The dropdown card: avatar, name, `@username` with the plan, where this app is connected, then
-/// Settings, Spotify Settings, Sign out.
+/// A hairline that stops short of the card's edges.
+fn divider<'a, M: 'a>(palette: HalcyonPalette) -> Element<'a, M> {
+    container(
+        container(Space::with_height(1))
+            .width(Length::Fill)
+            .style(move |_t| container::Style {
+                background: Some(alpha(palette.border, 0.6).into()),
+                ..Default::default()
+            }),
+    )
+    .padding([space::XS, space::SM])
+    .into()
+}
+
+/// The dropdown card: a header with the picture, name, `@username` and plan, and where this app
+/// is connected; then Settings and Spotify Settings; then Sign out apart from the rest.
 #[allow(clippy::too_many_arguments)]
 pub fn menu_card<'a, M: Clone + 'a>(
     name: String,
@@ -133,47 +167,62 @@ pub fn menu_card<'a, M: Clone + 'a>(
     on_spotify_settings: M,
     on_sign_out: M,
 ) -> Element<'a, M> {
-    let mut who = column![text(name.clone()).size(type_size::BODY).color(palette.text)].spacing(2);
+    // The picture sits in a thin accent ring, like the button that opened the menu.
+    let picture = container(avatar(&name, image_url, 44.0, palette))
+        .padding(2)
+        .style(move |_t| container::Style {
+            border: iced::Border { color: alpha(palette.accent, 0.55), width: 1.5, radius: 26.0.into() },
+            ..Default::default()
+        });
+
+    let mut who = column![text(name.clone()).size(type_size::BODY + 1.0).color(palette.text)].spacing(3);
     let mut second = row![].spacing(space::SM).align_y(Alignment::Center);
     if let Some(h) = handle {
-        second = second.push(text(h).size(type_size::CAPTION).color(palette.text_muted));
+        second = second.push(text(crate::views::ellipsize(&h, 18)).size(type_size::CAPTION).color(palette.text_muted));
     }
     if let Some(p) = plan {
         second = second.push(plan_chip(p, palette));
     }
     who = who.push(second);
-    who = who.push(text(device_line).size(type_size::CAPTION).color(palette.text_muted));
-    let header = row![avatar(&name, image_url, 36.0, palette), Space::with_width(space::MD), who]
-        .align_y(Alignment::Center)
-        .padding([space::SM, space::MD]);
 
-    let divider = container(Space::with_height(1))
-        .width(Length::Fill)
-        .style(move |_t| container::Style {
-            background: Some(palette.border.into()),
-            ..Default::default()
-        });
+    // Where this app is connected, with a small lit dot.
+    let dot = container(Space::new(6, 6)).style(move |_t| container::Style {
+        background: Some(palette.accent.into()),
+        border: iced::Border { radius: 3.0.into(), ..Default::default() },
+        ..Default::default()
+    });
+    let status = row![dot, text(device_line).size(type_size::CAPTION).color(palette.text_muted)]
+        .spacing(space::SM)
+        .align_y(Alignment::Center);
+
+    let header = column![
+        row![picture, Space::with_width(space::MD), who].align_y(Alignment::Center),
+        Space::with_height(space::SM),
+        status,
+    ]
+    .padding(iced::Padding { top: space::SM, right: space::SM, bottom: space::XS, left: space::SM });
 
     container(
         column![
             header,
-            divider,
-            Space::with_height(space::XS),
-            item(Icon::Settings, "Settings", palette, None, on_settings),
-            item(Icon::Playlist, "Spotify Settings", palette, Some(Icon::ExternalLink), on_spotify_settings),
-            item(Icon::LogOut, "Sign out", palette, None, on_sign_out),
+            divider(palette),
+            item(Icon::Settings, "Settings", palette, None, false, on_settings),
+            item(Icon::Music, "Spotify settings", palette, Some(Icon::ExternalLink), false, on_spotify_settings),
+            divider(palette),
+            item(Icon::LogOut, "Sign out", palette, None, true, on_sign_out),
         ]
         .spacing(2),
     )
     .width(MENU_WIDTH)
     .padding(space::SM)
     .style(move |_t| container::Style {
-        background: Some(palette.card_background()),
-        border: iced::Border { color: palette.soft_border(), width: 1.0, radius: radius::MD.into() },
+        // A solid surface a little above the page, so the card is clearly in front of it.
+        background: Some(crate::theme::mix(palette.surface, palette.text, 0.035).into()),
+        border: iced::Border { color: palette.soft_border(), width: 1.0, radius: 22.0.into() },
         shadow: iced::Shadow {
-            color: iced::Color { a: 0.35, ..iced::Color::BLACK },
-            offset: iced::Vector::new(0.0, 6.0),
-            blur_radius: 18.0,
+            color: iced::Color { a: 0.45, ..iced::Color::BLACK },
+            offset: iced::Vector::new(0.0, 12.0),
+            blur_radius: 32.0,
         },
         ..Default::default()
     })
@@ -196,6 +245,27 @@ pub fn overlay<'a, M: Clone + 'a>(
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(Padding { top, left, right: 0.0, bottom: 0.0 }),
+    ]
+    .into()
+}
+
+/// Like `overlay`, but the card sits above a point near the bottom of the window (the dock's
+/// account circle): `bottom` is the card's distance from the window's bottom edge.
+pub fn overlay_above<'a, M: Clone + 'a>(
+    menu: Element<'a, M>,
+    left: f32,
+    bottom: f32,
+    on_close: M,
+) -> Element<'a, M> {
+    stack![
+        mouse_area(Space::new(Length::Fill, Length::Fill))
+            .on_press(on_close.clone())
+            .on_right_press(on_close),
+        container(menu)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(Padding { top: 0.0, left, right: 0.0, bottom }),
     ]
     .into()
 }

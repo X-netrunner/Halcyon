@@ -102,6 +102,9 @@ fn weight_of(l: Label) -> f64 {
 
 // ------------------------------------------------------------------ tags
 
+/// One stored row of artist tags: (artist key, (tag, weight) list, fetched at).
+pub type TagRow = (String, Vec<(String, f64)>, u64);
+
 /// Artist tags, from the SQLite cache. Unknown artist = no entry = neutral.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TagTable {
@@ -150,7 +153,7 @@ impl TagTable {
     }
 
     /// From `Cache::all_artist_tags`; rows older than [`TAG_TTL_SECS`] are dropped.
-    pub fn from_rows(rows: Vec<(String, Vec<(String, f64)>, u64)>, now: u64) -> Self {
+    pub fn from_rows(rows: Vec<TagRow>, now: u64) -> Self {
         let mut t = TagTable::default();
         for (key, tags, fetched_at) in rows {
             if now.saturating_sub(fetched_at) <= TAG_TTL_SECS {
@@ -414,7 +417,7 @@ impl TasteProfile {
         let mut best: Option<(u32, f64)> = None;
         for c in &self.clusters {
             let sim = cosine(tags, &c.centroid);
-            if sim > 0.0 && best.map_or(true, |(_, b)| sim > b) {
+            if sim > 0.0 && best.is_none_or(|(_, b)| sim > b) {
                 best = Some((c.id, sim));
             }
         }

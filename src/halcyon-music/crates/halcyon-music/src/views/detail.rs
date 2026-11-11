@@ -308,6 +308,7 @@ pub fn view_artist<'a, Message: Clone + 'static>(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub fn view_playlist<'a, Message: Clone + 'static>(
     playlist: &'a Playlist,
     tracks: &'a [Track],

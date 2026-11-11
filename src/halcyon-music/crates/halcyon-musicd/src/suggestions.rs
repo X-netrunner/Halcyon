@@ -144,6 +144,8 @@ async fn search_songs_budgeted(spotify: &SpotifyClient, query: &str) -> Option<V
     if now_secs() < SEARCH_PAUSED_UNTIL.load(Ordering::Relaxed) {
         return None;
     }
+    // `fetch_update` was renamed `try_update` in newer Rust; keep the old name so older toolchains build.
+    #[allow(deprecated)]
     let had_budget = SEARCH_BUDGET
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
         .is_ok();
@@ -416,14 +418,14 @@ pub async fn fetch_listenbrainz_trending(http: &reqwest::Client) -> Vec<(String,
     let Ok(v) = res.json::<serde_json::Value>().await else {
         return Vec::new();
     };
-    v["payload"]["recordings"]
-        .as_array()
+    v.pointer("/payload/recordings")
+        .and_then(serde_json::Value::as_array)
         .map(|rows| {
             rows.iter()
                 .filter_map(|r| {
                     Some((
-                        r["artist_name"].as_str()?.to_string(),
-                        r["track_name"].as_str()?.to_string(),
+                        r.get("artist_name")?.as_str()?.to_string(),
+                        r.get("track_name")?.as_str()?.to_string(),
                         None,
                     ))
                 })
@@ -910,12 +912,12 @@ async fn fetch_listenbrainz_range(http: &reqwest::Client, range: &str, offset: u
     let Ok(v) = res.json::<serde_json::Value>().await else {
         return Vec::new();
     };
-    v["payload"]["recordings"]
-        .as_array()
+    v.pointer("/payload/recordings")
+        .and_then(serde_json::Value::as_array)
         .map(|rows| {
             rows.iter()
                 .filter_map(|r| {
-                    Some((r["artist_name"].as_str()?.to_string(), r["track_name"].as_str()?.to_string(), None))
+                    Some((r.get("artist_name")?.as_str()?.to_string(), r.get("track_name")?.as_str()?.to_string(), None))
                 })
                 .collect()
         })
@@ -1221,9 +1223,10 @@ pub async fn fetch_listenbrainz_fresh_albums(http: &reqwest::Client) -> Vec<Outs
     let Ok(v) = res.json::<serde_json::Value>().await else {
         return Vec::new();
     };
-    let rows = v["payload"]["releases"]
-        .as_array()
-        .or_else(|| v["releases"].as_array())
+    let rows = v
+        .pointer("/payload/releases")
+        .and_then(serde_json::Value::as_array)
+        .or_else(|| v.get("releases").and_then(serde_json::Value::as_array))
         .or_else(|| v.as_array());
     let today = date_from_unix_secs(now_secs());
     let mut out: Vec<OutsideAlbum> = rows
@@ -1266,12 +1269,12 @@ async fn deezer_get(http: &reqwest::Client, path: &str, query: &[(&str, &str)]) 
 /// Deezer's id for an artist, when the best hit is really that artist.
 pub(crate) async fn deezer_artist_id(http: &reqwest::Client, name: &str) -> Option<u64> {
     let v = deezer_get(http, "/search/artist", &[("q", name), ("limit", "1")]).await?;
-    let hit = v["data"].as_array()?.first()?;
-    let found = normalize_string(hit["name"].as_str()?);
+    let hit = v.get("data")?.as_array()?.first()?;
+    let found = normalize_string(hit.get("name")?.as_str()?);
     if token_similarity(&found, &normalize_string(name)) < 0.6 {
         return None;
     }
-    hit["id"].as_u64()
+    hit.get("id")?.as_u64()
 }
 
 /// Artists Deezer lists as similar to `id` (their ids).
@@ -1280,9 +1283,9 @@ pub(crate) async fn deezer_related_artists(http: &reqwest::Client, id: u64, limi
     let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await else {
         return Vec::new();
     };
-    v["data"]
-        .as_array()
-        .map(|rows| rows.iter().filter_map(|r| r["id"].as_u64()).collect())
+    v.get("data")
+        .and_then(serde_json::Value::as_array)
+        .map(|rows| rows.iter().filter_map(|r| r.get("id")?.as_u64()).collect())
         .unwrap_or_default()
 }
 
@@ -1292,15 +1295,15 @@ pub(crate) async fn deezer_artist_top(http: &reqwest::Client, id: u64, limit: u3
     let Some(v) = deezer_get(http, &format!("/artist/{id}/top"), &[("limit", &limit)]).await else {
         return Vec::new();
     };
-    v["data"]
-        .as_array()
+    v.get("data")
+        .and_then(serde_json::Value::as_array)
         .map(|rows| {
             rows.iter()
                 .filter_map(|r| {
                     Some((
-                        r["artist"]["name"].as_str()?.to_string(),
-                        r["title"].as_str()?.to_string(),
-                        r["duration"].as_u64().map(|d| d * 1000),
+                        r.pointer("/artist/name")?.as_str()?.to_string(),
+                        r.get("title")?.as_str()?.to_string(),
+                        r.get("duration").and_then(serde_json::Value::as_u64).map(|d| d * 1000),
                     ))
                 })
                 .collect()
@@ -1495,10 +1498,11 @@ async fn fetch_deezer_mood_playlist(http: &reqwest::Client, query: &str, limit: 
     let Some(v) = deezer_get(http, "/search/playlist", &[("q", query), ("limit", "10")]).await else {
         return Vec::new();
     };
-    let id = v["data"]
-        .as_array()
-        .and_then(|rows| rows.iter().find(|r| r["nb_tracks"].as_u64().unwrap_or(0) >= 25))
-        .and_then(|r| r["id"].as_u64());
+    let id = v
+        .get("data")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|rows| rows.iter().find(|r| r.get("nb_tracks").and_then(serde_json::Value::as_u64).unwrap_or(0) >= 25))
+        .and_then(|r| r.get("id")?.as_u64());
     match id {
         Some(id) => fetch_deezer_playlist_tracks(http, id, limit).await,
         None => Vec::new(),
@@ -1654,7 +1658,7 @@ pub async fn build_discover_feed(
             if mixes.len() >= 2 {
                 break;
             }
-            let name = &artists[(start + i) % pool_size];
+            let Some(name) = artists.get((start + i) % pool_size) else { continue };
             if let Some(m) = build_artist_mix(spotify, cache, http, name, &mut mix_seen).await {
                 mixes.push(m);
             }
@@ -1813,9 +1817,9 @@ async fn deezer_related_artist_names(http: &reqwest::Client, id: u64, limit: u32
     let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await else {
         return Vec::new();
     };
-    v["data"]
-        .as_array()
-        .map(|rows| rows.iter().filter_map(|r| r["name"].as_str().map(str::to_string)).collect())
+    v.get("data")
+        .and_then(serde_json::Value::as_array)
+        .map(|rows| rows.iter().filter_map(|r| r.get("name")?.as_str().map(str::to_string)).collect())
         .unwrap_or_default()
 }
 
@@ -1857,7 +1861,9 @@ async fn fresh_in_your_sound(cache: &Cache, http: &reqwest::Client, artists: &[S
             continue;
         }
         for i in 0..2 {
-            wanted.push((related[(day + i) % related.len()].clone(), 1));
+            if let Some(name) = related.get((day + i) % related.len()) {
+                wanted.push((name.clone(), 1));
+            }
         }
     }
 

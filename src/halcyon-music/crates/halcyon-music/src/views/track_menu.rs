@@ -37,6 +37,7 @@ fn entry<'a, M: Clone + 'a>(label: &'static str, palette: HalcyonPalette, msg: O
 }
 
 /// `go_album` is `None` when the song carries no album id (the entry is greyed out).
+#[allow(clippy::too_many_arguments)]
 pub fn card<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     play: M,

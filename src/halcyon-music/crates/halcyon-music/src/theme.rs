@@ -26,6 +26,19 @@ pub mod radius {
     pub const LG: f32 = 28.0;
     pub const XL: f32 = 36.0;
     pub const PILL: f32 = 999.0;
+    /// The page card, inset in the window frame (used by the layout parts, not yet).
+    #[allow(dead_code)]
+    pub const PAGE: f32 = 22.0;
+    /// The hero card (Liked Songs on Home).
+    #[allow(dead_code)]
+    pub const HERO: f32 = 18.0;
+    /// Covers and tiles.
+    #[allow(dead_code)]
+    pub const COVER: f32 = 14.0;
+    #[allow(dead_code)]
+    pub const TILE: f32 = 14.0;
+    /// Small covers in list rows (the library list), where 14 would turn a 30 px square round.
+    pub const ROW_COVER: f32 = 9.0;
 }
 
 /// Type scale (font sizes): caption, small, body, title, heading.
@@ -245,17 +258,20 @@ impl HalcyonPalette {
                 tint: TintMode::Soft,
             },
             Mood::Ambient => Self {
-                background: c(0, 0, 0),
-                surface: c(12, 12, 16),
-                surface_variant: c(26, 26, 34),
-                text: c(238, 240, 246),
-                text_muted: c(152, 158, 172),
+                // Near black, not #000: a pure black page with bright text glares (the letters
+                // seem to glow), and nothing sits in front of anything else. A hair of colour
+                // and a few steps of lift per layer make cards, tiles and borders readable.
+                background: c(5, 5, 8),
+                surface: c(16, 16, 22),
+                surface_variant: c(31, 31, 41),
+                text: c(224, 227, 236),
+                text_muted: c(148, 154, 170),
                 accent: c(124, 172, 255),        // ambient blue until a song colours it
                 accent_secondary: c(150, 132, 255),
-                border: c(38, 40, 52),
+                border: c(46, 48, 62),
                 danger: c(240, 120, 116),
-                bg_top: c(8, 10, 20),
-                bg_bottom: c(0, 0, 0),
+                bg_top: c(11, 12, 22),
+                bg_bottom: c(3, 3, 5),
                 glow: c(90, 140, 255),
                 tint: TintMode::Ambient,
             },
@@ -432,7 +448,7 @@ impl HalcyonPalette {
             TintMode::Ambient => {
                 // Black stays black. Only a halo at the top and the accents take the colour.
                 p.glow = cover_color;
-                p.bg_top = mix(self.bg_top, cover_color, 0.30);
+                p.bg_top = mix(self.bg_top, cover_color, 0.18);
                 p.surface = mix(self.surface, cover_color, 0.05);
                 p.surface_variant = mix(self.surface_variant, cover_color, 0.08);
                 p.border = mix(self.border, cover_color, 0.12);
@@ -650,6 +666,19 @@ impl HalcyonPalette {
         alpha(self.border, 0.55)
     }
 
+    /// The calm tint for covers without art (Liked Songs, the song playing): the accent mixed
+    /// about 35 percent into the chrome colour. Follows the mood, the wallpaper and the cover.
+    pub fn dim_tint(&self) -> Color {
+        mix(self.chrome_at(0.5), self.accent, 0.35)
+    }
+
+    /// The tint for a lit row or chip (a sidebar row, a chip): the accent mixed only about 10
+    /// percent into the chrome colour, so the text that sits on it keeps its contrast (text 7:1,
+    /// muted 4.5:1). The 35 percent `dim_tint` is for covers, where only a glyph sits on it.
+    pub fn row_tint(&self) -> Color {
+        mix(self.chrome_at(0.5), self.accent, 0.10)
+    }
+
     /// A very soft coloured shadow under raised things.
     pub fn glow_shadow(&self, strength: f32, blur: f32) -> iced::Shadow {
         iced::Shadow {
@@ -723,6 +752,36 @@ mod tests {
             assert!(contrast_ratio(p.text_muted, p.background) >= 4.5, "{mood:?} muted");
             assert!(contrast_ratio(p.accent, p.background) >= 4.5, "{mood:?} accent");
         }
+    }
+
+    /// The new layouts draw on the frame surface (`chrome_background`), not on the page colour
+    /// the test above measures. Text, muted text and the accent must hold up there too, and on
+    /// the two tints. The built-in palettes are checked; a wallpaper palette is derived from the
+    /// rice file at run time and is covered by the page-colour test in `from_rice_text`.
+    #[test]
+    fn every_mood_keeps_its_contrast_on_the_frame_and_the_tints() {
+        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+            let p = HalcyonPalette::for_mood(mood);
+            for t in [0.0, 0.5, 1.0] {
+                let chrome = p.chrome_at(t);
+                assert!(contrast_ratio(p.text, chrome) >= 7.0, "{mood:?} text on frame at {t}");
+                assert!(contrast_ratio(p.text_muted, chrome) >= 4.5, "{mood:?} muted on frame at {t}");
+                assert!(contrast_ratio(p.accent, chrome) >= 4.5, "{mood:?} accent on frame at {t}");
+            }
+            // A lit row or chip: text and muted text sit on the row tint.
+            let row = p.row_tint();
+            assert!(contrast_ratio(p.text, row) >= 7.0, "{mood:?} text on the row tint");
+            assert!(contrast_ratio(p.text_muted, row) >= 4.5, "{mood:?} muted on the row tint");
+            // A cover: only a glyph (a heart, a note) sits on the dim tint, which needs 3:1.
+            assert!(contrast_ratio(p.text, p.dim_tint()) >= 3.0, "{mood:?} glyph on the dim tint");
+        }
+    }
+
+    #[test]
+    fn the_row_tint_is_calmer_than_the_dim_tint() {
+        let p = HalcyonPalette::for_mood(Mood::Dusk);
+        let frame = p.chrome_at(0.5);
+        assert!(contrast_ratio(p.row_tint(), frame) < contrast_ratio(p.dim_tint(), frame));
     }
 
     #[test]

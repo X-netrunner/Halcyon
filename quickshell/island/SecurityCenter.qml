@@ -1041,9 +1041,10 @@ Scope {
     readonly property int rvClearedN: rvCleared.reduce(function (n, i) { return n + (i.count || 1) }, 0)
     readonly property int rvNeedsN: rvNeeds.reduce(function (n, i) { return n + (i.count || 1) }, 0)
     // the card's colour: accent while it works, then green (all clear), amber (something to look at) or red (something may be dangerous)
-    readonly property string cardState: cardBusy || (!rvShown && decideRes === null) ? "busy"
+    readonly property string cardState: cardBusy || (!rvShown && decideRes === null && decideErr === "" && !decideSkipped && decideOpen) ? "busy"
+        : (decideErr !== "" && !rvShown ? "warn"
         : (rvNeeds.some(function (i) { return i.verdict === "suspicious" || i.severity === "critical" }) ? "bad"
-        : (rvNeeds.length > 0 || (decideRes !== null && !rvShown) ? "warn" : "good"))
+        : (rvNeeds.length > 0 || (decideRes !== null && !rvShown) ? "warn" : "good")))
     readonly property color cardTone: cardState === "bad" ? pal.bad : (cardState === "warn" ? pal.warn : (cardState === "good" ? pal.good : pal.accent))
     function rvLabel(it) {
         if (it.status === "clear") return "Safe"
@@ -1079,7 +1080,7 @@ Scope {
         return order
     }
     function decideStart() {
-        if (cardBusy || (ovTodo.length === 0 && avAlerts.length === 0)) return
+        if (cardBusy) return
         decideGen++
         decideRes = null; decideErr = ""; decideSteps = []; decideSkipped = false; decideOpen = true
         reviewItems = []; reviewRes = null; reviewErr = ""; reviewNote = ""; reviewStep = ""; reviewAckState = 0; reviewTotal = 0
@@ -3832,9 +3833,16 @@ Scope {
                                         Item {
                                             width: parent.width
                                             height: Math.max(nrT.implicitHeight, 20)
+                                            Glyph {
+                                                id: nrG
+                                                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                                                code: nr.modelData.verdict === "unsure" && nr.modelData.severity !== "high" && nr.modelData.severity !== "critical" ? 0xF02D7 : 0xF0026
+                                                font.pixelSize: 16
+                                                color: root.rvColor(nr.modelData)
+                                            }
                                             Text {
                                                 id: nrT
-                                                anchors { left: parent.left; right: nrC.visible ? nrC.left : parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                                                anchors { left: nrG.right; leftMargin: 8; right: nrC.visible ? nrC.left : parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
                                                 elide: Text.ElideRight
                                                 text: nr.modelData.title
                                                 color: root.pal.text
@@ -3948,7 +3956,7 @@ Scope {
                                 visible: root.decideSkipped
                                 width: parent.width
                                 wrapMode: Text.WordWrap
-                                text: "Nothing else needs you."
+                                text: root.rvShown ? "Nothing else needs you." : "All clear: there are no alerts to read and nothing waits for you."
                                 color: root.pal.text
                                 font.family: root.pal.uiFont
                                 font.pixelSize: root.pal.tBody - 1

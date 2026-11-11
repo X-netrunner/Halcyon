@@ -98,7 +98,7 @@ pub fn clean_endpoint(raw: &str) -> Option<String> {
     let ok = !rest.is_empty()
         && rest.len() <= 100
         && rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
-        && !rest.starts_with(|c: char| c == '.' || c == '-' || c == ':');
+        && !rest.starts_with(['.', '-', ':']);
     ok.then(|| t.to_string())
 }
 

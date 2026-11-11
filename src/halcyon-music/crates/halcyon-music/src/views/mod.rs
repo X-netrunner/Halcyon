@@ -3,31 +3,42 @@ pub mod crossfade;
 pub mod detail;
 pub mod account;
 pub mod diagnostics;
+pub mod connect_settings;
 pub mod discover;
+pub mod dock;
+pub mod frame;
 pub mod fullscreen;
 pub mod help_modal;
 pub mod home;
 pub mod library;
+pub mod library_sidebar;
 pub mod llm_settings;
 pub mod lyrics;
+pub mod lyrics_compact;
 pub mod notch;
 pub mod now_playing_bar;
 pub mod orbit;
+pub mod player_panel;
 pub mod playlist;
 pub mod prompt_card;
+pub mod queue_column;
 pub mod queue_drawer;
 pub mod recent;
 pub mod search;
 pub mod search_dropdown;
 pub mod settings;
+pub mod side_panel;
 pub mod sidebar;
 pub mod slide;
+pub mod tabs;
 pub mod track_menu;
 pub mod titlebar;
+pub mod up_next;
+pub mod viz_canvas;
 
 use crate::icons::{icon, Icon};
 use crate::theme::{self, HalcyonPalette};
-use iced::widget::{button, column, container, row, slider, text, tooltip, Space};
+use iced::widget::{button, column, container, slider, text, tooltip, Space};
 use iced::{Alignment, Element};
 
 /// Filled accent button for the few plain text actions (log in, go back...).
@@ -55,7 +66,6 @@ pub fn solid(
                 width: 1.0,
             },
             shadow,
-            ..Default::default()
         }
     }
 }
@@ -149,7 +159,6 @@ pub fn tile(
             } else {
                 iced::Shadow::default()
             },
-            ..Default::default()
         }
     }
 }
@@ -326,43 +335,9 @@ pub fn spectrum_level(i: usize, n: usize, clock: f32, seed: f32, playing: bool) 
     (v * v * tilt).clamp(0.06, 1.0)
 }
 
-/// A row of animated bars. `mirrored` grows them from the middle line (a visualizer);
-/// otherwise they grow from the bottom (a little equalizer icon).
-#[allow(clippy::too_many_arguments)]
-pub fn equalizer<'a, M: 'a>(
-    bars: usize,
-    bar_w: f32,
-    gap: f32,
-    max_h: f32,
-    clock: f32,
-    seed: f32,
-    playing: bool,
-    mirrored: bool,
-    palette: HalcyonPalette,
-) -> Element<'a, M> {
-    let mut r = row![].spacing(gap).align_y(Alignment::Center);
-    for i in 0..bars {
-        let lvl = spectrum_level(i, bars, clock, seed, playing);
-        let h = (max_h * lvl).max(3.0);
-        let t = i as f32 / bars.max(1) as f32;
-        let base = theme::mix(palette.accent, palette.accent_secondary, t);
-        let bar = container(Space::new(bar_w, h)).style(move |_t| container::Style {
-            background: Some(theme::gradient2(base, theme::alpha(base, 0.35), true)),
-            border: iced::Border { radius: (bar_w / 2.0).into(), ..Default::default() },
-            ..Default::default()
-        });
-        let slot = if mirrored {
-            container(bar).height(max_h).center_y(max_h)
-        } else {
-            container(bar).height(max_h).align_y(iced::alignment::Vertical::Bottom)
-        };
-        r = r.push(slot);
-    }
-    r.into()
-}
-
-/// The same dancing bars turned on their side and stacked: a column of short horizontal bars
-/// that grow from the middle line. It suits a narrow rail.
+/// Dancing bars turned on their side and stacked: a column of short horizontal bars that grow
+/// from the middle line. It suits a narrow rail. (They follow a clock, not the real audio; the
+/// full-screen visualizers use the real spectrum.)
 #[allow(clippy::too_many_arguments)]
 pub fn equalizer_vertical<'a, M: 'a>(
     rows: usize,
@@ -405,28 +380,6 @@ pub fn ellipsize(s: &str, max: usize) -> String {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::ellipsize;
-
-    #[test]
-    fn short_text_is_untouched() {
-        assert_eq!(ellipsize("Arcane", 10), "Arcane");
-    }
-
-    #[test]
-    fn long_text_is_cut_with_an_ellipsis() {
-        let out = ellipsize("ALL Arcane Songs in ACTUAL order - Season 1&2", 17);
-        assert_eq!(out.chars().count(), 17);
-        assert!(out.ends_with('…'));
-    }
-
-    #[test]
-    fn multibyte_text_does_not_panic() {
-        assert_eq!(ellipsize("日本語のタイトルです", 4), "日本語…");
-    }
-}
-
 /// One friendly line and one action: the shape of every empty, error and offline state.
 /// `message` says what happened in plain words; `action` is the single thing to do about it.
 pub fn empty_state<'a, M: Clone + 'a>(
@@ -448,4 +401,26 @@ pub fn empty_state<'a, M: Clone + 'a>(
         col = col.push(settings::action(label, None, palette, msg));
     }
     container(col).width(Length::Fill).padding(theme::space::XXL).center_x(Length::Fill).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ellipsize;
+
+    #[test]
+    fn short_text_is_untouched() {
+        assert_eq!(ellipsize("Arcane", 10), "Arcane");
+    }
+
+    #[test]
+    fn long_text_is_cut_with_an_ellipsis() {
+        let out = ellipsize("ALL Arcane Songs in ACTUAL order - Season 1&2", 17);
+        assert_eq!(out.chars().count(), 17);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn multibyte_text_does_not_panic() {
+        assert_eq!(ellipsize("日本語のタイトルです", 4), "日本語…");
+    }
 }

@@ -28,6 +28,7 @@ pub enum LikedSort {
 
 impl LibraryTab {
     /// The tabs shown on the page. Liked Songs is a pinned playlist now, not a tab.
+    #[allow(dead_code)]
     pub fn all() -> &'static [LibraryTab] {
         &[
             LibraryTab::Playlists,
@@ -45,6 +46,7 @@ impl LibraryTab {
         }
     }
 
+    #[allow(dead_code)]
     pub fn icon(&self) -> Icon {
         match self {
             LibraryTab::Liked => Icon::Heart,
@@ -245,7 +247,7 @@ pub fn view<'a, Message: Clone + 'static>(
             Space::with_width(16),
             column![
                 text("Liked Songs").size(26).color(palette.text),
-                text(format!("Playlist · {} songs", liked_tracks.len()))
+                text(format!("{} songs", liked_tracks.len()))
                     .size(13)
                     .color(palette.text_muted),
             ]
@@ -571,7 +573,7 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
                     Space::with_width(14),
                     column![
                         text("Liked Songs").size(14).color(palette.text),
-                        text(format!("Pinned · {liked_count} songs"))
+                        text(format!("{liked_count} songs"))
                             .size(11)
                             .color(palette.text_muted),
                     ]

@@ -332,7 +332,7 @@ impl SessionBrowse {
 
         let sem = Arc::new(Semaphore::new(LOOKUP_CONCURRENCY));
         let mut set = tokio::task::JoinSet::new();
-        for (idx, uri) in all[start..end].iter().enumerate() {
+        for (idx, uri) in all.get(start..end).unwrap_or(&[]).iter().enumerate() {
             let (this, session, sem, uri) = (self.clone(), session.clone(), sem.clone(), uri.clone());
             set.spawn(async move {
                 let _permit = sem.acquire().await.ok();
@@ -378,7 +378,7 @@ impl SessionBrowse {
             .filter_map(|i| i.id.to_uri().ok())
             .collect();
         let (start, end) = page_bounds(all.len(), limit as usize, offset as usize);
-        let items = self.tracks_for(&session, &all[start..end]).await;
+        let items = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
         Ok(make_page(items, all.len(), limit as usize, offset as usize))
     }
 
@@ -393,7 +393,7 @@ impl SessionBrowse {
         let all = track_uris_from_context(&ctx);
         debug!(pages = ctx.pages.len(), tracks = all.len(), "liked songs context");
         let (start, end) = page_bounds(all.len(), limit as usize, offset as usize);
-        let items = self.tracks_for(&session, &all[start..end]).await;
+        let items = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
         Ok(make_page(items, all.len(), limit as usize, offset as usize))
     }
 
@@ -497,7 +497,7 @@ impl SessionBrowse {
             .map_err(|e| api_err("search request failed", e))?;
         let all = track_uris_from_context(&ctx);
         let (start, end) = page_bounds(all.len(), limit.min(SEARCH_MAX as u32) as usize, offset as usize);
-        let tracks = self.tracks_for(&session, &all[start..end]).await;
+        let tracks = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
         Ok(DetailedSearchResults {
             query: query.to_string(),
             search_type: search_type.to_string(),

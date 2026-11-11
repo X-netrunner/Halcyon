@@ -24,6 +24,10 @@ const LIVE_FOR: Duration = Duration::from_millis(450);
 /// Bass follower: rises in about 80 ms, falls in about 400 ms.
 const ATTACK: f32 = 0.08;
 const RELEASE: f32 = 0.4;
+/// The full-screen Aurora lets go a little slower still, so its waves settle instead of dropping.
+const CALM_RELEASE: f32 = 0.7;
+/// Below this a smoothed band counts as at rest (the animation can stop).
+const SETTLED: f32 = 0.004;
 /// The swell eases in over this long and fades with this time constant (seconds).
 const PULSE_RISE: f32 = 0.09;
 const PULSE_DECAY: f32 = 0.30;
@@ -36,6 +40,8 @@ const MIN_BEAT_GAP: Duration = Duration::from_millis(380);
 pub struct AudioViz {
     target: [f32; BANDS],
     shown: [f32; BANDS],
+    /// Same follower with a slower release (Aurora).
+    calm: [f32; BANDS],
     last_frame: Option<Instant>,
     /// Recent accepted beats and their strength, oldest first.
     beats: VecDeque<(Instant, f32)>,
@@ -80,6 +86,7 @@ impl AudioViz {
         Self {
             target: [0.0; BANDS],
             shown: [0.0; BANDS],
+            calm: [0.0; BANDS],
             last_frame: None,
             beats: VecDeque::with_capacity(MAX_RIPPLES + 1),
             last_tick: Instant::now(),
@@ -120,9 +127,37 @@ impl AudioViz {
             let k = if goal > *shown { attack } else { release };
             *shown += (goal - *shown) * k;
         }
+        let calm_release = 1.0 - (-dt / CALM_RELEASE).exp();
+        for (calm, &target) in self.calm.iter_mut().zip(&self.target) {
+            let goal = if silent { 0.0 } else { target };
+            let k = if goal > *calm { attack } else { calm_release };
+            *calm += (goal - *calm) * k;
+        }
         if silent {
             self.target = [0.0; BANDS];
         }
+    }
+
+    /// The smoothed spectrum, 0.0 ..= 1.0 per band, for the full-screen visualizers. `calm`
+    /// picks the slower-release follower. All zeros when motion is reduced. When playback
+    /// stops or frames stop arriving the values are not cut to zero here: `tick` lets them
+    /// fall, so a pause settles softly instead of jumping.
+    pub fn bands(&self, reduce_motion: bool, calm: bool) -> [f32; BANDS] {
+        if reduce_motion {
+            return [0.0; BANDS];
+        }
+        let src = if calm { &self.calm } else { &self.shown };
+        let mut out = [0.0; BANDS];
+        for (o, &v) in out.iter_mut().zip(src) {
+            *o = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+        }
+        out
+    }
+
+    /// True while the smoothed bands have not yet fallen to rest: the animation must keep
+    /// ticking so the shape finishes settling.
+    pub fn is_settling(&self) -> bool {
+        self.shown.iter().chain(&self.calm).any(|&v| v > SETTLED)
     }
 
     /// The newest beat's swell at `now`: a soft rise, then a slow fade.
@@ -215,6 +250,49 @@ mod tests {
         assert_eq!(v.frame(ms(t0, 10), false, false), VizFrame::still(), "paused");
         assert_eq!(v.frame(ms(t0, 10), true, true), VizFrame::still(), "reduced motion");
         assert!(v.frame(ms(t0, 10), true, false).live);
+    }
+
+    #[test]
+    fn calm_bands_let_go_more_slowly_than_the_plain_ones() {
+        let t0 = Instant::now();
+        let mut v = AudioViz::new();
+        v.last_tick = t0;
+        v.push(&[255; BANDS], 0, t0);
+        v.tick(ms(t0, 100), true);
+        v.push(&[0; BANDS], 0, ms(t0, 100));
+        v.tick(ms(t0, 300), true);
+        let plain = v.bands(false, false);
+        let calm = v.bands(false, true);
+        assert!(calm[3] > plain[3], "calm {} plain {}", calm[3], plain[3]);
+    }
+
+    #[test]
+    fn bands_are_zero_with_reduced_motion_and_always_in_range() {
+        let t0 = Instant::now();
+        let mut v = AudioViz::new();
+        v.last_tick = t0;
+        v.push(&[255; BANDS], 0, t0);
+        v.tick(ms(t0, 100), true);
+        assert!(v.bands(true, false).iter().all(|&b| b == 0.0));
+        assert!(v.bands(true, true).iter().all(|&b| b == 0.0));
+        assert!(v.bands(false, false).iter().all(|&b| (0.0..=1.0).contains(&b)));
+    }
+
+    #[test]
+    fn a_pause_settles_and_then_stops_asking_for_ticks() {
+        let t0 = Instant::now();
+        let mut v = AudioViz::new();
+        v.last_tick = t0;
+        v.push(&[200; BANDS], 0, t0);
+        v.tick(ms(t0, 100), true);
+        assert!(v.is_settling());
+        // Paused: each tick pulls the bands toward zero until they are at rest.
+        let mut at = 100;
+        for _ in 0..200 {
+            at += 33;
+            v.tick(ms(t0, at), false);
+        }
+        assert!(!v.is_settling(), "still settling after {at} ms");
     }
 
     #[test]

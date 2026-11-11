@@ -12,6 +12,7 @@
 #       AUDIO_RESUME         0 | 1     bring the paused music back when the other player stops (audio-focus.sh reads it live)
 #       AUDIO_DELAY          1 | 2 | 5 | 10   seconds of silence before it does
 #       PORTAL               login | demand   screen-sharing helper: started at login, or only when an app first asks   next login
+#   FIREWALL (list only)     on | off: is ai-firewall running. Changed by scripts/firewall-select.sh in the console (sudo).
 #   ANTIVIRUS (list only)    ai | clamav | off: what runs now. It is changed by scripts/antivirus-select.sh in the console (sudo).
 # The values live in ~/.config/Halcyon/autostart.conf (read by scripts/autostart-extras.sh) and ~/.config/Halcyon/gpu-mode.
 RICE="${HALCYON_DIR:-$HOME/.config/Halcyon}"
@@ -49,10 +50,11 @@ case "${1:-list}" in
     exists /usr/bin/clamd /usr/sbin/clamd && cl=true
     { [ "$sy" = true ] || [ "$cl" = true ]; } && anyav=true
     av_now=$(bash "$RICE/scripts/antivirus-select.sh" status 2>/dev/null || echo off)
+    fw_now=$(bash "$RICE/scripts/firewall-select.sh" status 2>/dev/null || echo off)
     case "$PORTAL" in demand) ;; *) PORTAL=login ;; esac
-    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","ANTIVIRUS":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s,"firewall":%s,"antivirus":%s,"clamav":%s,"anyav":%s}}\n' \
+    printf '{"NM_APPLET":%s,"BLUEMAN":%s,"POLKIT":"%s","GPU":"%s","FILE_ICONS":"%s","CLIPBOARD":%s,"GESTURES":%s,"AUDIO_FOCUS":%s,"AUDIO_RESUME":%s,"AUDIO_DELAY":"%s","PORTAL":"%s","ANTIVIRUS":"%s","FIREWALL":"%s","has":{"nm":%s,"blueman":%s,"hyprpolkit":%s,"gnome":%s,"kde":%s,"nvidia":%s,"safety":%s,"firewall":%s,"antivirus":%s,"clamav":%s,"anyav":%s}}\n' \
       "$([ "$NM_APPLET" = 1 ] && echo true || echo false)" "$([ "$BLUEMAN" = 1 ] && echo true || echo false)" \
-      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$av_now" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf" "$fw" "$sy" "$cl" "$anyav"
+      "$POLKIT" "$(gpu_now)" "$(files_now)" "$([ "$CLIPBOARD" = 1 ] && echo true || echo false)" "$([ "$GESTURES" = 1 ] && echo true || echo false)" "$([ "$AUDIO_FOCUS" = 1 ] && echo true || echo false)" "$([ "$AUDIO_RESUME" = 1 ] && echo true || echo false)" "$AUDIO_DELAY" "$PORTAL" "$av_now" "$fw_now" "$nm" "$bl" "$hp" "$gn" "$kd" "$nv" "$sf" "$fw" "$sy" "$cl" "$anyav"
     ;;
   set)
     key="$2"; val="$3"

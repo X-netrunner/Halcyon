@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn window_follows_the_scroll_position() {
         let (s, e) = visible_range(HEADER_H + 100.0 * ROW_H, 700.0, 500);
-        assert!(s <= 100 && s >= 100 - BUFFER - 1);
+        assert!((100 - BUFFER - 1..=100).contains(&s));
         assert!(e > 100 && e <= 100 + 14 + BUFFER + 2);
     }
 

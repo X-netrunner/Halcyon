@@ -26,9 +26,42 @@ pub fn enabled_from(value: Option<&str>) -> bool {
     )
 }
 
-/// Connect is requested in this process's environment.
+/// What the Settings switch saved: `Some(true)` for `on`, `Some(false)` for `off`, `None` for no
+/// file or anything unreadable (not chosen yet).
+pub fn pref_from(text: Option<&str>) -> Option<bool> {
+    match text.map(|t| t.trim().to_ascii_lowercase()).as_deref() {
+        Some("on" | "1" | "true" | "yes") => Some(true),
+        Some("off" | "0" | "false" | "no") => Some(false),
+        _ => None,
+    }
+}
+
+/// The final answer: a choice made in Settings wins; without one the environment decides
+/// (`HALCYON_CONNECT`, which the installer sets for a build with Connect); otherwise off.
+pub fn resolve(pref: Option<bool>, env: Option<&str>) -> bool {
+    pref.unwrap_or_else(|| enabled_from(env))
+}
+
+/// The saved Settings choice, if any.
+pub fn read_pref() -> Option<bool> {
+    let text = std::fs::read_to_string(halcyon_music_core::paths::connect_pref_file()).ok();
+    pref_from(text.as_deref())
+}
+
+/// Save the Settings choice. Written through a temporary file so a crash never leaves half a word.
+pub fn write_pref(on: bool) -> std::io::Result<()> {
+    let path = halcyon_music_core::paths::connect_pref_file();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, if on { "on\n" } else { "off\n" })?;
+    std::fs::rename(&tmp, &path)
+}
+
+/// Connect is requested: by the Settings switch, else by this process's environment.
 pub fn enabled() -> bool {
-    enabled_from(std::env::var(ENV_FLAG).ok().as_deref())
+    resolve(read_pref(), std::env::var(ENV_FLAG).ok().as_deref())
 }
 
 /// True when this binary contains the Spirc code.
@@ -275,6 +308,19 @@ pub async fn run_spike(_volume_percent: u8) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_settings_choice_beats_the_environment() {
+        assert_eq!(pref_from(Some("on\n")), Some(true));
+        assert_eq!(pref_from(Some(" OFF ")), Some(false));
+        assert_eq!(pref_from(Some("maybe")), None);
+        assert_eq!(pref_from(None), None);
+        // A choice wins both ways; no choice leaves the installer's environment in charge.
+        assert!(!resolve(Some(false), Some("1")));
+        assert!(resolve(Some(true), None));
+        assert!(resolve(None, Some("1")));
+        assert!(!resolve(None, None));
+    }
 
     #[test]
     fn env_flag_needs_a_clear_yes() {

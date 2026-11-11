@@ -26,7 +26,7 @@ pub fn connection_label(connected: bool) -> &'static str {
     }
 }
 
-fn tip<'a, M: 'a>(label: &'static str, palette: HalcyonPalette) -> Element<'a, M> {
+pub(crate) fn tip<'a, M: 'a>(label: &'static str, palette: HalcyonPalette) -> Element<'a, M> {
     container(text(label).size(type_size::SMALL).color(palette.text))
         .padding([space::XS, space::SM])
         .style(move |_t| container::Style {
@@ -83,9 +83,93 @@ fn window_button<'a, M: Clone + 'a>(
     .into()
 }
 
+/// The three window buttons (minimise, maximise, close) as one row, for screens that have no
+/// title bar of their own (the full-screen view shows them under a quiet drag strip).
+pub fn window_controls<'a, M: Clone + 'a>(
+    palette: HalcyonPalette,
+    on_minimize: M,
+    on_toggle_maximize: M,
+    on_close: M,
+) -> Element<'a, M> {
+    row![
+        window_button(Icon::Minus, palette, false, on_minimize),
+        window_button(Icon::Square, palette, false, on_toggle_maximize),
+        window_button(Icon::Close, palette, true, on_close),
+    ]
+    .into()
+}
+
+/// Height of one window button, so a strip that holds them can be exactly that tall.
+pub const CONTROLS_HEIGHT: f32 = BUTTON_HEIGHT;
+
+/// The two arrows at the left of the bar (layouts that have them).
+pub struct History<M> {
+    pub can_back: bool,
+    pub can_forward: bool,
+    pub on_back: M,
+    pub on_forward: M,
+}
+
+/// Width of the block at the left of the bar: as wide as the three window buttons and their
+/// inset on the right, so the name stays centred on the window.
+const SIDE_WIDTH: f32 = BUTTON_WIDTH * 3.0 + CONTROLS_INSET;
+const ARROW_SIZE: f32 = 30.0;
+/// Left inset of the back and forward arrows.
+const HISTORY_LEFT: f32 = 12.0;
+
+/// Where the middle of the back arrow is, from the window's left edge. The account circle in the
+/// row under the title bar is centred on it so the two line up.
+pub fn arrow_centre_x() -> f32 {
+    HISTORY_LEFT + ARROW_SIZE / 2.0
+}
+
+fn history_buttons<'a, M: Clone + 'a>(h: History<M>, palette: HalcyonPalette) -> Element<'a, M> {
+    let arrow = |glyph: Icon, enabled: bool, msg: M| -> Element<'a, M> {
+        let colour = if enabled { palette.text_muted } else { crate::theme::alpha(palette.text_muted, 0.4) };
+        let b = button(
+            container(icon(glyph, 16.0, colour))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+        )
+        .width(ARROW_SIZE)
+        .height(ARROW_SIZE)
+        .padding(0)
+        .style(crate::views::ghost(palette));
+        if enabled { b.on_press(msg).into() } else { b.into() }
+    };
+    container(
+        row![
+            arrow(Icon::ChevronLeft, h.can_back, h.on_back),
+            arrow(Icon::ChevronRight, h.can_forward, h.on_forward),
+        ]
+        .spacing(2)
+        .align_y(Alignment::Center),
+    )
+    .width(SIDE_WIDTH)
+    .height(HEIGHT)
+    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: HISTORY_LEFT })
+    .align_y(iced::alignment::Vertical::Center)
+    .into()
+}
+
 pub fn view<'a, M: Clone + 'a>(
     connected: bool,
     palette: HalcyonPalette,
+    on_press_bar: M,
+    on_minimize: M,
+    on_toggle_maximize: M,
+    on_close: M,
+) -> Element<'a, M> {
+    view_with_history(connected, palette, None, on_press_bar, on_minimize, on_toggle_maximize, on_close)
+}
+
+/// The bar, with back and forward arrows at the left when `history` is given.
+pub fn view_with_history<'a, M: Clone + 'a>(
+    connected: bool,
+    palette: HalcyonPalette,
+    history: Option<History<M>>,
     on_press_bar: M,
     on_minimize: M,
     on_toggle_maximize: M,
@@ -114,10 +198,14 @@ pub fn view<'a, M: Clone + 'a>(
 
     // The name sits in the middle of the bar. An empty block as wide as the three window
     // buttons on the left keeps it centred on the window rather than on the free space.
+    let left_block: Element<'a, M> = match history {
+        // As wide as the window buttons and their inset on the right.
+        None => Space::with_width(SIDE_WIDTH).into(),
+        Some(h) => history_buttons(h, palette),
+    };
     let drag_area = mouse_area(
         row![
-            // As wide as the window buttons and their inset on the right.
-            Space::with_width(BUTTON_WIDTH * 3.0 + CONTROLS_INSET),
+            left_block,
             container(brand)
                 .width(Length::Fill)
                 .height(HEIGHT)

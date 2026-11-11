@@ -137,6 +137,7 @@ ShellRoot {
         todOn: false,              // time-of-day wallpaper: a soft colour grade over the wallpaper that follows the sun (TimeOfDay.js, Wallpaper.qml); Settings > Splash, sky & time of day
         todStrength: 60,           // 0 .. 100 : how strong that grade is (100 = full dusk orange / deep night blue)
         splash: true,              // the login splash (Splash.qml: moving stars + the Halcyon sparkle) plays on the lock screen when it is also the login screen; Settings > Power & lock
+        captureAtCursor: true,     // ON by default. Super + Shift + S (screenshot) and Super + Shift + R (recording) open their menu at the mouse pointer; off = the old spot
         clipAtCursor: true,        // ON by default. Super + V opens the clipboard panel at the mouse pointer (like Windows); off = on the side of the screen
         lockPower: true,           // ON by default. The lock screen's power button (bottom right): Sleep / Restart / Shut down
         lockSwitch: false,         // OFF by default. On = the lock screen has a "Switch user" button (other logged-in users, or a login screen for someone else)
@@ -780,6 +781,10 @@ ShellRoot {
             else if (id === "safety-check") { var sc = Quickshell.env("HOME") + "/.config/Halcyon/scripts"; Quickshell.execDetached(["bash", sc + "/apps.sh", "term-exec", "bash", "-c", "if [ -x /usr/local/bin/safety-check ]; then sudo /usr/local/bin/safety-check && bash \"$1/remind.sh\" done safety; else echo 'The safety check is not installed: ./install.sh --safety-check'; fi; echo; read -n1 -r -p 'Press any key to close '", "x", sc]) }
             else if (id === "versions-open") { settingsWin.hide(); versionCenter.show() }
             else if (id === "security-overview" || id === "security-firewall" || id === "security-antivirus" || id === "security-exceptions") { settingsWin.hide(); securityCenter.show(id.substring(9)) }
+            else if (id.indexOf("firewall-select:") === 0) {            // Settings > Security > Firewall: on | off, with sudo in the console
+                var fwm = id.substring(16)
+                if (fwm === "on" || fwm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/firewall-select.sh " + fwm) }
+            }
             else if (id.indexOf("antivirus-select:") === 0) {          // Settings > Security > Antivirus: ai | clamav | off, with sudo in the console
                 var avm = id.substring(17)
                 if (avm === "ai" || avm === "clamav" || avm === "off") { settingsWin.hide(); quickTerm.run("bash " + Quickshell.env("HOME") + "/.config/Halcyon/scripts/antivirus-select.sh " + avm) }
@@ -1444,6 +1449,7 @@ ShellRoot {
     CaptureMenu {
         id: captureMenu
         pal: pal
+        opt: root.opt
         audio: root.opt.recAudio || "system"
         onSetRec: (k, v) => root.setOpt(k, v)
     }
@@ -2900,7 +2906,8 @@ ShellRoot {
         target: Hyprland
         function onRawEvent(event) {
             var n = event.name
-            if (n === "fullscreen" || n === "workspacev2" || (n === "closewindow" && root.fsQuiet)) fsT.restart()
+            // a special workspace opening or closing changes what is on top without a workspace event: look again then too
+            if (n === "fullscreen" || n === "workspacev2" || n === "workspace" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || (n === "closewindow" && root.fsQuiet)) fsT.restart()
         }
     }
     // An event that arrives while a check is already running used to be dropped, so a "left fullscreen" that came in mid-check left fsQuiet
@@ -2930,6 +2937,8 @@ ShellRoot {
     property bool deskCovered: false
     property string coverFocus: ""          // the focused window's address at the last activewindowv2
     property bool coverDirty: false         // an event came in after the running check started
+    property real coverHoldUntil: 0         // after a workspace / special-workspace event nothing counts as "covered" for a moment (the widgets must not flash and vanish)
+    property int coverStreak: 0             // "covered" has to be seen twice in a row before the widgets are hidden
     readonly property bool deskCoverWatch: (opt.deskStars === true || opt.deskLive === "on" || opt.deskLive === "sky" || (opt.deskWidgetsOn !== false && opt.deskCoverPause === true)) && !gaming && !lockScreen.locked
     Connections {
         target: Hyprland
@@ -2942,16 +2951,21 @@ ShellRoot {
             if (n === "openwindow" || n === "closewindow" || n === "movewindowv2" || n === "changefloatingmode" || n === "fullscreen"
                 || n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2" || n === "activewindowv2") {
                 if (n !== "openwindow" && n !== "activewindowv2") root.deskCovered = false
+                if (n === "workspacev2" || n === "activespecial" || n === "activespecialv2" || n === "focusedmonv2") { root.coverHoldUntil = Date.now() + 1500; root.coverStreak = 0 }
                 root.coverDirty = true          // a check that is running right now read the state from before this event: its answer is dropped
                 coverT.restart()
             }
         }
     }
+    Timer { id: coverLate; interval: 1600; onTriggered: coverT.restart() }          // looks again once the hold after a workspace switch is over
     Timer { id: coverT; interval: 300; onTriggered: { if (!coverProc.running) { root.coverDirty = false; coverProc.running = true } } }
     // the 5 s re-check is only for floating windows (dragging or resizing one sends no event); with none on screen it stops
     property bool coverFloating: true        // true until the first check: that check is what starts the watch
     Timer { interval: 5000; repeat: true; running: root.deskCoverWatch && root.coverFloating; triggeredOnStart: true; onTriggered: coverT.restart() }
     onDeskCoverWatchChanged: { if (!deskCoverWatch) deskCovered = false; else coverT.restart() }
+    // "covered" can never stay stuck: while it is on, it is checked again every 2 s (the same way fsQuiet re-checks), so widgets come back
+    // by themselves after a switch from a special workspace to a new one, even if an event was missed or read stale state
+    Timer { interval: 2000; repeat: true; running: root.deskCovered; onTriggered: coverT.restart() }
     Process {
         id: coverProc
         command: ["sh", "-c", "hyprctl -j monitors; echo; echo @@; hyprctl -j clients"]
@@ -2967,7 +2981,9 @@ ShellRoot {
                     if (m) {
                         var sc = m.scale || 1, mw = m.width / sc, mh = m.height / sc
                         if (m.transform % 2 === 1) { var tmp = mw; mw = mh; mh = tmp }
-                        var ws = [m.activeWorkspace ? m.activeWorkspace.id : -999, m.specialWorkspace ? m.specialWorkspace.id : -999]
+                        // only the normal workspace counts: a special workspace (music, tasks, scratchpad) floats over the desktop, which stays visible
+                        // around it (and is back as soon as it closes), so it must never switch the widgets off
+                        var ws = [m.activeWorkspace ? m.activeWorkspace.id : -999]
                         var rects = [], floating = false
                         for (var j = 0; j < wins.length; j++) {
                             var c = wins[j]
@@ -2992,7 +3008,12 @@ ShellRoot {
                 // an event (workspace switch ...) arrived while this check ran: it describes the old workspace, so it must not hide the
                 // widgets of the new one (they showed for a moment and then vanished); check again instead
                 if (root.coverDirty) { coverT.restart(); return }
-                root.deskCovered = cov && root.deskCoverWatch
+                if (!cov || !root.deskCoverWatch) { root.coverStreak = 0; root.deskCovered = false; return }
+                // covered: not while a workspace switch is still settling, and only when two checks in a row agree
+                if (Date.now() < root.coverHoldUntil) { root.coverStreak = 0; coverLate.restart(); return }
+                root.coverStreak = Math.min(3, root.coverStreak + 1)
+                if (root.coverStreak >= 2) root.deskCovered = true
+                else coverT.restart()
             }
         }
     }

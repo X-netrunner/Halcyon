@@ -15,11 +15,20 @@ use iced::{event, mouse, Element, Event, Length, Point, Rectangle, Size};
 pub struct Slide<'a, M, T, R> {
     content: Element<'a, M, T, R>,
     shown: f32,
+    /// `true`: the content slides out sideways (it grows to the right of where it starts)
+    /// instead of down.
+    horizontal: bool,
 }
 
 impl<'a, M, T, R> Slide<'a, M, T, R> {
     pub fn new(content: impl Into<Element<'a, M, T, R>>, shown: f32) -> Self {
-        Self { content: content.into(), shown: shown.clamp(0.0, 1.0) }
+        Self { content: content.into(), shown: shown.clamp(0.0, 1.0), horizontal: false }
+    }
+
+    /// Like `new`, but the content is revealed sideways: `shown` of its width is visible and it
+    /// emerges from the left edge, like something sliding out from behind the button before it.
+    pub fn horizontal(content: impl Into<Element<'a, M, T, R>>, shown: f32) -> Self {
+        Self { content: content.into(), shown: shown.clamp(0.0, 1.0), horizontal: true }
     }
 }
 
@@ -28,7 +37,11 @@ where
     R: renderer::Renderer,
 {
     fn size(&self) -> Size<Length> {
-        Size::new(self.content.as_widget().size().width, Length::Shrink)
+        if self.horizontal {
+            Size::new(Length::Shrink, self.content.as_widget().size().height)
+        } else {
+            Size::new(self.content.as_widget().size().width, Length::Shrink)
+        }
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -45,9 +58,16 @@ where
         };
         let child = self.content.as_widget().layout(child_tree, renderer, limits);
         let full = child.size();
-        let visible = Size::new(full.width, full.height * self.shown);
-        // The content keeps its size; it just sits higher by however much is hidden.
-        let child = child.move_to(Point::new(0.0, visible.height - full.height));
+        let (visible, at) = if self.horizontal {
+            let v = Size::new(full.width * self.shown, full.height);
+            (v, Point::new(v.width - full.width, 0.0))
+        } else {
+            let v = Size::new(full.width, full.height * self.shown);
+            (v, Point::new(0.0, v.height - full.height))
+        };
+        // The content keeps its size; it just sits higher (or further left) by however much is
+        // hidden.
+        let child = child.move_to(at);
         layout::Node::with_children(visible, vec![child])
     }
 
@@ -64,7 +84,7 @@ where
         let bounds = layout.bounds();
         // Clip to what the parent lets through as well, so nothing is drawn over a scroll area's edge.
         let Some(clip) = bounds.intersection(viewport) else { return };
-        if clip.height < 0.5 {
+        if clip.height < 0.5 || clip.width < 0.5 {
             return;
         }
         let (Some(child_tree), Some(child)) = (tree.children.first(), layout.children().next()) else {

@@ -31,6 +31,7 @@ pub enum ShortcutAction {
     ToggleFullscreen,  // F
     Refresh,           // Ctrl+R
     ToggleHelp,        // ?
+    CycleLayout,       // Ctrl+Shift+L
     OffsetLyricsMinus, // [
     OffsetLyricsPlus,  // ]
 }
@@ -45,6 +46,7 @@ pub const SHORTCUT_HELP: &[(&str, &str)] = &[
     ("Ctrl + K  or  /", "Focus the search box"),
     ("Esc", "Clear search; close menus and panels"),
     ("Ctrl + L", "Lyrics for the current song"),
+    ("Ctrl + Shift + L", "Next layout"),
     ("Q", "Queue"),
     ("F", "Full-screen now playing"),
     ("M", "Mute"),
@@ -98,7 +100,9 @@ pub fn match_shortcut(key: &Key, modifiers: Modifiers) -> Option<ShortcutAction>
                 }
             }
             "l" | "L" => {
-                if modifiers.control() {
+                if modifiers.control() && modifiers.shift() {
+                    Some(ShortcutAction::CycleLayout)
+                } else if modifiers.control() {
                     Some(ShortcutAction::ToggleLyrics)
                 } else {
                     Some(ShortcutAction::ToggleLike)
@@ -162,6 +166,16 @@ mod tests {
         assert_eq!(match_shortcut(&Key::Character("/".into()), Modifiers::empty()), Some(ShortcutAction::OpenSearch));
         assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::CTRL), Some(ShortcutAction::OpenSearch));
         assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::empty()), None);
+    }
+
+    #[test]
+    fn ctrl_shift_l_cycles_the_layout_and_ctrl_l_still_opens_lyrics() {
+        let l = Key::Character("L".into());
+        assert_eq!(match_shortcut(&l, Modifiers::CTRL | Modifiers::SHIFT), Some(ShortcutAction::CycleLayout));
+        let l = Key::Character("l".into());
+        assert_eq!(match_shortcut(&l, Modifiers::CTRL), Some(ShortcutAction::ToggleLyrics));
+        assert_eq!(match_shortcut(&l, Modifiers::empty()), Some(ShortcutAction::ToggleLike));
+        assert!(super::SHORTCUT_HELP.iter().any(|(k, _)| k.contains("Ctrl + Shift + L")));
     }
 
     #[test]

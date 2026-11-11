@@ -105,6 +105,12 @@ pub fn state_file() -> PathBuf {
     state_dir().join(STATE_FILE_NAME)
 }
 
+/// `~/.config/halcyon-music/connect`: the Spotify Connect choice made in Settings. The file holds
+/// `on` or `off`; no file means "not chosen yet" and the installer's default (the environment) applies.
+pub fn connect_pref_file() -> PathBuf {
+    config_dir().join("connect")
+}
+
 // ---------------------------------------------------------------------------------------------
 // The Halcyon avatar (the same picture `hal avatar` prints)
 // ---------------------------------------------------------------------------------------------
@@ -135,11 +141,66 @@ pub fn first_existing_avatar(candidates: &[PathBuf]) -> Option<PathBuf> {
         .cloned()
 }
 
-/// The user's Halcyon avatar right now, if there is one. Cheap (a few `stat` calls) but it touches
-/// the disk, so call it from a timer or a background task, not from `view`.
+/// Turn a path from a settings file into a real path (`~` is the home folder). Empty or
+/// non-text values give `None`.
+fn expand_user_path(home: &std::path::Path, raw: &str) -> Option<PathBuf> {
+    let p = raw.trim();
+    if p.is_empty() {
+        return None;
+    }
+    Some(match p.strip_prefix('~') {
+        Some(rest) => home.join(rest.trim_start_matches('/')),
+        None => PathBuf::from(p),
+    })
+}
+
+/// The picture chosen in the island's Settings > Profile (or E on the laptop node in the tree):
+/// `"profileAvatar"` in `~/.local/state/island/settings.json`. This is the first thing the rice
+/// itself looks at (`avatar.sh <chosen>`), so it has to be first here too, or choosing a picture
+/// in Halcyon would not change anything in the music app.
+pub fn profile_avatar_from_settings(home: &std::path::Path, settings_json: &str) -> Option<PathBuf> {
+    let v: serde_json::Value = serde_json::from_str(settings_json).ok()?;
+    expand_user_path(home, v.get("profileAvatar")?.as_str()?)
+}
+
+/// The picture the island reports it is showing: `"avatar"` in `~/.cache/island/greeter-look.json`
+/// (only format version 1 is understood, same as the greeter script).
+pub fn shown_avatar_from_greeter_look(home: &std::path::Path, look_json: &str) -> Option<PathBuf> {
+    let v: serde_json::Value = serde_json::from_str(look_json).ok()?;
+    if v.get("v").and_then(|x| x.as_i64()) != Some(1) {
+        return None;
+    }
+    expand_user_path(home, v.get("avatar")?.as_str()?)
+}
+
+/// Every place to look, best first: the picture chosen in Halcyon's settings, the one the island
+/// says it shows, then the usual places from [`avatar_candidates_in`]. Nothing is read from disk.
+pub fn avatar_candidates_full(
+    home: &std::path::Path,
+    user: &str,
+    chosen: Option<PathBuf>,
+    shown: Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = Vec::new();
+    v.extend(chosen);
+    v.extend(shown);
+    v.extend(avatar_candidates_in(home, user));
+    v
+}
+
+/// The user's Halcyon avatar right now, if there is one. Cheap (two small file reads and a few
+/// `stat` calls) but it touches the disk, so call it from a timer or a background task, not from
+/// `view`. The picture chosen in Halcyon's Profile settings wins over `~/.face` and friends.
 pub fn halcyon_avatar() -> Option<PathBuf> {
+    let home = home_dir();
     let user = std::env::var("USER").unwrap_or_default();
-    first_existing_avatar(&avatar_candidates_in(&home_dir(), &user))
+    let chosen = std::fs::read_to_string(home.join(".local/state/island/settings.json"))
+        .ok()
+        .and_then(|j| profile_avatar_from_settings(&home, &j));
+    let shown = std::fs::read_to_string(home.join(".cache/island/greeter-look.json"))
+        .ok()
+        .and_then(|j| shown_avatar_from_greeter_look(&home, &j));
+    first_existing_avatar(&avatar_candidates_full(&home, &user, chosen, shown))
 }
 
 #[cfg(test)]
@@ -151,6 +212,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
         dir
+    }
+
+    #[test]
+    fn a_picture_chosen_in_halcyon_comes_before_face_and_the_standard_places() {
+        let home = PathBuf::from("/h");
+        let chosen = profile_avatar_from_settings(&home, r#"{"profileAvatar":"~/Pictures/me.png"}"#);
+        assert_eq!(chosen, Some(PathBuf::from("/h/Pictures/me.png")));
+        assert_eq!(profile_avatar_from_settings(&home, r#"{"profileAvatar":""}"#), None);
+        assert_eq!(profile_avatar_from_settings(&home, "not json"), None);
+        let shown = shown_avatar_from_greeter_look(&home, r#"{"v":1,"avatar":"/x/a.jpg"}"#);
+        assert_eq!(shown, Some(PathBuf::from("/x/a.jpg")));
+        assert_eq!(shown_avatar_from_greeter_look(&home, r#"{"v":2,"avatar":"/x/a.jpg"}"#), None);
+        let c = avatar_candidates_full(&home, "ada", chosen, shown);
+        assert_eq!(c[0], PathBuf::from("/h/Pictures/me.png"));
+        assert_eq!(c[1], PathBuf::from("/x/a.jpg"));
+        assert_eq!(c[2], PathBuf::from("/h/.face"));
+        assert_eq!(c.len(), 13);
     }
 
     #[test]

@@ -17,6 +17,7 @@ const PER_ROW: usize = 5;
 const SONG_COVER: f32 = 44.0;
 
 /// Main Discover page element builder.
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
     feed: &'a DiscoverFeed,
     loading: bool,
