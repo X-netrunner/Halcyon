@@ -145,8 +145,8 @@ Item {
                 width: parent.width; height: parent.height
                 x: -root.px * 7 * root.u
                 y: -root.py * 7 * root.u
-                Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
-                Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+                Behavior on x { NumberAnimation { duration: pal.dSlow; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: pal.dSlow; easing.type: Easing.OutCubic } }
                 Repeater {
                     model: root.built && root.art && root.art.dust ? root.art.dust : []
                     delegate: Rectangle {
@@ -166,8 +166,8 @@ Item {
                 width: parent.width; height: parent.height
                 x: root.px * 9 * root.u
                 y: root.py * 9 * root.u
-                Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
-                Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+                Behavior on x { NumberAnimation { duration: pal.dSlow; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: pal.dSlow; easing.type: Easing.OutCubic } }
 
                 // CPU line drawing (Settings > Performance > Line drawing: CPU). Tessellated on a worker thread so opening a box
                 // never stalls the island.
