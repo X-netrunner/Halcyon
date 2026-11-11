@@ -279,19 +279,22 @@ Glass {
         }
         return out
     }
-    function audioGlyph(kind) {
-        return String.fromCodePoint(kind === "bluetooth" ? 0xF00B0 : kind === "hdmi" ? 0xF0379
-                                  : kind === "headphones" ? 0xF02CB : kind === "mic" ? 0xF036C : 0xF04C3)
+    // The Bluetooth tile owns the Bluetooth symbol. An audio device that happens to be connected over Bluetooth is drawn as what it
+    // is: headphones for a headset / earbuds, a speaker otherwise, so the two tiles never show the same icon.
+    function audioGlyph(kind, desc) {
+        var k = kind
+        if (k === "bluetooth") k = /head|buds|pods|earphone|earbud|wh-|wf-|airdots|ear\b/i.test(String(desc || "")) ? "headphones" : "speaker"
+        return String.fromCodePoint(k === "hdmi" ? 0xF0379 : k === "headphones" ? 0xF02CB : k === "mic" ? 0xF036C : 0xF04C3)
     }
     readonly property var audioItems: {
         var out = []
         var s = audio.sinks || [], m = audio.sources || []
         if (s.length > 0) out.push({ section: "Output" })
         for (var i = 0; i < s.length; i++)
-            out.push({ title: s[i].desc, sub: s[i].muted ? "Muted" : "", glyph: audioGlyph(s[i].kind), active: s[i].default, kind: "sink", name: s[i].name })
+            out.push({ title: s[i].desc, sub: s[i].muted ? "Muted" : "", glyph: audioGlyph(s[i].kind, s[i].desc), active: s[i].default, kind: "sink", name: s[i].name })
         if (m.length > 0) out.push({ section: "Input" })
         for (var j = 0; j < m.length; j++)
-            out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind), active: m[j].default, kind: "source", name: m[j].name })
+            out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind, m[j].desc), active: m[j].default, kind: "source", name: m[j].name })
         return out
     }
     // microphone picker: only the input devices
@@ -299,7 +302,7 @@ Glass {
         var out = []
         var m = audio.sources || []
         for (var j = 0; j < m.length; j++)
-            out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind), active: m[j].default, kind: "source", name: m[j].name })
+            out.push({ title: m[j].desc, sub: m[j].muted ? "Muted" : "", glyph: audioGlyph(m[j].kind, m[j].desc), active: m[j].default, kind: "source", name: m[j].name })
         return out
     }
     readonly property var defaultSource: {
@@ -433,7 +436,7 @@ Glass {
                 visible: root.shown("Bt")
                 pal: root.pal
                 maxLabel: 52
-                glyph: String.fromCodePoint(0xF00AF)
+                glyph: String.fromCodePoint(root.net.bt === "on" && !!root.net.btdev ? 0xF00B1 : 0xF00AF)
                 label: ""                                    // calm: the symbol alone (lit = on); device and battery are in the hover bubble
                 tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
                    : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  " + root.btBattery + "%" : "") : "Bluetooth on, no device")
@@ -448,10 +451,10 @@ Glass {
                 visible: root.shown("Audio")
                 pal: root.pal
                 maxLabel: 52
-                glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
+                glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker", root.defaultSink ? root.defaultSink.desc : "")
                 label: ""                                    // calm: the icon alone; the speaker name is in the hover bubble
                 tipAlign: "right"
-                tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
+                tip: "Sound output: " + (root.defaultSink ? root.defaultSink.desc : "none") + "  ·  click to choose, right-click to mute"
                 on: root.menu === "audio"
                 onClicked: root.toggleMenu("audio")
                 onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -532,7 +535,7 @@ Glass {
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Bt")
                 pal: root.pal
-                glyph: String.fromCodePoint(0xF00AF)
+                glyph: String.fromCodePoint(root.net.bt === "on" && !!root.net.btdev ? 0xF00B1 : 0xF00AF)
                 readonly property bool linked: root.net.bt === "on" && !!root.net.btdev
                 stars: linked && (!root.btPercent || !root.words) ? root.btStars : -1
                 caption: root.net.bt !== "on" ? "Off" : (!root.net.btdev ? "Bluetooth" : (root.btBattery >= 0 ? root.btBattery + "%" : "Connected"))
@@ -547,10 +550,10 @@ Glass {
                 Layout.fillWidth: true; Layout.preferredHeight: 64
                 visible: root.shown("Audio")
                 pal: root.pal
-                glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
+                glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker", root.defaultSink ? root.defaultSink.desc : "")
                 caption: root.muted ? "Muted" : Math.round(root.vol) + "%"
                 tipAlign: "right"
-                tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
+                tip: "Sound output: " + (root.defaultSink ? root.defaultSink.desc : "none") + "  ·  click to choose, right-click to mute"
                 on: root.menu === "audio"
                 onClicked: root.toggleMenu("audio")
                 onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -645,7 +648,7 @@ Glass {
                     Chip {
                         Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
                         visible: root.shown("Bt"); pal: root.pal; padX: 0; label: ""
-                        glyph: String.fromCodePoint(0xF00AF)
+                        glyph: String.fromCodePoint(root.net.bt === "on" && !!root.net.btdev ? 0xF00B1 : 0xF00AF)
                         tip: root.net.bt !== "on" ? "Bluetooth off  ·  click to turn on"
                            : (root.net.btdev ? root.net.btdev + (root.btBattery >= 0 ? "  ·  " + root.btBattery + "%" : "") : "Bluetooth on, no device") + "  ·  right-click for devices"
                         on: root.net.bt === "on" || root.menu === "bt"
@@ -655,9 +658,9 @@ Glass {
                     Chip {
                         Layout.preferredWidth: 44; Layout.preferredHeight: 44; Layout.alignment: Qt.AlignHCenter
                         visible: root.shown("Audio"); pal: root.pal; padX: 0; label: ""
-                        glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker")
+                        glyph: root.audioGlyph(root.defaultSink ? root.defaultSink.kind : "speaker", root.defaultSink ? root.defaultSink.desc : "")
                         tipAlign: "right"
-                        tip: (root.defaultSink ? root.defaultSink.desc : "Audio") + "  ·  click to choose, right-click to mute"
+                        tip: "Sound output: " + (root.defaultSink ? root.defaultSink.desc : "none") + "  ·  click to choose, right-click to mute"
                         on: root.menu === "audio"
                         onClicked: root.toggleMenu("audio")
                         onRightClicked: Quickshell.execDetached(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])

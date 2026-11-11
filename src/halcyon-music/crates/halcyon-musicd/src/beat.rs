@@ -10,6 +10,10 @@
 //! before. Only *rises* count (spectral flux). A beat fires when that rise stands clearly above
 //! the last second of rises (mean + 1.4 standard deviations), and never twice within 250 ms.
 //! That follows the music's own accents, so it keeps working on songs whose tempo drifts.
+// Fixed-size FFT buffers indexed by loop counters bounded by the same constants that size them;
+// rewriting the audio hot path with `.get()` would add cost and noise for no safety gain.
+#![allow(clippy::indexing_slicing, clippy::chunks_exact_to_as_chunks)]
+
 
 use std::collections::VecDeque;
 use std::f32::consts::PI;

@@ -15,7 +15,8 @@ pub const QUEUE_DRAWER_WIDTH: f32 = 340.0;
 const COVER_PX: f32 = 148.0;
 const ORBIT_PX: f32 = 264.0;
 
-/// `viz` is this frame's snapshot of the sound (beat swell and ripples).
+/// `viz` is this frame's snapshot of the sound (beat swell and ripples). `calm` is true in the
+/// four new layouts (`frame::is_calm`).
 pub fn view<'a, Message: Clone + 'static>(
     state: &'a PlayerState,
     palette: HalcyonPalette,
@@ -24,14 +25,18 @@ pub fn view<'a, Message: Clone + 'static>(
     on_dequeue: impl Fn(usize) -> Message + 'a,
     suggested: &'a std::collections::HashSet<String>,
     on_reject: impl Fn(String) -> Message + 'a,
+    calm: bool,
 ) -> Element<'a, Message> {
+    // Calm (the four new layouts): the accent is kept for the play button, the progress fill, the
+    // tab underline and the star, so the artist and the "Not this" tag are muted text instead.
+    let artist_colour = if calm { palette.text_muted } else { palette.accent };
+    let tag_colour = if calm { palette.text_muted } else { palette.accent };
     let upcoming: Vec<(usize, &halcyon_music_core::Track)> = state
         .queue
         .iter()
         .enumerate()
         .skip(state.queue_pos + 1)
         .collect();
-    let up_count = upcoming.len();
 
     let header = row![
         text("Queue").size(20).color(palette.text),
@@ -90,7 +95,7 @@ pub fn view<'a, Message: Clone + 'static>(
                     art,
                     Space::with_height(4),
                     text(super::ellipsize(&cur.title, 28)).size(16).color(palette.text),
-                    text(super::ellipsize(&cur.artist, 34)).size(13).color(palette.accent),
+                    text(super::ellipsize(&cur.artist, 34)).size(13).color(artist_colour),
                 ]
                 .spacing(2)
                 .align_x(Alignment::Center),
@@ -100,15 +105,6 @@ pub fn view<'a, Message: Clone + 'static>(
             .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 18.0, left: 0.0 }),
         );
     }
-
-    list = list.push(
-        container(
-            text(if up_count == 1 { "Next up · 1 song".to_string() } else { format!("Next up · {up_count} songs") })
-                .size(12)
-                .color(palette.text_muted),
-        )
-        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 12.0 }),
-    );
 
     if upcoming.is_empty() {
         list = list.push(
@@ -135,7 +131,7 @@ pub fn view<'a, Message: Clone + 'static>(
             // Part 6, Smart Shuffle: a song Halcyon added is tagged, with a "Not this" button.
             let is_suggestion = suggested.contains(&track.id);
             let tag: Element<'a, Message> = if is_suggestion {
-                button(text("Suggested · Not this").size(10).color(palette.accent))
+                button(text("Suggested · Not this").size(10).color(tag_colour))
                     .on_press(on_reject(track.id.clone()))
                     .padding([2, 6])
                     .style(crate::views::ghost(palette))

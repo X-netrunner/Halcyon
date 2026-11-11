@@ -9,7 +9,7 @@ bug report: copy the output of `halcyon-musicd --doctor` and the last 50 lines o
 Time budget: about 15 minutes if nothing breaks (the Minutes column adds up to 15). Section 0 is setup and is not counted.
 
 When every row from 1 to 13 passes, this is also the proof that lets you switch Connect on by
-default: set `MUSIC_CONNECT_DEFAULT=1` near the top of the Halcyon Music block in `install.sh`
+default: set `MUSIC_CONNECT_DEFAULT=1` near the top of the Halcyon Music block in `install.sh` (done on 2026-11-10; the filled-in run is in `pending.md` at the repo root)
 (see `docs/connect.md`). Until then Connect stays opt-in.
 
 ## 0. Setup (once, not counted)

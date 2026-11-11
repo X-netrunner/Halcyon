@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn prompt_versions_exist_for_cache_keys() {
-        assert!(QUERY_PROMPT_VERSION >= 1 && PICK_PROMPT_VERSION >= 1);
+        const { assert!(QUERY_PROMPT_VERSION >= 1 && PICK_PROMPT_VERSION >= 1) };
     }
 
     // ---- rerank
@@ -510,6 +510,6 @@ mod tests {
         for line in SYSTEM_RERANK.lines().filter(|l| l.starts_with("{\"task\"")) {
             assert!(serde_json::from_str::<serde_json::Value>(line).is_ok(), "bad example input: {line}");
         }
-        assert!(RERANK_PROMPT_VERSION >= 1);
+        const { assert!(RERANK_PROMPT_VERSION >= 1) };
     }
 }

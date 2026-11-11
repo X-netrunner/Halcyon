@@ -54,6 +54,8 @@ fn entries<'a>(query: &str, r: &'a DetailedSearchResults) -> Vec<Entry<'a>> {
         round: true,
     };
 
+    // Index of the artist whose name is exactly what was typed; it leads the list and is
+    // skipped when the remaining artists are added below.
     let exact_artist = r.artists.iter().position(|a| a.name.trim().to_lowercase() == q);
     if let Some(i) = exact_artist {
         out.push(artist(&r.artists[i]));

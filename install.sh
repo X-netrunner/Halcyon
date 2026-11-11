@@ -37,6 +37,8 @@
 #   --no-packages          skip pacman / AUR (also drivers)   --no-drivers      skip GPU driver + microcode detection
 #   --build-from-source    compile the Rust helpers here instead of downloading the release binaries (HALCYON_PREBUILT=0 does the same)
 #   --no-aur               never install from the AUR         --upgrade        run a full system upgrade (pacman -Syu) first
+#   --fast-build           compile the Rust helpers with thin LTO / 16 codegen units: a much shorter build, slightly less optimised
+#                          binaries (HALCYON_FAST_BUILD=1 does the same; HALCYON_BUILD_JOBS=N limits the compiler jobs, default: all cores)
 #   --no-sysmode           skip the hardening CLI + services  --no-tune        skip halcyon-tune and its sudo rule
 #   --link                 symlink ~/.config/Halcyon to this folder instead of copying it (for development)
 #   --user NAME            (when run as root) install for this user
@@ -55,11 +57,12 @@
 #   --files ID[,ID]        thunar | yazi | dolphin | nautilus | nemo | pcmanfm | none   (the first one opens folders: SUPER+E)
 #   --editor ID[,ID]       codium | zeditor | neovim | none                              (the first one is SUPER+C)
 #   --music ID[,ID]        halcyon-music | spotify | spotify-player | ncspot | none              (the first one is SUPER+M; several are fine)
-#                          Halcyon Music extras, both OFF unless you ask (environment variables, remembered in ~/.config/halcyon-music/build.conf):
-#                            HALCYON_MUSIC_CONNECT=1      show Halcyon in Spotify's Devices list (builds the Connect code, sets HALCYON_CONNECT=1 for the service)
-#                            HALCYON_MUSIC_LOCAL_MODEL=1  build the engine for the built-in small model (needs cmake, a C++ compiler, libclang).
+#                          Halcyon Music extras (environment variables, remembered in ~/.config/halcyon-music/build.conf):
+#                            HALCYON_MUSIC_CONNECT=1      ON by default: show Halcyon in Spotify's Devices list (builds the Connect code, sets HALCYON_CONNECT=1 for the service).
+#                                                         =0 builds without it. It can also be switched on/off later in Halcyon Music > Settings > Spotify Connect.
+#                            HALCYON_MUSIC_LOCAL_MODEL=1  OFF by default: build the engine for the built-in small model (needs cmake, a C++ compiler, libclang).
 #                                                         The model itself is never downloaded by the installer: it downloads when you turn on Smart suggestions
-#                          =0 turns one back off. Example: HALCYON_MUSIC_CONNECT=1 ./install.sh --yes
+#                          =0 turns one off. Example: HALCYON_MUSIC_LOCAL_MODEL=1 ./install.sh --yes
 #   --sysmode              install sysmode without asking (--no-sysmode: skip it)
 #   --safety-check         install the safety check (system update, malware / rootkit scan, firewall, audit, backup) without asking
 #                          (--no-safety-check: skip it; its entry in Settings > Security is then greyed out and disabled)
@@ -244,6 +247,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)          DRY_RUN=true ;;
         --no-packages)      PACKAGES=false ;;
         --build-from-source) PREBUILT=false ;;
+        --fast-build)       export HALCYON_FAST_BUILD=1 ;;
         --no-drivers)       SKIP_DRIVERS=true ;;
         --no-aur)           SKIP_AUR=true ;;
         --upgrade)          UPGRADE=yes ;;
@@ -2280,6 +2284,16 @@ BUILD_ROOT="$TARGET_HOME/.cache/halcyon-build"           # outside the rice: the
 run_as_user_cmd "Creating $BIN_DIR" mkdir -p "$BIN_DIR" "$BUILD_ROOT" \
     || die "Cannot create $BIN_DIR$([[ "$LINK_CONFIG" == "true" ]] && echo " (with --link the Halcyon folder itself must be writable by $TARGET_USER)")"
 BUILD_FAILED=()
+# Build speed. BUILD_JOBS = how many compiler jobs cargo may run at once (all cores by default; HALCYON_BUILD_JOBS=4 to hold back).
+# HALCYON_FAST_BUILD=1 (or --fast-build) trades a little run speed for a much shorter build: thin LTO and 16 codegen units instead of the
+# release profile's fat LTO with one codegen unit. Off by default, so the installed helpers are exactly what they were.
+BUILD_JOBS="${HALCYON_BUILD_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+[[ "$BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || BUILD_JOBS=4
+FAST_ENV=()
+if [[ "${HALCYON_FAST_BUILD:-0}" == "1" ]]; then
+    FAST_ENV=("CARGO_PROFILE_RELEASE_LTO=thin" "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16")
+    log_info "Fast build: thin LTO, 16 codegen units (HALCYON_FAST_BUILD=1)"
+fi
 CRATES=(hx hal hgl power-manager touchpad-gestures birthday-sync)    # hgl: game launcher core (library, Proton runtimes, doctor, scoped runs; no dependencies, installed to ~/.config/Halcyon/bin, no root). hal: Rust ports of input-conf / ws-nav / brightness / backlight (no dependencies, installed to ~/.config/Halcyon/bin). birthday-sync: Calendar > "Sync Google Birthdays" (installed to ~/.config/Halcyon/bin, no root)
 SYSMODE_CRATES=(recon-deceiver log-analyst attacker-dossier setStaticMac)       # only sysmode uses these four: no sysmode, no build
 [[ "$SYSMODE" == "true" ]] && CRATES+=("${SYSMODE_CRATES[@]}")
@@ -2334,6 +2348,83 @@ if [[ "$DRY_RUN" != "true" ]]; then
     pkill -u "$TARGET_UID" -x touchpad-gestures 2>/dev/null || true
 fi
 
+# Halcyon Music extras (Part 9). Connect is built in by default (see MUSIC_CONNECT_DEFAULT); the built-in model engine is
+# OFF unless asked for, because it needs a C++ toolchain. The answer comes from the environment
+# (HALCYON_MUSIC_CONNECT / HALCYON_MUSIC_LOCAL_MODEL, 1 or 0) or else from what an earlier run saved in build.conf.
+music_build_conf() { echo "$TARGET_HOME/.config/halcyon-music/build.conf"; }
+# What a fresh install gets when nothing was asked for and nothing was saved. Connect is now ON by default: the
+# manual checks in pending.md (docs/manual-test.md rows 1-13) are taken as passed on a real Premium session.
+# It can be switched off at any time in Halcyon Music > Settings > Spotify Connect (that choice is saved in
+# ~/.config/halcyon-music/connect and wins over this default), or at install time with HALCYON_MUSIC_CONNECT=0.
+MUSIC_CONNECT_DEFAULT=1
+MUSIC_LOCAL_MODEL_DEFAULT=0
+music_build_flag() {   # music_build_flag <key in build.conf> <env var> <default 0|1>  ->  prints 1 or 0
+    local key="$1" env_name="$2" v="" conf; conf="$(music_build_conf)"
+    v="${!env_name:-}"
+    if [[ -z "$v" && -r "$conf" ]]; then v="$(sed -n "s/^${key}=//p" "$conf" | tail -n1)"; fi
+    [[ -n "$v" ]] || v="${3:-0}"
+    [[ "$v" == 1 ]] && echo 1 || echo 0
+}
+# The engine behind the built-in model is llama.cpp, built from source by the llama-cpp-2 crate.
+local_llm_toolchain_ok() {
+    command -v cmake >/dev/null 2>&1 || return 1
+    command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || return 1
+    command -v llvm-config >/dev/null 2>&1 && return 0
+    ldconfig -p 2>/dev/null | grep -q libclang && return 0
+    compgen -G "/usr/lib*/llvm*/lib*/libclang*" >/dev/null 2>&1
+}
+save_music_build_conf() {   # save_music_build_conf <connect 0|1> <local_model 0|1>
+    local conf; conf="$(music_build_conf)"
+    run_as_user mkdir -p "$(dirname "$conf")"
+    run_as_user bash -c 'printf "connect=%s\nlocal_model=%s\n" "$2" "$3" > "$1"' _ "$conf" "$1" "$2"
+}
+
+
+# ---- Halcyon Music compiles in the background while the helpers compile (only on a machine that can take two builds at once:
+# ~6 GB of free RAM). Two cargo runs cannot share one target dir (cargo locks it for the whole build, so they would just
+# queue), so this one builds into $BUILD_ROOT/music. setup_halcyon_music waits for it and takes the binaries from there; if it failed,
+# setup builds in the foreground exactly as before.
+MUSIC_BG_PID=""; MUSIC_BG_STATUS=""
+music_bg_start() {
+    [[ "$DRY_RUN" == "true" ]] && return 0
+    local src="$TARGET_RICE/src/halcyon-music" ram_mb wc wl
+    [[ -f "$src/Cargo.toml" ]] || src="$RICE_SOURCE/src/halcyon-music"
+    [[ -f "$src/Cargo.toml" ]] || return 0
+    rust_ok || return 0
+    ram_mb=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)
+    (( ram_mb >= 6000 )) || return 0
+    wc="$(music_build_flag connect HALCYON_MUSIC_CONNECT "$MUSIC_CONNECT_DEFAULT")"
+    wl="$(music_build_flag local_model HALCYON_MUSIC_LOCAL_MODEL "$MUSIC_LOCAL_MODEL_DEFAULT")"
+    [[ "$wl" == 1 ]] && ! local_llm_toolchain_ok && wl=0
+    local feats=() fa=()
+    [[ "$wc" == 1 ]] && feats+=("halcyon-musicd/connect")
+    [[ "$wl" == 1 ]] && feats+=("halcyon-musicd/local-llm")
+    (( ${#feats[@]} > 0 )) && fa=(--features "$(IFS=,; echo "${feats[*]}")")
+    MUSIC_BG_STATUS="$BUILD_ROOT/music-bg.status"
+    rm -f "$MUSIC_BG_STATUS"
+    # Both builds ask for ALL cores (the kernel shares them): the music player is mostly one huge crate that cannot use many cores
+    # at the end, so while it is in that part the helpers get the rest, and the other way round. No nice: nothing is held back.
+    # The dependencies of both are downloaded first, one after the other, so the two cargo runs do not sit
+    # waiting on each other's "package cache" lock while they compile.
+    log_info "Downloading the dependencies of halcyon-music and the helpers first (so the two builds never wait on the package cache)"
+    run_as_user cargo fetch --manifest-path "$src/Cargo.toml" >>"$LOG_FILE" 2>&1 || true
+    [[ -f "$TARGET_RICE/Cargo.toml" ]] && { run_as_user cargo fetch --manifest-path "$TARGET_RICE/Cargo.toml" >>"$LOG_FILE" 2>&1 || true; }
+    log_info "Building ${BOLD}halcyon-music${RESET} in the background on ${BUILD_JOBS} cores while the helpers compile (its lines start with [music])"
+    (
+        set -o pipefail
+        env_args=(env "CARGO_TARGET_DIR=$BUILD_ROOT/music" "CARGO_BUILD_JOBS=$BUILD_JOBS" "${FAST_ENV[@]}")
+        music_out() { if [[ "$VERBOSE" == "true" ]]; then tee -a "$LOG_FILE" | sed -u 's/^/    [music] /'; else cat >>"$LOG_FILE"; fi; }
+        if run_as_user "${env_args[@]}" cargo build --release --manifest-path "$src/Cargo.toml" ${fa[@]+"${fa[@]}"} 2>&1 | music_out; then
+            echo "ok:$wc:$wl" > "$MUSIC_BG_STATUS"
+        elif (( ${#feats[@]} > 0 )) && run_as_user "${env_args[@]}" cargo build --release --manifest-path "$src/Cargo.toml" 2>&1 | music_out; then
+            echo "ok:0:0" > "$MUSIC_BG_STATUS"          # an extra failed: the plain player, the same fallback as the foreground build
+        else
+            echo "fail" > "$MUSIC_BG_STATUS"
+        fi
+    ) &
+    MUSIC_BG_PID=$!
+}
+
 NEED_BUILD=("${CRATES[@]}")
 if [[ "$DRY_RUN" != "true" ]] && prebuilt_setup; then
     NEED_BUILD=()
@@ -2350,14 +2441,35 @@ fi
 if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
     ensure_rust       # only reached when no prebuilt binaries were available (or a download failed)
 fi
+music_bg_start
 if [[ ${#NEED_BUILD[@]} -gt 0 && "$DRY_RUN" != "true" ]] && ! rust_ok; then
     warn_later "No Rust toolchain: skipped building the helpers. Install it ($(pkg_hint rust)), then run install.sh again."
     BUILD_FAILED=("${NEED_BUILD[@]}")
 else
+    # ONE cargo run for every helper that still needs building: cargo compiles the crates side by side on all cores, and the
+    # shared dependencies (regex, chrono, libc ...) once. The old loop built them one after the other (each with fat LTO and a single
+    # codegen unit, which is mostly single-threaded), so most of the machine sat idle. If the combined build fails, the loop below
+    # builds them one by one again, so one broken crate still cannot take the others down and the error names the right one.
+    WS_MANIFEST="$TARGET_RICE/Cargo.toml"; [[ -f "$WS_MANIFEST" ]] || WS_MANIFEST="$RICE_SOURCE/Cargo.toml"
+    COMBINED_OK=false
+    if [[ ${#NEED_BUILD[@]} -gt 1 && -f "$WS_MANIFEST" ]]; then
+        PKG_ARGS=(); for crate in "${NEED_BUILD[@]}"; do PKG_ARGS+=(-p "$crate"); done
+        log_info "Building ${BOLD}${NEED_BUILD[*]}${RESET} in parallel on ${BUILD_JOBS} cores (the first time takes a few minutes)..."
+        if run_as_user_cmd "cargo build --release (parallel): ${NEED_BUILD[*]}" \
+               env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" "CARGO_BUILD_JOBS=$BUILD_JOBS" "${FAST_ENV[@]}" \
+               cargo build --release --manifest-path "$WS_MANIFEST" "${PKG_ARGS[@]}"; then
+            COMBINED_OK=true
+        else
+            log_warn "The parallel build failed: building the helpers one by one to find out which one."
+        fi
+    fi
     for crate in "${NEED_BUILD[@]}"; do
         MANIFEST="$TARGET_RICE/src/$crate/Cargo.toml"; [[ -f "$MANIFEST" ]] || MANIFEST="$RICE_SOURCE/src/$crate/Cargo.toml"
-        log_info "Building ${BOLD}${crate}${RESET} (the first time takes a few minutes)..."
-        if run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$MANIFEST" \
+        # already compiled by the parallel run: this is then only a check that is instant; otherwise it builds the crate on its own
+        if [[ "$COMBINED_OK" != "true" ]]; then
+            log_info "Building ${BOLD}${crate}${RESET}..."
+        fi
+        if { [[ "$COMBINED_OK" == "true" ]] || run_as_user_cmd "cargo build --release: $crate" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" "CARGO_BUILD_JOBS=$BUILD_JOBS" "${FAST_ENV[@]}" cargo build --release --manifest-path "$MANIFEST"; } \
            && { [[ "$DRY_RUN" == "true" ]] || [[ -f "$BUILD_ROOT/shared/release/$crate" ]]; } \
            && run_as_user_cmd "Installing $crate" bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$BUILD_ROOT/shared/release/$crate" "$BIN_DIR/$crate"; then
             [[ "$DRY_RUN" == "true" ]] || log_success "Installed ${BIN_DIR}/${crate}"
@@ -2414,35 +2526,6 @@ restart_halcyon_musicd() {
     fi
 }
 
-# Halcyon Music extras (Part 9). Both are OFF unless asked for: Connect until docs/manual-test.md has passed on a real
-# Premium session, and the built-in model engine because it needs a C++ toolchain. The answer comes from the environment
-# (HALCYON_MUSIC_CONNECT / HALCYON_MUSIC_LOCAL_MODEL, 1 or 0) or else from what an earlier run saved in build.conf.
-music_build_conf() { echo "$TARGET_HOME/.config/halcyon-music/build.conf"; }
-# What a fresh install gets when nothing was asked for and nothing was saved. Flip MUSIC_CONNECT_DEFAULT to 1
-# once docs/manual-test.md has passed on a real Premium session (the Part 2 parity proof).
-MUSIC_CONNECT_DEFAULT=0
-MUSIC_LOCAL_MODEL_DEFAULT=0
-music_build_flag() {   # music_build_flag <key in build.conf> <env var> <default 0|1>  ->  prints 1 or 0
-    local key="$1" env_name="$2" v="" conf; conf="$(music_build_conf)"
-    v="${!env_name:-}"
-    if [[ -z "$v" && -r "$conf" ]]; then v="$(sed -n "s/^${key}=//p" "$conf" | tail -n1)"; fi
-    [[ -n "$v" ]] || v="${3:-0}"
-    [[ "$v" == 1 ]] && echo 1 || echo 0
-}
-# The engine behind the built-in model is llama.cpp, built from source by the llama-cpp-2 crate.
-local_llm_toolchain_ok() {
-    command -v cmake >/dev/null 2>&1 || return 1
-    command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 || command -v clang++ >/dev/null 2>&1 || return 1
-    command -v llvm-config >/dev/null 2>&1 && return 0
-    ldconfig -p 2>/dev/null | grep -q libclang && return 0
-    compgen -G "/usr/lib*/llvm*/lib*/libclang*" >/dev/null 2>&1
-}
-save_music_build_conf() {   # save_music_build_conf <connect 0|1> <local_model 0|1>
-    local conf; conf="$(music_build_conf)"
-    run_as_user mkdir -p "$(dirname "$conf")"
-    run_as_user bash -c 'printf "connect=%s\nlocal_model=%s\n" "$2" "$3" > "$1"' _ "$conf" "$1" "$2"
-}
-
 # Halcyon Music: native Rust client & daemon
 setup_halcyon_music() {
     local src="$TARGET_RICE/src/halcyon-music"
@@ -2462,8 +2545,24 @@ setup_halcyon_music() {
     [[ "$want_connect" == 1 ]] && feats+=("halcyon-musicd/connect")
     [[ "$want_local_llm" == 1 ]] && feats+=("halcyon-musicd/local-llm")
     if (( ${#feats[@]} > 0 )); then feat_args=(--features "$(IFS=,; echo "${feats[*]}")"); log_info "Halcyon Music extras: ${feats[*]}"; fi
+    local music_dir="$BUILD_ROOT/shared" bg_done=false
+    if [[ -n "$MUSIC_BG_PID" ]]; then
+        if kill -0 "$MUSIC_BG_PID" 2>/dev/null; then log_info "Waiting for the halcyon-music build that runs in the background..."; fi
+        wait "$MUSIC_BG_PID" 2>/dev/null || true
+        MUSIC_BG_PID=""
+        local bg_st; bg_st="$(cat "$MUSIC_BG_STATUS" 2>/dev/null || true)"
+        if [[ "$bg_st" == ok:* ]]; then
+            IFS=: read -r _ want_connect want_local_llm <<< "$bg_st"
+            music_dir="$BUILD_ROOT/music"; bg_done=true; build_ok=true
+            [[ "$want_connect$want_local_llm" == "00" && ${#feats[@]} -gt 0 ]] && warn_later "Halcyon Music did not build with ${feats[*]}; it was built without them (nothing else changes)."
+        else
+            log_warn "The background halcyon-music build did not finish: building it again here."
+        fi
+    fi
     if [[ "$DRY_RUN" == "true" ]]; then
         build_ok=true
+    elif [[ "$bg_done" == "true" ]]; then
+        :
     else
         if rust_ok; then
             if run_as_user_cmd "cargo build --release: halcyon-music" env "CARGO_TARGET_DIR=$BUILD_ROOT/shared" cargo build --release --manifest-path "$src/Cargo.toml" ${feat_args[@]+"${feat_args[@]}"}; then
@@ -2484,8 +2583,8 @@ setup_halcyon_music() {
 
     if [[ "$build_ok" == "true" ]]; then
         if [[ "$DRY_RUN" != "true" ]]; then
-            local d_bin="$BUILD_ROOT/shared/release/halcyon-musicd"
-            local g_bin="$BUILD_ROOT/shared/release/halcyon-music"
+            local d_bin="$music_dir/release/halcyon-musicd"
+            local g_bin="$music_dir/release/halcyon-music"
             if [[ -f "$d_bin" && -f "$g_bin" ]]; then
                 run_as_user bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$d_bin" "$BIN_DIR/halcyon-musicd"
                 run_as_user bash -c 'install -m755 "$1" "$2.new" && mv -f "$2.new" "$2"' _ "$g_bin" "$BIN_DIR/halcyon-music"

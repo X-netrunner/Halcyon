@@ -526,7 +526,7 @@ async fn handle_client(
             .cached_account()
             .await
             .as_ref()
-            .map_or(true, |a| a.display_name.is_none() || a.username.is_none());
+            .is_none_or(|a| a.display_name.is_none() || a.username.is_none());
         if incomplete {
             tokio::spawn(refresh_account(ctx.clone()));
         }
@@ -835,7 +835,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 let _ = probes::reprobe(&ctx_c.spotify, &ctx_c.cache).await;
             });
             let status = if ctx.spotify.is_authenticated().await {
-                logged_in_status(&ctx).await
+                logged_in_status(ctx).await
             } else {
                 AuthStatus::LoggedOut
             };
@@ -864,7 +864,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
                 warn!("could not remove the streaming sign-in: {e}");
             }
             ctx.spotify.clear_token().await;
-            forget_account(&ctx).await;
+            forget_account(ctx).await;
             ctx.spotify.switch_mode(AuthMode::Librespot).await;
             let _ = ctx.events_tx.send(protocol::event(EventBody::AuthModeChanged {
                 mode: AuthMode::Librespot,
@@ -882,7 +882,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             let account = ctx.spotify.cached_account().await;
             let incomplete = account
                 .as_ref()
-                .map_or(true, |a| !a.images_read || a.display_name.is_none() || a.username.is_none());
+                .is_none_or(|a| !a.images_read || a.display_name.is_none() || a.username.is_none());
             if incomplete && ctx.spotify.is_authenticated().await {
                 tokio::spawn(refresh_account(ctx.clone()));
             }
@@ -909,7 +909,7 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
 
         GetAuthStatus => {
             let status = if ctx.spotify.is_authenticated().await {
-                logged_in_status(&ctx).await
+                logged_in_status(ctx).await
             } else {
                 AuthStatus::LoggedOut
             };
@@ -1721,6 +1721,31 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
             return None;
         }
 
+        // Spotify Connect switch (Settings). Saved first; then the service restarts so the player
+        // task picks the right backend (systemd brings it back, `Restart=always`).
+        GetConnectSetting => {
+            let _ = ctx.events_tx.send(connect_setting_event());
+            return None;
+        }
+
+        SetConnectEnabled { enabled } => {
+            if let Err(e) = crate::connect::write_pref(enabled) {
+                return Some(protocol::event(EventBody::Error {
+                    message: format!("Could not save the Spotify Connect choice: {e}"),
+                }));
+            }
+            let _ = ctx.events_tx.send(connect_setting_event());
+            // Only a build that contains the Connect code has anything to restart for.
+            if crate::connect::compiled_in() {
+                info!("Spotify Connect turned {} in Settings; restarting to apply it", if enabled { "on" } else { "off" });
+                tokio::spawn(async {
+                    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+                    std::process::exit(0);
+                });
+            }
+            return None;
+        }
+
         // Per connection, so `handle_client` takes it before it gets here.
         SetAudioStream { .. } => {}
 
@@ -1734,6 +1759,13 @@ pub async fn apply_command(ctx: &Arc<DaemonContext>, body: CommandBody) -> Optio
     Some(protocol::event(EventBody::State {
         state: ctx.player.snapshot().await,
     }))
+}
+
+fn connect_setting_event() -> protocol::Event {
+    protocol::event(EventBody::ConnectSetting {
+        enabled: crate::connect::enabled(),
+        available: crate::connect::compiled_in(),
+    })
 }
 
 async fn next_track(player: &Arc<Player>) {

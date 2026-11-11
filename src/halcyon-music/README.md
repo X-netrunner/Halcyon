@@ -23,6 +23,31 @@ at the repo root for what each part delivered and what was tested.
 - `packaging/halcyon-musicd.service` — systemd user unit
   (`Restart=always`, `WatchdogSec=30`).
 
+## Looks: layouts, visualizers, calm rules
+
+Settings > Appearance picks the **layout** and the full-screen and mini **visualizers**; each change applies
+at once, no restart. `Ctrl+Shift+L` cycles the layouts.
+
+| Setting | Values | Saved in `~/.local/state/halcyon-music/` |
+| --- | --- | --- |
+| Layout | `classic` (default), `top-tabs`, `dock`, `player-panel`, `library-list` | `layout` |
+| Full-screen visualizer | `aurora` (default), `silk`, `none` | `visualizer` |
+| Mini visualizer | `off` (default), `on` | `mini-visualizer` |
+
+The defaults are the named constants `LAYOUT_DEFAULT`, `VISUALIZER_DEFAULT` and `MINI_VISUALIZER_DEFAULT` in
+`layout.rs`. A missing or unknown value falls back to the default and the file is never rewritten on read.
+
+All layouts are one frame (`views/frame.rs` arranges the title bar, navigation, page, queue and player slots on
+the single `chrome_background` surface); pages are never copied per layout. Every layout except Classic follows the
+calm rules: the accent colour is only on the play button, the progress fill, the active tab underline (1.5 px) and
+the Halcyon star; everything else is text, muted text, or a tint (`dim_tint` for covers, `row_tint` for lit rows
+and chips). Classic is kept exactly as it was, so it still lights toggles with the accent.
+
+Visualizers use the real spectrum only (`viz.rs`, 24 bands from the daemon). With no live audio, or with reduced
+motion, they rest. The daemon's audio stream is switched only by `visualizer::audio_stream_wanted`, and the
+redraw clock runs only while something that moves is on screen (`visualizer::ambient_tick_wanted`), so every other
+screen idles at about 0 percent CPU.
+
 ## Build and run
 
 ```sh

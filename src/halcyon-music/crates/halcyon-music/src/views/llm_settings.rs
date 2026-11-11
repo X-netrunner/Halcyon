@@ -4,6 +4,7 @@
 //! reason for each Home mix; it never picks or invents songs. The card says what is sent and
 //! shows, in plain words, whether the model can be reached and what to do if it cannot.
 
+use crate::machine::Advice;
 use crate::theme::{alpha, radius, space, type_size, HalcyonPalette};
 use iced::widget::{column, container, row, text, text_input, Space};
 use halcyon_music_core::models::LlmModelInfo;
@@ -48,6 +49,10 @@ pub struct Props<'a> {
     pub download: Option<&'a Download>,
     pub reach: Reach,
     pub hint: Option<&'a str>,
+    /// "16 GB memory, 8 CPU threads" (what this computer has).
+    pub machine: String,
+    /// The suggested setup for that machine.
+    pub advice: Advice,
     pub palette: HalcyonPalette,
 }
 
@@ -62,6 +67,8 @@ pub struct Msgs<'a, M> {
     pub download: Box<dyn Fn(String) -> M + 'a>,
     pub cancel: M,
     pub delete: Box<dyn Fn(String) -> M + 'a>,
+    /// Switch to the suggested backend and model.
+    pub apply_advice: M,
 }
 
 /// "491 MB" or "1.2 GB".
@@ -89,6 +96,61 @@ fn model_line(info: &LlmModelInfo) -> String {
         s.push_str(&format!(" · {} already downloaded", human_size(info.partial_bytes)));
     }
     s
+}
+
+/// Built-in versus Ollama in plain words, then what suits this computer.
+fn guide<'a, M: Clone + 'a>(p: &Props<'a>, apply: M) -> Element<'a, M> {
+    let palette = p.palette;
+    let side = |title: &'static str, good: &'static str, bad: &'static str| -> Element<'a, M> {
+        column![
+            text(title).size(type_size::BODY).color(palette.text),
+            text(good).size(type_size::SMALL).color(palette.accent),
+            text(bad).size(type_size::SMALL).color(palette.text_muted),
+        ]
+        .spacing(4)
+        .width(Length::FillPortion(1))
+        .into()
+    };
+    let already = p.advice.backend == p.backend
+        && match p.advice.backend {
+            "ollama" => p.advice.ollama_model.is_some_and(|m| m == p.ollama_model),
+            _ => p.advice.local_model.is_some_and(|m| m == p.local_model),
+        };
+    let tag: Element<'a, M> = if already {
+        text("In use").size(type_size::SMALL).color(palette.accent).into()
+    } else {
+        super::settings::action("Use this", None, palette, apply)
+    };
+    let suggestion = row![
+        column![
+            text(format!("Suggested for this computer ({}): {}", p.machine, p.advice.title)).size(type_size::BODY).color(palette.text),
+            text(p.advice.why).size(type_size::SMALL).color(palette.text_muted),
+            text("Sizes and hardware only: the models have not been timed on a real machine yet.").size(type_size::SMALL).color(palette.text_muted),
+        ]
+        .spacing(2)
+        .width(Length::Fill),
+        Space::with_width(space::MD),
+        tag,
+    ]
+    .align_y(Alignment::Center);
+    column![
+        row![
+            side(
+                "Built-in",
+                "+ Nothing else to install or keep running. Private: nothing leaves this computer after the one download (0.5 to 0.8 GB).",
+                "- Small models (0.5 to 1 billion) write plainer titles. Uses the processor and 1 to 2 GB of memory while it works; the first answer is slower.",
+            ),
+            Space::with_width(space::LG),
+            side(
+                "Ollama",
+                "+ Bigger models (3 billion and up) with better wording, and a GPU makes them fast. You choose the model.",
+                "- Needs Ollama installed and running, more disk and memory, and it is a separate program to update.",
+            ),
+        ],
+        Space::with_height(space::MD),
+        suggestion,
+    ]
+    .into()
 }
 
 pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
@@ -146,7 +208,14 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
     ]
     .align_y(Alignment::Center);
 
-    let mut body = column![toggle_row, Space::with_height(space::LG), backend_row, Space::with_height(space::LG)];
+    let mut body = column![
+        toggle_row,
+        Space::with_height(space::LG),
+        guide(&p, m.apply_advice.clone()),
+        Space::with_height(space::LG),
+        backend_row,
+        Space::with_height(space::LG)
+    ];
 
     if local {
         if !p.engine {

@@ -54,7 +54,7 @@ fn tracks(n: usize) -> Vec<Track> {
             Track::simple(
                 format!("id{i}"),
                 format!("Song {i}"),
-                artists[i % artists.len()].to_string(),
+                artists.get(i % artists.len()).copied().unwrap_or("Nova").to_string(),
                 "Album".to_string(),
                 200_000,
             )
@@ -95,7 +95,7 @@ pub async fn run(llm: &dyn TasteLlm, runs: usize) -> Vec<CaseResult> {
             "mood-plan",
             runs,
             timeout,
-            |i| prompts::build_query(&t, MOODS[i % MOODS.len()]),
+            |i| prompts::build_query(&t, MOODS.get(i % MOODS.len()).copied().unwrap_or("calm")),
             |raw| validate::parse_query(raw).map(|q| !q.genres.is_empty()).unwrap_or(false),
         )
         .await,
@@ -103,7 +103,7 @@ pub async fn run(llm: &dyn TasteLlm, runs: usize) -> Vec<CaseResult> {
 
     let cands = tracks(14);
     let plan = validate::QuerySpec { genres: vec!["ambient".into()], ..Default::default() };
-    let pick = prompts::build_pick(&t, MOODS[0], &plan, &cands);
+    let pick = prompts::build_pick(&t, MOODS.first().copied().unwrap_or("calm"), &plan, &cands);
     out.push(
         one(llm, "mood-pick", runs, timeout, |_| pick.request.clone(), |raw| {
             validate::parse_pick(raw, &pick.aliases).map(|p| !p.ids.is_empty()).unwrap_or(false)

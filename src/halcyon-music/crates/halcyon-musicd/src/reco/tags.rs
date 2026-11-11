@@ -96,7 +96,7 @@ pub async fn fetch_artist_tags(http: &reqwest::Client, artist: &str) -> Result<V
         return Err(format!("MusicBrainz lookup: HTTP {}", res.status()));
     }
     let body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-    Ok(parse_tags(&body["tags"]))
+    Ok(body.get("tags").map(parse_tags).unwrap_or_default())
 }
 
 /// The artists of `wanted` that have no fresh tags in `table`, each once, at most `budget`.

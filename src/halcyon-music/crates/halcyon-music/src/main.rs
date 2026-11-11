@@ -22,15 +22,19 @@
 )]
 
 mod avatar;
+mod machine;
 mod mix_order;
+mod nav_history;
 mod animation;
 mod art;
 mod client;
 mod icons;
+mod layout;
 mod shortcuts;
 mod theme;
 mod views;
 mod viz;
+mod visualizer;
 
 use crate::icons::{icon, Icon};
 use animation::AnimationManager;
@@ -41,6 +45,8 @@ use halcyon_music_core::models::{
 };
 use halcyon_music_core::protocol::{CommandBody, EventBody, MixFeedbackAction};
 use halcyon_music_core::state::{Bitrate, PlayerState};
+use layout::{LayoutKind, MiniVisualizer, VisualizerKind};
+use nav_history::{NavHistory, Place};
 use shortcuts::ShortcutAction;
 use theme::{Density, HalcyonPalette, Mood};
 use views::library::{LibraryTab, LikedSort};
@@ -97,6 +103,9 @@ pub fn main() -> iced::Result {
 
     iced::application("Halcyon Music", HalcyonApp::update, HalcyonApp::view)
         .window(window_settings)
+        // Smooth edges on drawn shapes (the search notch and the visualizers). Rounded boxes
+        // are already smooth; curves drawn on a canvas are jagged without this.
+        .antialiasing(true)
         .subscription(HalcyonApp::subscription)
         .theme(|_| Theme::Dark)
         // No window fill of its own: the frame in `view` paints the (rounded) background.
@@ -139,11 +148,22 @@ struct HalcyonApp {
     density: Density,
     /// The colour mood (Dusk, Dawn, Forest, Ocean); remembered between launches.
     mood: Mood,
+    /// How the window is arranged (Settings > Appearance); remembered between launches.
+    layout: LayoutKind,
+    /// What full-screen Now Playing draws behind the lyrics.
+    visualizer: VisualizerKind,
+    /// The small visualizer in the player (layouts 1 to 4; Classic has none).
+    mini_visualizer: MiniVisualizer,
     show_fullscreen: bool,
+    /// When the pointer last moved in full screen: the transport shows after a move and fades
+    /// out after a few seconds of stillness.
+    fs_last_move: Instant,
+    /// The pointer's height in full screen; unknown (far away) until it first moves, so the
+    /// window buttons do not show from a stale position.
+    fs_cursor_y: f32,
     show_queue: bool,
     /// What the queue drawer is currently animating toward (follows `show_queue`).
     queue_target: bool,
-    show_lyrics: bool,
     show_help: bool,
     show_diagnostics: bool,
     /// Palette from the rice; `palette` is this tinted by the current cover.
@@ -201,6 +221,8 @@ struct HalcyonApp {
     /// The "best results" list under the top search box.
     search_dropdown_open: bool,
     library_tab: LibraryTab,
+    /// Library list layout: which chip of the right panel is open (Queue or Lyrics). Session only.
+    side_tab: views::side_panel::SideTab,
     library_filter: String,
     /// The filter typed in the header search while on the Recently played page.
     recent_filter: String,
@@ -243,6 +265,8 @@ struct HalcyonApp {
     last_click: Option<(String, Instant)>,
     last_title_press: Option<Instant>,
     account_menu_open: bool,
+    /// Whether the Halcyon star in the tabs row has its pages (Recent, Capsule) slid out.
+    tabs_more_open: bool,
     profile_name: Option<String>,
     /// The Spotify picture's URL (the daemon fetches it like a cover).
     profile_image: Option<String>,
@@ -252,6 +276,10 @@ struct HalcyonApp {
     /// The Spotify Connect device name the daemon is registered under ("Halcyon (host)"),
     /// or `None` when it is not registered (Part 2).
     connect_device: Option<String>,
+    /// Spotify Connect switch as the daemon last reported it: (enabled, build has Connect code).
+    connect_setting: Option<(bool, bool)>,
+    /// What this computer has, read once at start-up (for the model suggestion).
+    machine: machine::Machine,
     /// Which picture the account circle prefers (Settings > Account), saved between launches.
     avatar_source: avatar::AvatarSource,
     /// The Halcyon avatar file as last seen, and when it last changed.
@@ -260,6 +288,10 @@ struct HalcyonApp {
     playlist_page: PlaylistPage,
     /// Where Lyrics was opened from, so closing it goes back there.
     page_before_lyrics: NavPage,
+    /// The places visited, for the title bar's back and forward arrows (Top tabs).
+    nav_history: NavHistory,
+    /// True while a place is being replayed from the history, so the replay is not recorded.
+    nav_replaying: bool,
     /// Bumped whenever a fresh (non-cached) answer arrives; see `OfflineCheck`.
     fresh_counter: u64,
 }
@@ -277,6 +309,7 @@ enum Message {
     WindowToggleMaximize,
     WindowClose,
     ToggleAccountMenu,
+    ToggleTabsMore,
     CloseMenus,
     OpenSettings,
     OpenSpotifyAccount,
@@ -290,6 +323,8 @@ enum Message {
     PlaylistRowMenu(usize),
     PlaylistPlayAll,
     PlaylistShuffle,
+    /// The Dock layout's Home: play Liked Songs in a random order.
+    ShuffleLiked,
     PlaylistAddToQueue,
     PlaylistPlayNext,
     PlaylistRetry,
@@ -330,6 +365,14 @@ enum Message {
     HomeFilter(views::home::HomeFilter),
     CycleMood,
     SetMood(Mood),
+    /// Settings > Appearance > Layout, and the `CycleLayout` shortcut.
+    SetLayout(LayoutKind),
+    CycleLayout,
+    /// The title bar's back and forward arrows.
+    HistoryBack,
+    HistoryForward,
+    SetVisualizer(VisualizerKind),
+    SetMiniVisualizer(bool),
     AnimationTick,
     ToastExpire,
     // Playback Controls
@@ -345,6 +388,10 @@ enum Message {
     /// Audio quality chosen in Settings.
     SetBitrate(Bitrate),
     ToggleNormalisation,
+    /// Spotify Connect on/off in Settings.
+    ToggleConnect,
+    /// Use the backend and model suggested for this computer.
+    LlmApplyAdvice,
     /// Smart suggestions (optional LLM layer) controls in Settings.
     ToggleLlm,
     LlmModelChanged(String),
@@ -406,6 +453,10 @@ enum Message {
     /// Time to try again: outside mixes were still missing after the last build.
     HomeAutoRetry,
     LibrarySortChanged(LikedSort),
+    /// A chip of the library list (Library list layout). Only picks what the list shows.
+    SidebarTabSelected(LibraryTab),
+    /// Queue or Lyrics in the right panel (Library list layout).
+    SidePanelSelected(views::side_panel::SideTab),
     ToggleNewPlaylistInput,
     NewPlaylistNameChanged(String),
     CreateNewPlaylist,
@@ -547,6 +598,75 @@ struct Toast {
 }
 
 impl HalcyonApp {
+    /// Where the mini visualizer is drawn right now. `None` when the switch is Off, the layout has
+    /// no place for it (Classic), there is no track, the window is too narrow, or full screen is
+    /// open.
+    fn mini_placement_now(&self) -> Option<visualizer::MiniPlacement> {
+        if !self.mini_visualizer.is_on() {
+            return None;
+        }
+        let placement = views::frame::mini_placement(self.layout)?;
+        visualizer::mini_shown(
+            Some(placement),
+            self.window_size.width,
+            self.state.track.is_some(),
+            self.show_fullscreen,
+        )
+        .then_some(placement)
+    }
+
+    /// The spectrum for the mini visualizer, or `None` when it is not drawn. All zeros (the flat
+    /// line) when motion is reduced; otherwise the smoothed bands, which fall to zero by
+    /// themselves when music stops or no frames arrive. Never invented.
+    fn mini_bands(&self) -> Option<[f32; viz::BANDS]> {
+        self.mini_placement_now()?;
+        Some(self.viz.bands(self.animations.reduce_motion, false))
+    }
+
+    /// Everything that may want the daemon's audio frames, as `audio_stream_wanted` reads it.
+    fn stream_wants(&self) -> visualizer::StreamWants {
+        visualizer::StreamWants {
+            queue_drawer_open: self.show_queue,
+            fullscreen_open: self.show_fullscreen,
+            fullscreen_visualizer: self.visualizer,
+            mini_on: self.mini_visualizer.is_on(),
+            mini_shown: visualizer::mini_shown(
+                views::frame::mini_placement(self.layout),
+                self.window_size.width,
+                self.state.track.is_some(),
+                self.show_fullscreen,
+            ),
+            playing: self.state.playing,
+            window_visible: self.window_visible(),
+            motion_allowed: !self.animations.reduce_motion,
+        }
+    }
+
+    /// False for a window with no area (some platforms report a minimised window like that).
+    fn window_visible(&self) -> bool {
+        visualizer::window_is_visible(self.window_size.width, self.window_size.height)
+    }
+
+    /// How often to redraw when nothing else is animating: in full screen while the transport is
+    /// visible or fading (a slow check with reduced motion, since it then only has to hide), and
+    /// in full screen or with the mini visualizer drawn while the shapes are still settling after
+    /// a pause. `None` means no timer at all, so a paused player with the mini visualizer on idles
+    /// at 0 percent once the bars have fallen flat.
+    fn settle_tick_ms(&self) -> Option<u64> {
+        let mini = self.mini_placement_now().is_some();
+        if !self.show_fullscreen && !mini {
+            return None;
+        }
+        let reduce = self.animations.reduce_motion;
+        let settling = !reduce && self.viz.is_settling();
+        let transport = self.show_fullscreen && views::fullscreen::controls_changing(self.fs_last_move.elapsed());
+        if transport || settling {
+            Some(if reduce { 250 } else { 33 })
+        } else {
+            None
+        }
+    }
+
     /// True while Home is showing its grey loading blocks (they pulse).
     fn skeleton_visible(&self) -> bool {
         if self.active_nav == NavPage::PlaylistDetail {
@@ -620,10 +740,14 @@ impl HalcyonApp {
             pending_play_playlist: None,
             density: Density::Comfortable,
             mood,
+            layout: LayoutKind::load(),
+            visualizer: VisualizerKind::load(),
+            mini_visualizer: MiniVisualizer::load(),
             show_fullscreen: false,
+            fs_last_move: Instant::now(),
+            fs_cursor_y: f32::MAX,
             show_queue: false,
             queue_target: false,
-            show_lyrics: false,
             show_help: false,
             show_diagnostics: false,
             base_palette,
@@ -661,6 +785,7 @@ impl HalcyonApp {
             search_gen: 0,
             search_dropdown_open: false,
             library_tab: LibraryTab::Playlists,
+            side_tab: views::side_panel::SideTab::default(),
             library_filter: String::new(),
             recent_filter: String::new(),
             home_loading_since: None,
@@ -693,16 +818,21 @@ impl HalcyonApp {
             last_click: None,
             last_title_press: None,
             account_menu_open: false,
+            tabs_more_open: false,
             profile_name: None,
             profile_image: None,
             profile_username: None,
             profile_plan: None,
             connect_device: None,
+            connect_setting: None,
+            machine: machine::Machine::detect(),
             avatar_source: avatar::AvatarSource::load(),
             halcyon_avatar: None,
             track_menu: None,
             playlist_page: PlaylistPage::default(),
             page_before_lyrics: NavPage::Home,
+            nav_history: NavHistory::new(Place::Page(NavPage::Home)),
+            nav_replaying: false,
             fresh_counter: 0,
         };
         let window_task = iced::window::get_oldest().map(Message::WindowId);
@@ -771,8 +901,9 @@ impl HalcyonApp {
 
         let resize_sub = iced::window::resize_events().map(|(_, size)| Message::WindowResized(size));
 
-        // The cursor position is only followed on pages with right-clickable songs.
-        let cursor_sub = if matches!(self.active_nav, NavPage::PlaylistDetail) {
+        // The cursor position is only followed on pages with right-clickable songs, and in full
+        // screen (a move shows the transport; near the top edge it shows the window buttons).
+        let cursor_sub = if matches!(self.active_nav, NavPage::PlaylistDetail) || self.show_fullscreen {
             iced::event::listen_with(|event, _status, _window| match event {
                 iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
                     Some(Message::CursorMoved(position))
@@ -783,9 +914,19 @@ impl HalcyonApp {
             iced::Subscription::none()
         };
 
-        // The full-screen glow breathes slowly: 30 frames a second, only while it is visible,
-        // music plays and motion is allowed. Everywhere else the app still idles at ~0% CPU.
-        let ambient = self.state.playing && !self.animations.reduce_motion;
+        // The full-screen glow breathes slowly: 30 frames a second, only while something that
+        // moves is on screen (full screen, the queue drawer, the mini visualizer, Classic's rail
+        // bars), music plays and motion is allowed. Everywhere else the app idles at ~0% CPU.
+        let ambient = visualizer::ambient_tick_wanted(&visualizer::AmbientNeeds {
+            playing: self.state.playing,
+            motion_allowed: !self.animations.reduce_motion,
+            window_visible: self.window_visible(),
+            fullscreen_open: self.show_fullscreen,
+            queue_open: self.show_queue,
+            mini_drawn: self.mini_placement_now().is_some(),
+            // Only Classic has the rail, and its bars run off this clock.
+            classic_sidebar_bars: views::frame::has_sidebar(self.layout),
+        });
         // Playlist covers on Home cross-fade one after another. Full rate only while one is
         // fading; in between a slow check catches the next change. No timer at all when no card
         // has more than one cover, or motion is reduced.
@@ -803,6 +944,10 @@ impl HalcyonApp {
         } else if ambient {
             // The queue drawer's cover pulses on the beat, so it gets full frame rate.
             let ms = if self.show_queue { 16 } else { 33 };
+            iced::time::every(Duration::from_millis(ms)).map(|_| Message::AnimationTick)
+        } else if let Some(ms) = self.settle_tick_ms() {
+            // Full screen or the mini visualizer, nothing playing: still redraw while the
+            // transport fades and while the shapes settle to rest.
             iced::time::every(Duration::from_millis(ms)).map(|_| Message::AnimationTick)
         } else if slideshow == Some(false) {
             iced::time::every(Duration::from_millis(400)).map(|_| Message::AnimationTick)
@@ -831,6 +976,12 @@ impl HalcyonApp {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         let sync_art = needs_art_sync(&message);
+        // The back and forward arrows: remember where the person goes (not what they replay).
+        if !self.nav_replaying {
+            if let Some(place) = place_for(&message) {
+                self.nav_history.record(place);
+            }
+        }
         let task = self.update_inner(message);
         // Any way of opening or closing the queue (button, shortcut, Esc) slides the drawer.
         if self.show_queue != self.queue_target {
@@ -848,14 +999,17 @@ impl HalcyonApp {
         task
     }
 
-    /// Ask the daemon for live audio frames while something that dances is on screen (the
-    /// queue drawer), and tell it to stop when that closes. The daemon analyses nothing while
-    /// no connection wants frames.
+    /// Ask the daemon for live audio frames while something that dances is on screen (the queue
+    /// drawer, full-screen with a visualizer, the mini visualizer while music plays), and tell it
+    /// to stop when nothing needs them. This is the only place that sends `SetAudioStream`: the
+    /// rule is `visualizer::audio_stream_wanted`, and the command goes out only when the answer
+    /// changes, so one consumer closing never switches off another. The daemon analyses nothing
+    /// while no connection wants frames.
     fn sync_audio_stream(&mut self) {
-        let want = self.show_queue;
-        if want != self.audio_stream_on {
-            self.send(CommandBody::SetAudioStream { enabled: want });
-            self.audio_stream_on = want;
+        let wanted = visualizer::audio_stream_wanted(&self.stream_wants());
+        if let Some(enabled) = visualizer::stream_change(self.audio_stream_on, wanted) {
+            self.send(CommandBody::SetAudioStream { enabled });
+            self.audio_stream_on = enabled;
         }
     }
 
@@ -912,7 +1066,7 @@ impl HalcyonApp {
     fn request_playlist_art(&self) {
         if let Some((_, tracks)) = &self.active_playlist {
             let (a, b) = views::playlist::visible_range(self.scroll.y, self.scroll.viewport_h.max(700.0), tracks.len());
-            for cmd in art::commands_for(art::track_items(&tracks[a..b])) {
+            for cmd in art::commands_for(art::track_items(tracks.get(a..b).unwrap_or(&[]))) {
                 self.send(cmd);
             }
         }
@@ -1020,7 +1174,7 @@ impl HalcyonApp {
             if let Some((playlist, tracks)) = &app.active_playlist {
                 v.push((playlist.art_url.as_deref(), ArtSize::Medium));
                 let (a, b) = views::playlist::visible_range(app.scroll.y, app.scroll.viewport_h.max(700.0), tracks.len());
-                v.extend(art::track_items(&tracks[a..b]));
+                v.extend(art::track_items(tracks.get(a..b).unwrap_or(&[])));
             }
             v
         }
@@ -1161,6 +1315,7 @@ impl HalcyonApp {
                                 limit: Some(20),
                                 offset: Some(0),
                             });
+                            self.request_library_for_sidebar();
                         }
                         Task::none()
                     }
@@ -1175,6 +1330,7 @@ impl HalcyonApp {
                         // Cheap and local: is Smart suggestions on, and with which model?
                         self.send(CommandBody::GetLlmStatus);
                         self.send(CommandBody::ListLlmModels);
+                        self.send(CommandBody::GetConnectSetting);
                         if daemon_version != halcyon_music_core::CORE_VERSION {
                             self.notify(
                                 format!(
@@ -1205,6 +1361,10 @@ impl HalcyonApp {
                     }
                     EventBody::ConnectDevice { name } => {
                         self.connect_device = name.filter(|n| !n.trim().is_empty());
+                        Task::none()
+                    }
+                    EventBody::ConnectSetting { enabled, available } => {
+                        self.connect_setting = Some((enabled, available));
                         Task::none()
                     }
                     EventBody::AuthModeChanged { mode } => {
@@ -1560,6 +1720,10 @@ impl HalcyonApp {
             }
             Message::CursorMoved(p) => {
                 self.cursor = p;
+                if self.show_fullscreen {
+                    self.fs_last_move = Instant::now();
+                    self.fs_cursor_y = p.y;
+                }
                 Task::none()
             }
             Message::TitleBarPress => {
@@ -1587,6 +1751,11 @@ impl HalcyonApp {
             Message::ToggleAccountMenu => {
                 self.track_menu = None;
                 self.account_menu_open = !self.account_menu_open;
+                Task::none()
+            }
+            Message::ToggleTabsMore => {
+                self.tabs_more_open = !self.tabs_more_open;
+                self.animations.animate_more(self.tabs_more_open);
                 Task::none()
             }
             Message::CloseMenus => {
@@ -1670,6 +1839,16 @@ impl HalcyonApp {
                     if !tracks.is_empty() {
                         self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: 0 });
                     }
+                }
+                Task::none()
+            }
+            Message::ShuffleLiked => {
+                if !self.liked_tracks.is_empty() {
+                    let seed = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or(1);
+                    self.send(CommandBody::PlayContext { tracks: shuffled(&self.liked_tracks, seed), start_index: 0 });
                 }
                 Task::none()
             }
@@ -1822,6 +2001,13 @@ impl HalcyonApp {
                 }
                 self.scroll_run = 0.0;
                 self.search_visible = true;
+                // The star's pages stay out while one of them is open, and tuck away again as
+                // soon as another page is chosen.
+                let keep_more = views::tabs::Tab::in_more(page);
+                if self.tabs_more_open != keep_more {
+                    self.tabs_more_open = keep_more;
+                    self.animations.animate_more(keep_more);
+                }
                 self.active_nav = page;
                 if page == NavPage::Home || page == NavPage::Recent {
                     self.request_home_feed();
@@ -1872,6 +2058,9 @@ impl HalcyonApp {
             }
             Message::ToggleFullscreen => {
                 self.show_fullscreen = !self.show_fullscreen;
+                // The transport starts visible, then fades if the pointer stays still.
+                self.fs_last_move = Instant::now();
+                self.fs_cursor_y = f32::MAX;
                 Task::none()
             }
             Message::ToggleQueue => {
@@ -1960,6 +2149,38 @@ impl HalcyonApp {
                 self.retint();
                 Task::none()
             }
+            // Layout, visualizer and mini visualizer each save and change only themselves:
+            // no restart, and the mood and every other setting stay as they are.
+            Message::SetLayout(layout) => {
+                self.layout = layout;
+                self.layout.save();
+                self.after_layout_change();
+                Task::none()
+            }
+            Message::CycleLayout => {
+                self.layout = self.layout.next();
+                self.layout.save();
+                self.after_layout_change();
+                Task::none()
+            }
+            Message::HistoryBack => match self.nav_history.back() {
+                Some(place) => self.replay_place(place),
+                None => Task::none(),
+            },
+            Message::HistoryForward => match self.nav_history.forward() {
+                Some(place) => self.replay_place(place),
+                None => Task::none(),
+            },
+            Message::SetVisualizer(kind) => {
+                self.visualizer = kind;
+                self.visualizer.save();
+                Task::none()
+            }
+            Message::SetMiniVisualizer(on) => {
+                self.mini_visualizer = MiniVisualizer::from_bool(on);
+                self.mini_visualizer.save();
+                Task::none()
+            }
             Message::ToastExpire => {
                 if self.toast.as_ref().is_some_and(|t| Instant::now() >= t.until) {
                     self.toast = None;
@@ -2028,6 +2249,32 @@ impl HalcyonApp {
                     };
                     self.notify(format!("Audio quality: {name}"), true);
                 }
+                Task::none()
+            }
+            Message::ToggleConnect => {
+                if let Some((enabled, available)) = self.connect_setting {
+                    if available {
+                        self.connect_setting = Some((!enabled, available));
+                        self.connect_device = None;
+                        self.send(CommandBody::SetConnectEnabled { enabled: !enabled });
+                        self.notify("Restarting the music service to apply it…".to_string(), false);
+                    }
+                }
+                Task::none()
+            }
+            Message::LlmApplyAdvice => {
+                let advice = machine::advise(&self.machine, self.llm_engine);
+                self.llm_backend = advice.backend.to_string();
+                if let Some(id) = advice.local_model {
+                    self.llm_local_model = id.to_string();
+                }
+                if let Some(tag) = advice.ollama_model {
+                    self.llm_model = tag.to_string();
+                }
+                self.llm_reach = views::llm_settings::Reach::Unknown;
+                self.llm_hint = None;
+                self.send_llm_settings();
+                self.send(CommandBody::ListLlmModels);
                 Task::none()
             }
             Message::ToggleLlm => {
@@ -2284,6 +2531,14 @@ impl HalcyonApp {
                 self.library_filter = text;
                 Task::none()
             }
+            Message::SidebarTabSelected(tab) => {
+                self.library_tab = tab;
+                Task::none()
+            }
+            Message::SidePanelSelected(tab) => {
+                self.side_tab = tab;
+                Task::none()
+            }
             Message::RefreshDiscover => {
                 self.refresh_discover();
                 Task::none()
@@ -2431,6 +2686,10 @@ impl HalcyonApp {
                 } else {
                     NavPage::Library
                 };
+                // Back from a detail page is a move too: the arrows must know about it.
+                if !self.nav_replaying {
+                    self.nav_history.record(Place::Page(self.active_nav));
+                }
                 Task::none()
             }
             Message::StartLogin => {
@@ -2593,6 +2852,7 @@ impl HalcyonApp {
             ShortcutAction::ToggleQueue => self.update(Message::ToggleQueue),
             ShortcutAction::ToggleFullscreen => self.update(Message::ToggleFullscreen),
             ShortcutAction::ToggleHelp => self.update(Message::ToggleHelp),
+            ShortcutAction::CycleLayout => self.update(Message::CycleLayout),
             ShortcutAction::OffsetLyricsMinus => {
                 let cur = self.lyrics.as_ref().map(|l| l.offset_ms).unwrap_or(0);
                 self.update(Message::LyricOffsetChanged(cur.saturating_sub(100)))
@@ -2636,6 +2896,47 @@ impl HalcyonApp {
             ShortcutAction::PlayNextSelected => Task::none(),
             ShortcutAction::EnqueueSelected => Task::none(),
         }
+    }
+
+    /// The Library list layout shows playlists, albums and artists in its sidebar from the first
+    /// moment, not only after the Library page was opened, so ask for them when that layout is
+    /// chosen and when signing in with it. Other layouts ask nothing extra.
+    fn request_library_for_sidebar(&mut self) {
+        if !views::frame::has_library_sidebar(self.layout)
+            || !matches!(self.auth_status, AuthStatus::LoggedIn { .. })
+        {
+            return;
+        }
+        self.send(CommandBody::GetPlaylists { limit: Some(50), offset: Some(0) });
+        self.send(CommandBody::GetSavedAlbums);
+        self.send(CommandBody::GetFollowedArtists);
+    }
+
+    /// What follows a layout switch: the page floats in again, as on a page change (off under
+    /// reduce motion), and a sidebar that was open under the pointer is let go. A layout without a
+    /// sidebar never sends the pointer-left event, so it would come back open.
+    fn after_layout_change(&mut self) {
+        self.animations.animate_page_switch();
+        self.request_library_for_sidebar();
+        if self.sidebar_hovered {
+            self.sidebar_hovered = false;
+            self.animations.animate_sidebar(false);
+        }
+    }
+
+    /// Show a place from the history by sending the message the click would have sent.
+    fn replay_place(&mut self, place: Place) -> Task<Message> {
+        let message = match place {
+            Place::Page(page) => Message::NavSelected(page),
+            Place::Album(id) => Message::OpenAlbum(id),
+            Place::Artist(id) => Message::OpenArtist(id),
+            Place::Playlist(id) => Message::OpenPlaylist(id),
+            Place::Mix(id) => Message::OpenMix(id),
+        };
+        self.nav_replaying = true;
+        let task = self.update_inner(message);
+        self.nav_replaying = false;
+        task
     }
 
     /// Look at the Halcyon avatar file; when it appeared, changed or was dropped from the store,
@@ -2721,53 +3022,123 @@ impl HalcyonApp {
         let pal = self.palette;
         let connected = matches!(self.status, ConnStatus::Connected { .. });
         let logged_in = matches!(self.auth_status, AuthStatus::LoggedIn { .. });
-        let titlebar = views::titlebar::view(
-            connected,
-            pal,
-            Message::TitleBarPress,
-            Message::WindowMinimize,
-            Message::WindowToggleMaximize,
-            Message::WindowClose,
-        );
-
-        // 1. Fullscreen Now Playing overlay (keeps the title bar so the window can still be moved)
+        // 0. Full-screen Now Playing: the song, the visualizer and the lyrics, no other chrome.
+        //    (An invisible strip along the top still moves the window.)
         if self.show_fullscreen {
-            return column![
-                titlebar,
-                views::fullscreen::view(
-                    &self.state,
-                    &self.palette,
-                    self.animations.breath(),
-                    self.animations.clock(),
-                    self.lyrics.as_ref(),
-                    Message::TogglePlay,
-                    Message::Next,
-                    Message::Previous,
-                    Message::Seek,
-                    Message::ToggleFullscreen,
-                )
-            ]
-            .into();
+            let reduce = self.animations.reduce_motion;
+            let since_move = self.fs_last_move.elapsed();
+            return views::fullscreen::view(
+                &self.state,
+                &self.palette,
+                self.lyrics.as_ref(),
+                views::fullscreen::Look {
+                    visualizer: self.visualizer,
+                    // Aurora lets go a little slower than Silk. Zeros when motion is reduced.
+                    bands: self.viz.bands(reduce, self.visualizer == VisualizerKind::Aurora),
+                    clock: self.animations.clock(),
+                    controls_alpha: views::fullscreen::controls_alpha(since_move, reduce),
+                    near_top: views::fullscreen::near_top(self.fs_cursor_y),
+                },
+                views::fullscreen::Actions {
+                    toggle_play: Message::TogglePlay,
+                    next: Message::Next,
+                    previous: Message::Previous,
+                    exit: Message::ToggleFullscreen,
+                    press_bar: Message::TitleBarPress,
+                    minimize: Message::WindowMinimize,
+                    toggle_maximize: Message::WindowToggleMaximize,
+                    close: Message::WindowClose,
+                },
+                Message::Seek,
+            );
         }
+
+        let titlebar = if views::frame::has_history_arrows(self.layout) {
+            views::titlebar::view_with_history(
+                connected,
+                pal,
+                Some(views::titlebar::History {
+                    can_back: self.nav_history.can_back(),
+                    can_forward: self.nav_history.can_forward(),
+                    on_back: Message::HistoryBack,
+                    on_forward: Message::HistoryForward,
+                }),
+                Message::TitleBarPress,
+                Message::WindowMinimize,
+                Message::WindowToggleMaximize,
+                Message::WindowClose,
+            )
+        } else {
+            views::titlebar::view(
+                connected,
+                pal,
+                Message::TitleBarPress,
+                Message::WindowMinimize,
+                Message::WindowToggleMaximize,
+                Message::WindowClose,
+            )
+        };
 
         // 2. Sidebar Navigation, with the account circle at its top
         let account_name = self.account_name();
         let avatar_url = self.avatar_url();
-        let account_header: Element<Message> = if logged_in {
-            views::account::avatar_button(
-                &account_name,
-                avatar_url.as_deref(),
-                self.account_menu_open,
-                pal,
-                Message::ToggleAccountMenu,
-            )
-        } else {
-            Space::with_height(views::account::AVATAR_SIZE + 4.0).into()
+        // A closure, because each layout puts the circle in a different place (and only one of
+        // them is built).
+        let account_header = || -> Element<Message> {
+            if logged_in {
+                views::account::avatar_button(
+                    &account_name,
+                    avatar_url.as_deref(),
+                    self.account_menu_open,
+                    pal,
+                    Message::ToggleAccountMenu,
+                )
+            } else {
+                Space::with_height(views::account::AVATAR_SIZE + 4.0).into()
+            }
         };
         // The sidebar's width follows an animation: it opens under the pointer and pushes the
         // page aside rather than covering it.
-        let sidebar_w = views::sidebar::width_for(self.animations.sidebar_progress());
-        let sidebar = views::sidebar::view(
+        let sidebar: Element<Message> = if views::frame::has_library_sidebar(self.layout) {
+            // Library list: the person's library in the left column, the account circle on top.
+            views::library_sidebar::view(
+                views::library_sidebar::Context {
+                    active: self.active_nav,
+                    active_playlist: self.active_playlist.as_ref().map(|(p, _)| p.id.as_str()),
+                    tab: self.library_tab,
+                    show_new_input: self.show_new_playlist_input,
+                    new_name: &self.new_playlist_name,
+                },
+                &self.playlists,
+                &self.saved_albums,
+                &self.followed_artists,
+                pal,
+                account_header(),
+                Message::NavSelected,
+                Message::SidebarTabSelected,
+                Message::OpenPlaylist,
+                Message::OpenAlbum,
+                Message::OpenArtist,
+                Message::ToggleNewPlaylistInput,
+                Message::NewPlaylistNameChanged,
+                Message::CreateNewPlaylist,
+            )
+        } else if views::frame::has_dock(self.layout) || views::frame::has_player_panel(self.layout) {
+            // Dock: the pages and the account circle are in the dock. Player panel: the pages are
+            // tabs inside the page and the circle is in the panel. Either way this slot is empty.
+            Space::with_width(0).into()
+        } else if views::frame::has_tabs_row(self.layout) {
+            // Top tabs: no sidebar. The tabs row (with the account circle) goes in its slot.
+            views::tabs::view(
+                self.active_nav,
+                pal,
+                account_header(),
+                self.animations.more_progress(),
+                Message::ToggleTabsMore,
+                Message::NavSelected,
+            )
+        } else {
+        views::sidebar::view(
             self.active_nav,
             self.animations.sidebar_progress(),
             self.pill_slot.map(|_| self.animations.sidebar_pill.peek()),
@@ -2784,8 +3155,11 @@ impl HalcyonApp {
                 .as_ref()
                 .map(|t| t.id.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32)) as f32 % 97.0)
                 .unwrap_or(0.0),
-            account_header,
-        );
+            account_header(),
+        )
+        };
+        // Width of the left column: the sidebar while it exists, nothing in Top tabs.
+        let sidebar_w = views::frame::left_width(self.layout, self.animations.sidebar_progress());
 
         // 3. Center Content Page
         let content_area: Element<Message> = match self.auth_status {
@@ -2796,12 +3170,20 @@ impl HalcyonApp {
                 container(self.view_logging_in(auth_url)).padding(theme::space::XL).into()
             }
             AuthStatus::LoggedIn { ref user_id, .. } => {
-                column![
-                    self.view_playback_prompt(),
-                    self.view_page_content(user_id.as_deref())
-                ]
-                .spacing(theme::space::MD)
-                .into()
+                let mut body = column![].spacing(theme::space::MD);
+                if views::frame::has_player_panel(self.layout) {
+                    // Player panel: Home / Library / Settings are tabs at the top of the page.
+                    body = body.push(views::tabs::inline(
+                        self.active_nav,
+                        pal,
+                        self.animations.more_progress(),
+                        Message::ToggleTabsMore,
+                        Message::NavSelected,
+                    ));
+                }
+                body.push(self.view_playback_prompt())
+                    .push(self.view_page_content(user_id.as_deref()))
+                    .into()
             }
         };
 
@@ -2862,8 +3244,53 @@ impl HalcyonApp {
                 },
                 ..Default::default()
             });
+        let (page_margin_left, page_margin_right) = views::frame::page_margins(self.layout, PAGE_MARGIN);
         let queue_open_amount = self.animations.queue_progress();
-        let drawer: Element<Message> = if queue_open_amount > 0.001 || self.show_queue {
+        let drawer: Element<Message> = if (queue_open_amount > 0.001 || self.show_queue)
+            && views::frame::queue_overlays_page(self.layout)
+        {
+            // Dock: the queue opens over the page's right edge, in the page's own card style. A
+            // click anywhere else on the page closes it (Esc does too: see BackOrClose).
+            let width = views::queue_drawer::QUEUE_DRAWER_WIDTH * queue_open_amount;
+            let card = container(views::queue_drawer::view(
+                &self.state,
+                self.palette,
+                self.viz.frame(Instant::now(), self.state.playing, self.animations.reduce_motion),
+                Message::ToggleQueue,
+                Message::Dequeue,
+                &self.smart_marks,
+                Message::RejectSuggestion,
+                views::frame::is_calm(self.layout),
+            ))
+            .width(width)
+            .height(Length::Fill)
+            .clip(true)
+            .style(move |_t| container::Style {
+                background: Some(self.palette.page_background()),
+                border: iced::Border {
+                    color: self.palette.soft_border(),
+                    width: 1.0,
+                    radius: theme::radius::PAGE.into(),
+                },
+                ..Default::default()
+            });
+            iced::widget::stack![
+                mouse_area(Space::new(Length::Fill, Length::Fill)).on_press(Message::ToggleQueue),
+                container(card)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: page_margin_right,
+                        bottom: 0.0,
+                        left: 0.0,
+                    }),
+            ]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+        } else if queue_open_amount > 0.001 || self.show_queue {
             container(views::queue_drawer::view(
                 &self.state,
                 self.palette,
@@ -2872,27 +3299,96 @@ impl HalcyonApp {
                 Message::Dequeue,
                 &self.smart_marks,
                 Message::RejectSuggestion,
+                views::frame::is_calm(self.layout),
             ))
             .width(views::queue_drawer::QUEUE_DRAWER_WIDTH * queue_open_amount)
             .height(Length::Fill)
             .clip(true)
             .into()
+        } else if views::frame::queue_is_column(self.layout, self.window_size.width) {
+            // Top tabs, wide enough: the compact queue stays beside the page.
+            views::queue_column::view(&self.state, self.palette)
+        } else if views::frame::has_side_panel(self.layout, self.window_size.width) {
+            // Library list, wide enough: Queue / Lyrics stay beside the page.
+            views::side_panel::view(
+                self.side_tab,
+                &self.state,
+                self.lyrics.as_ref(),
+                self.palette,
+                Message::SidePanelSelected,
+            )
         } else {
             Space::with_width(0).into()
         };
-        let main_row = row![
-            sidebar,
-            container(page_card)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding(iced::Padding { top: 0.0, right: PAGE_MARGIN, bottom: 0.0, left: 0.0 }),
-            drawer,
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill);
+        // The page slot: the card with its margin to the queue column.
+        let page_slot: Element<Message> = container(page_card)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: page_margin_right,
+                bottom: 0.0,
+                left: page_margin_left,
+            })
+            .into();
 
-        // 5. Bottom Transport Bar
-        let bottom_bar = views::now_playing_bar::view(
+        // 5. Bottom Transport Bar (the dock pill in the Dock layout)
+        // The mini visualizer's bands, or None when it is Off, hidden or Classic.
+        let mini = self.mini_bands();
+        let bottom_bar = if views::frame::has_dock(self.layout) {
+            views::dock::view(
+                &self.state,
+                self.active_nav,
+                self.window_size.width,
+                views::frame::show_volume(self.layout, self.window_size.width),
+                mini,
+                self.show_queue,
+                self.palette,
+                account_header(),
+                Message::NavSelected,
+                Message::TogglePlay,
+                Message::Next,
+                Message::Previous,
+                Message::Seek,
+                Message::Volume,
+                Message::ToggleMute,
+                Message::ToggleShuffle,
+                Message::CycleRepeat,
+                Message::ToggleQueue,
+                Message::ToggleFullscreen,
+            )
+        } else if views::frame::has_player_panel(self.layout) {
+            // Player panel: the player is the left panel, there is no bar along the bottom.
+            views::player_panel::view(
+                &self.state,
+                self.window_size.height,
+                views::frame::show_volume(self.layout, self.window_size.width),
+                mini,
+                self.show_queue,
+                self.state
+                    .track
+                    .as_ref()
+                    .is_some_and(|cur| self.liked_tracks.iter().any(|t| t.id == cur.id)),
+                self.palette,
+                account_header(),
+                Message::TogglePlay,
+                Message::Next,
+                Message::Previous,
+                Message::Seek,
+                Message::Volume,
+                Message::ToggleMute,
+                Message::ToggleShuffle,
+                Message::CycleRepeat,
+                Message::ToggleQueue,
+                Message::ToggleFullscreen,
+                Message::ToggleLike,
+            )
+        } else {
+        views::now_playing_bar::view_with(
+            views::now_playing_bar::BarOptions {
+                mini,
+                ..views::frame::bar_options(self.layout, self.window_size.width)
+            },
             &self.state,
             self.palette,
             Message::TogglePlay,
@@ -2913,16 +3409,25 @@ impl HalcyonApp {
                 .is_some_and(|cur| self.liked_tracks.iter().any(|t| t.id == cur.id)),
             self.active_nav == NavPage::Lyrics,
             self.show_queue,
-        );
+        )
+        };
 
-        let layout = column![titlebar, main_row, bottom_bar]
-            .width(Length::Fill)
-            .height(Length::Fill);
+        // The layout only decides where the five slots sit (views/frame.rs). Pages are built once.
+        let arranged = views::frame::arrange(
+            self.layout,
+            views::frame::Slots {
+                titlebar,
+                nav: sidebar,
+                page: page_slot,
+                queue: drawer,
+                player: bottom_bar,
+            },
+        );
 
         // One frame under the title bar, the sidebar and the player bar, so they are a single
         // surface (not separate islands). Its colours come from the wallpaper palette.
         let window_radius = if self.window_maximized { 0.0 } else { WINDOW_RADIUS };
-        let base = container(layout)
+        let base = container(arranged)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_t| container::Style {
@@ -2971,8 +3476,15 @@ impl HalcyonApp {
                 Message::OpenSpotifyAccount,
                 Message::Logout,
             );
-            let top = views::titlebar::HEIGHT + theme::space::SM + views::account::AVATAR_SIZE + theme::space::SM;
-            layers.push(views::account::overlay(card, theme::space::LG, top, Message::CloseMenus));
+            // Under the account circle, wherever the layout puts it.
+            layers.push(match views::frame::account_menu_place(self.layout, self.window_size.width) {
+                views::frame::MenuPlace::Below { left, top } => {
+                    views::account::overlay(card, left, top, Message::CloseMenus)
+                }
+                views::frame::MenuPlace::Above { left, bottom } => {
+                    views::account::overlay_above(card, left, bottom, Message::CloseMenus)
+                }
+            });
         }
         if self.search_dropdown_open && logged_in && !self.search_query.trim().is_empty() {
             let side = sidebar_w;
@@ -2980,7 +3492,7 @@ impl HalcyonApp {
             // the list is too, as long as it still clears the sidebar.
             let left = ((self.window_size.width - views::search_dropdown::WIDTH) / 2.0).max(side);
             // Title bar + header padding + the search box itself.
-            let top = views::titlebar::HEIGHT + theme::space::LG + 44.0;
+            let top = views::frame::top_height(self.layout) + theme::space::LG + 44.0;
             let card = views::search_dropdown::view(
                 &self.search_query,
                 self.search_results.as_ref(),
@@ -3148,6 +3660,7 @@ impl HalcyonApp {
 
         // Which search the header carries: the global one on Home and Search, a filter on Library
         // and Recently played, none anywhere else.
+        #[allow(clippy::type_complexity)]
         let mode: Option<(&'static str, &str, fn(String) -> Message, Option<Message>)> = match self.active_nav {
             NavPage::Home | NavPage::Search => Some((
                 "What do you want to play?",
@@ -3193,7 +3706,7 @@ impl HalcyonApp {
             let ear = views::notch::EAR;
             let notch_w = views::search_dropdown::WIDTH + 44.0 + 2.0 * ear;
             let notch_h = NOTCH_H;
-            let mid = (views::titlebar::HEIGHT + notch_h / 2.0) / self.window_size.height.max(1.0);
+            let mid = (views::frame::top_height(self.layout) + notch_h / 2.0) / self.window_size.height.max(1.0);
             let frame_colour = pal.chrome_at(mid);
             let input = input.style(move |_t, status| text_input::Style {
                 background: theme::mix(frame_colour, pal.text, 0.07).into(),
@@ -3235,9 +3748,15 @@ impl HalcyonApp {
         // at its right edge (queue drawer, margin). Centring inside the card would put the
         // search off the window's middle, so the difference is taken up with padding: the box
         // stays under the "Halcyon" in the title bar, also while the sidebar opens.
-        let sidebar_w = views::sidebar::width_for(self.animations.sidebar_progress());
-        let drawer_w = views::queue_drawer::QUEUE_DRAWER_WIDTH * self.animations.queue_progress();
-        let shift = PAGE_MARGIN + drawer_w - sidebar_w;
+        let sidebar_w = views::frame::left_width(self.layout, self.animations.sidebar_progress());
+        let drawer_w = views::frame::right_width(
+            self.layout,
+            self.window_size.width,
+            self.animations.queue_progress(),
+            self.show_queue,
+        );
+        let (margin_left, margin_right) = views::frame::page_margins(self.layout, PAGE_MARGIN);
+        let shift = margin_right + drawer_w - (sidebar_w + margin_left);
         let pad_left = theme::space::XL + shift.max(0.0);
         let pad_right = theme::space::XL + (-shift).max(0.0);
 
@@ -3274,6 +3793,96 @@ impl HalcyonApp {
             _ => "Not signed in".to_string(),
         };
         match self.active_nav {
+            NavPage::Home if views::frame::has_dock(self.layout) => views::home::view_dock(
+                &self.home_feed,
+                self.palette,
+                self.density,
+                &self.liked_tracks,
+                Message::PlayTrack,
+                Message::PlayContext,
+                Message::PlayPlaylist,
+                Message::OpenPlaylist,
+                Message::NavSelected,
+                Message::ShuffleLiked,
+                Message::RefreshHome,
+                self.home_loading_since.is_some(),
+                self.animations.shimmer_phase,
+                views::prompt_card::view(
+                    self.llm_enabled,
+                    &self.prompt_text,
+                    &self.prompt_phase,
+                    self.prompt_mix.as_ref(),
+                    self.palette,
+                    Message::PromptTextChanged,
+                    Message::PromptSubmit,
+                    Message::PlayMix,
+                    Message::SaveMix,
+                    Message::OpenMix,
+                    Message::PromptClear,
+                    Message::NavSelected(NavPage::Settings),
+                ),
+            ),
+            NavPage::Home if views::frame::has_player_panel(self.layout) => views::home::view_panel(
+                &self.home_feed,
+                self.palette,
+                self.density,
+                &self.liked_tracks,
+                &self.state,
+                Message::PlayTrack,
+                Message::PlayContext,
+                Message::PlayPlaylist,
+                Message::OpenPlaylist,
+                Message::NavSelected,
+                Message::ShuffleLiked,
+                Message::RefreshHome,
+                self.home_loading_since.is_some(),
+                self.animations.shimmer_phase,
+                views::prompt_card::view(
+                    self.llm_enabled,
+                    &self.prompt_text,
+                    &self.prompt_phase,
+                    self.prompt_mix.as_ref(),
+                    self.palette,
+                    Message::PromptTextChanged,
+                    Message::PromptSubmit,
+                    Message::PlayMix,
+                    Message::SaveMix,
+                    Message::OpenMix,
+                    Message::PromptClear,
+                    Message::NavSelected(NavPage::Settings),
+                ),
+            ),
+            // Top tabs (with the Liked Songs hero) and Library list (greeting and one shelf).
+            NavPage::Home if views::frame::shelf_home(self.layout).is_some() => views::home::view_shelf(
+                views::frame::shelf_home(self.layout) == Some(true),
+                &self.home_feed,
+                self.palette,
+                self.density,
+                &self.liked_tracks,
+                Message::PlayTrack,
+                Message::PlayContext,
+                Message::PlayPlaylist,
+                Message::OpenPlaylist,
+                Message::NavSelected,
+                Message::ShuffleLiked,
+                Message::RefreshHome,
+                self.home_loading_since.is_some(),
+                self.animations.shimmer_phase,
+                views::prompt_card::view(
+                    self.llm_enabled,
+                    &self.prompt_text,
+                    &self.prompt_phase,
+                    self.prompt_mix.as_ref(),
+                    self.palette,
+                    Message::PromptTextChanged,
+                    Message::PromptSubmit,
+                    Message::PlayMix,
+                    Message::SaveMix,
+                    Message::OpenMix,
+                    Message::PromptClear,
+                    Message::NavSelected(NavPage::Settings),
+                ),
+            ),
             NavPage::Home => views::home::view(
                 &self.home_feed,
                 self.palette,
@@ -3538,7 +4147,26 @@ impl HalcyonApp {
                 self.last_error.is_some(),
                 Message::ToggleDiagnostics,
                 Message::CopyDiagnostics,
-                views::llm_settings::view(
+                self.layout,
+                Message::SetLayout,
+                self.visualizer,
+                Message::SetVisualizer,
+                self.mini_visualizer,
+                Message::SetMiniVisualizer,
+                {
+                    let advice = machine::advise(&self.machine, self.llm_engine);
+                    let (connect_on, connect_available) = self.connect_setting.unwrap_or((false, false));
+                    let connect_card = views::connect_settings::view(
+                        views::connect_settings::Props {
+                            known: self.connect_setting.is_some(),
+                            enabled: connect_on,
+                            available: connect_available,
+                            device: self.connect_device.as_deref(),
+                            palette: self.palette,
+                        },
+                        Message::ToggleConnect,
+                    );
+                    let llm_card = views::llm_settings::view(
                     views::llm_settings::Props {
                         enabled: self.llm_enabled,
                         backend: &self.llm_backend,
@@ -3549,6 +4177,8 @@ impl HalcyonApp {
                         download: self.llm_download.as_ref(),
                         reach: self.llm_reach,
                         hint: self.llm_hint.as_deref(),
+                        machine: self.machine.describe(),
+                        advice: advice.clone(),
                         palette: self.palette,
                     },
                     views::llm_settings::Msgs {
@@ -3561,8 +4191,11 @@ impl HalcyonApp {
                         download: Box::new(Message::LlmDownload),
                         cancel: Message::LlmCancelDownload,
                         delete: Box::new(Message::LlmDeleteModel),
+                        apply_advice: Message::LlmApplyAdvice,
                     },
-                ),
+                    );
+                    iced::widget::column![connect_card, iced::widget::Space::with_height(crate::theme::space::LG), llm_card].into()
+                },
             ),
             NavPage::Lyrics => views::lyrics::view(
                 self.state.track.as_ref(),
@@ -3827,6 +4460,21 @@ impl HalcyonApp {
     }
 }
 
+/// The place a message takes the person to, for the back and forward arrows. Lyrics is an
+/// overlay-like page that Esc closes, so it is not a place.
+fn place_for(message: &Message) -> Option<Place> {
+    match message {
+        Message::NavSelected(NavPage::Lyrics) => None,
+        Message::NavSelected(page) => Some(Place::Page(*page)),
+        Message::OpenSettings => Some(Place::Page(NavPage::Settings)),
+        Message::OpenAlbum(id) => Some(Place::Album(id.clone())),
+        Message::OpenArtist(id) => Some(Place::Artist(id.clone())),
+        Message::OpenPlaylist(id) => Some(Place::Playlist(id.clone())),
+        Message::OpenMix(id) => Some(Place::Mix(id.clone())),
+        _ => None,
+    }
+}
+
 /// Which messages can change the set of covers the app should ask for.
 /// Progress ticks and animation frames arrive constantly and never do.
 fn needs_art_sync(message: &Message) -> bool {
@@ -3851,6 +4499,19 @@ fn needs_art_sync(message: &Message) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_real_moves_are_places_for_the_back_arrow() {
+        assert_eq!(place_for(&Message::NavSelected(NavPage::Library)), Some(Place::Page(NavPage::Library)));
+        assert_eq!(place_for(&Message::OpenSettings), Some(Place::Page(NavPage::Settings)));
+        assert_eq!(place_for(&Message::OpenAlbum("a".into())), Some(Place::Album("a".into())));
+        assert_eq!(place_for(&Message::OpenPlaylist("p".into())), Some(Place::Playlist("p".into())));
+        assert_eq!(place_for(&Message::OpenMix("m".into())), Some(Place::Mix("m".into())));
+        // Lyrics is closed with Esc, not with Back; the queue and the layout are not places.
+        assert_eq!(place_for(&Message::NavSelected(NavPage::Lyrics)), None);
+        assert_eq!(place_for(&Message::ToggleQueue), None);
+        assert_eq!(place_for(&Message::CycleLayout), None);
+    }
 
     #[test]
     fn the_device_line_names_the_connect_device_when_there_is_one() {
@@ -3906,7 +4567,7 @@ mod tests {
     #[test]
     fn animations_stay_under_half_a_second() {
         // The calm redesign trades the old 180 ms snap for slow, soft motion (still under half a second).
-        assert!(theme::MAX_ANIMATION_MS < 500);
+        const { assert!(theme::MAX_ANIMATION_MS < 500) };
         assert!(art::FADE.as_millis() as u64 <= theme::MAX_ANIMATION_MS);
     }
 

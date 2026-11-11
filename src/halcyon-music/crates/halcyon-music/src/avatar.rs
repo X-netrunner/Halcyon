@@ -21,6 +21,7 @@ pub enum AvatarSource {
 }
 
 impl AvatarSource {
+    #[cfg(test)]
     pub const ALL: [AvatarSource; 3] = [AvatarSource::Halcyon, AvatarSource::Spotify, AvatarSource::Initial];
 
     pub fn key(self) -> &'static str {
@@ -85,6 +86,7 @@ pub fn local_url(path: &Path) -> String {
 }
 
 /// True for a key made by [`local_url`] (the daemon must never be asked to fetch these).
+#[cfg(test)]
 pub fn is_local_url(url: &str) -> bool {
     url.starts_with("file://")
 }

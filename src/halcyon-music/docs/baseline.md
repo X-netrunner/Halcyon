@@ -56,7 +56,7 @@ if anything fails and the next step is to fix exactly those errors, nothing else
 
 ## Still untested (be suspicious of these first)
 
-- **Compilation of everything.** `.codex-state.md` and the changelog say features 1-2 of the LLM
+- **Compilation of everything.** the changelog says features 1-2 of the LLM
   layer once passed `cargo check`, but feature 3 (rerank) and the GUI wiring were written without a
   compiler. Expect small type or borrow errors there.
 - **`cargo test`**: the changelog says it never ran for the LLM tests (a broken `target/` stopped the

@@ -22,12 +22,77 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 const SERVICE_NAME: &str = "halcyon-music";
 const KEYRING_USER: &str = "spotify_token";
 const TOKEN_FILE_NAME: &str = "token.json";
+
+/// How long to wait for the Secret Service (the desktop keyring) before giving up on it.
+const KEYRING_TIMEOUT: Duration = Duration::from_secs(3);
+/// Set once the keyring did not answer in time: it is skipped for the rest of this run (every
+/// further call would only add another wait), and the 0600 files are used instead.
+static KEYRING_STUCK: AtomicBool = AtomicBool::new(false);
+
+/// Run one keyring call on its own thread and wait at most `KEYRING_TIMEOUT` for it.
+///
+/// The keyring talks to the Secret Service over D-Bus and can wait forever: when the keyring is
+/// locked and asking for a password that no window can show (a daemon started by systemd has no
+/// screen to draw it on), or when the service is half-started. A call made straight from the
+/// daemon's startup then froze it before it could say it was ready, and systemd killed it after
+/// 90 s, over and over. `None` means "no answer": the caller uses the file fallback.
+fn keyring_call<T: Send + 'static>(f: impl FnOnce() -> Option<T> + Send + 'static) -> Option<T> {
+    if KEYRING_STUCK.load(Ordering::Relaxed) {
+        return None;
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("keyring".into())
+        .spawn(move || {
+            let _ = tx.send(f());
+        })
+        .ok()?;
+    match rx.recv_timeout(KEYRING_TIMEOUT) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            KEYRING_STUCK.store(true, Ordering::Relaxed);
+            warn!(
+                "the keyring (Secret Service) did not answer in {} s; using the token files instead",
+                KEYRING_TIMEOUT.as_secs()
+            );
+            None
+        }
+        Err(_) => None,
+    }
+}
+
+fn keyring_get(user: &'static str) -> Option<String> {
+    keyring_call(move || keyring::Entry::new(SERVICE_NAME, user).ok()?.get_password().ok())
+}
+
+/// True when the keyring took the value.
+fn keyring_set(user: &'static str, value: String) -> bool {
+    keyring_call(move || {
+        let entry = keyring::Entry::new(SERVICE_NAME, user).ok()?;
+        match entry.set_password(&value) {
+            Ok(()) => Some(()),
+            Err(e) => {
+                debug!("keyring set_password failed ({e}); falling back to file");
+                None
+            }
+        }
+    })
+    .is_some()
+}
+
+fn keyring_delete(user: &'static str) {
+    let _ = keyring_call(move || {
+        let _ = keyring::Entry::new(SERVICE_NAME, user).ok()?.delete_credential();
+        Some(())
+    });
+}
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TokenData {
@@ -115,23 +180,10 @@ pub fn save_token(token: &TokenData) -> Result<(), String> {
     let serialized = serde_json::to_string(token).map_err(|e| e.to_string())?;
 
     // Try keyring first
-    let keyring_entry = keyring::Entry::new(SERVICE_NAME, KEYRING_USER);
-    let keyring_saved = match keyring_entry {
-        Ok(entry) => match entry.set_password(&serialized) {
-            Ok(()) => {
-                debug!("token saved to Secret Service keyring");
-                true
-            }
-            Err(e) => {
-                debug!("keyring set_password failed ({e}); falling back to file");
-                false
-            }
-        },
-        Err(e) => {
-            debug!("keyring entry creation failed ({e}); falling back to file");
-            false
-        }
-    };
+    let keyring_saved = keyring_set(KEYRING_USER, serialized.clone());
+    if keyring_saved {
+        debug!("token saved to Secret Service keyring");
+    }
 
     // If keyring was unavailable or failed, write 0600 file atomically
     if !keyring_saved {
@@ -146,12 +198,10 @@ pub fn save_token(token: &TokenData) -> Result<(), String> {
 /// Load token from Secret Service keyring if available, otherwise from 0600 file.
 pub fn load_token() -> Result<Option<TokenData>, String> {
     // 1. Try keyring
-    if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, KEYRING_USER) {
-        if let Ok(pw) = entry.get_password() {
-            if let Ok(token) = serde_json::from_str::<TokenData>(&pw) {
-                debug!("loaded token from Secret Service keyring");
-                return Ok(Some(token));
-            }
+    if let Some(pw) = keyring_get(KEYRING_USER) {
+        if let Ok(token) = serde_json::from_str::<TokenData>(&pw) {
+            debug!("loaded token from Secret Service keyring");
+            return Ok(Some(token));
         }
     }
 
@@ -167,9 +217,7 @@ pub fn load_token() -> Result<Option<TokenData>, String> {
 
 /// Clear token from both keyring and file fallback.
 pub fn clear_token() -> Result<(), String> {
-    if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, KEYRING_USER) {
-        let _ = entry.delete_credential();
-    }
+    keyring_delete(KEYRING_USER);
     let path = token_file_path();
     if path.exists() {
         let _ = std::fs::remove_file(path);
@@ -409,22 +457,10 @@ pub fn save_librespot_token(token: &LibrespotToken) -> Result<(), String> {
     let serialized = serde_json::to_string(token).map_err(|e| e.to_string())?;
     let path = librespot_token_file_path();
 
-    let keyring_saved = match keyring::Entry::new(SERVICE_NAME, LIBRESPOT_KEYRING_USER) {
-        Ok(entry) => match entry.set_password(&serialized) {
-            Ok(()) => {
-                debug!("streaming token saved to Secret Service keyring");
-                true
-            }
-            Err(e) => {
-                debug!("keyring set_password failed ({e}); falling back to file");
-                false
-            }
-        },
-        Err(e) => {
-            debug!("keyring entry creation failed ({e}); falling back to file");
-            false
-        }
-    };
+    let keyring_saved = keyring_set(LIBRESPOT_KEYRING_USER, serialized.clone());
+    if keyring_saved {
+        debug!("streaming token saved to Secret Service keyring");
+    }
 
     if keyring_saved {
         // A file left from an earlier fallback would be an older token: remove it.
@@ -443,15 +479,13 @@ pub fn save_librespot_token(token: &LibrespotToken) -> Result<(), String> {
 
 /// Load the streaming token from the keyring if available, otherwise from the 0600 file.
 pub fn load_librespot_token() -> Result<Option<LibrespotToken>, String> {
-    if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, LIBRESPOT_KEYRING_USER) {
-        if let Ok(pw) = entry.get_password() {
-            match serde_json::from_str::<LibrespotToken>(&pw) {
-                Ok(token) => {
-                    debug!("loaded streaming token from Secret Service keyring");
-                    return Ok(Some(token));
-                }
-                Err(_) => warn!("the streaming token in the keyring is unreadable; ignoring it"),
+    if let Some(pw) = keyring_get(LIBRESPOT_KEYRING_USER) {
+        match serde_json::from_str::<LibrespotToken>(&pw) {
+            Ok(token) => {
+                debug!("loaded streaming token from Secret Service keyring");
+                return Ok(Some(token));
             }
+            Err(_) => warn!("the streaming token in the keyring is unreadable; ignoring it"),
         }
     }
     read_librespot_token_file(&librespot_token_file_path())
@@ -459,9 +493,7 @@ pub fn load_librespot_token() -> Result<Option<LibrespotToken>, String> {
 
 /// Clear the streaming token from both keyring and file fallback.
 pub fn clear_librespot_token() -> Result<(), String> {
-    if let Ok(entry) = keyring::Entry::new(SERVICE_NAME, LIBRESPOT_KEYRING_USER) {
-        let _ = entry.delete_credential();
-    }
+    keyring_delete(LIBRESPOT_KEYRING_USER);
     let path = librespot_token_file_path();
     if path.exists() {
         let _ = std::fs::remove_file(path);

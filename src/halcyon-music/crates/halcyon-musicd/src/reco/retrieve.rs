@@ -200,11 +200,11 @@ pub fn chart_candidates(rows: &[(String, String, Option<u64>)], source: Source, 
 /// ListenBrainz `cf/recommendation/user/<user>/recording` answer: the recording MBIDs with scores,
 /// best first. VERIFY: shape from memory, `{"payload": {"mbids": [{"recording_mbid", "score"}]}}`.
 pub fn parse_lb_recommendations(v: &serde_json::Value) -> Vec<(String, f64)> {
-    v["payload"]["mbids"]
-        .as_array()
+    v.pointer("/payload/mbids")
+        .and_then(serde_json::Value::as_array)
         .map(|rows| {
             rows.iter()
-                .filter_map(|r| Some((r["recording_mbid"].as_str()?.to_string(), r["score"].as_f64().unwrap_or(0.0))))
+                .filter_map(|r| Some((r.get("recording_mbid")?.as_str()?.to_string(), r.get("score").and_then(serde_json::Value::as_f64).unwrap_or(0.0))))
                 .collect()
         })
         .unwrap_or_default()
@@ -217,8 +217,8 @@ pub fn parse_lb_metadata(v: &serde_json::Value) -> Vec<(String, String, String)>
     let mut rows: Vec<(String, String, String)> = obj
         .iter()
         .filter_map(|(mbid, m)| {
-            let title = m["recording"]["name"].as_str()?.to_string();
-            let artist = m["artist"]["name"].as_str()?.to_string();
+            let title = m.pointer("/recording/name")?.as_str()?.to_string();
+            let artist = m.pointer("/artist/name")?.as_str()?.to_string();
             Some((mbid.clone(), artist, title))
         })
         .collect();

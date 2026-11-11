@@ -22,6 +22,16 @@ Scope {
     property int tick: 0
     property bool linger: false
     property string pending: ""
+    property var opt: ({})
+    // where it opens: at the mouse pointer, or at the top of the screen when that is off (Settings > "Menus open at the mouse")
+    property bool atCursor: opt.captureAtCursor !== false
+    property bool waiting: false
+    readonly property bool followCursor: atCursor && cursor.known
+    CursorSpot {
+        id: cursor
+        onFound: { if (root.waiting) { root.waiting = false; root.open = true; statusProc.running = true } }
+        onFailed: { if (root.waiting) { root.waiting = false; root.open = true; statusProc.running = true } }
+    }
 
     readonly property string home: Quickshell.env("HOME")
     readonly property string recScript: home + "/.config/Halcyon/scripts/screen-record.sh"
@@ -36,11 +46,11 @@ Scope {
         return m + ":" + (r < 10 ? "0" : "") + r
     }
     function show() {
-        open = true
-        statusProc.running = true
+        if (atCursor) { waiting = true; cursor.ask() }
+        else { open = true; statusProc.running = true }
     }
-    function hide() { open = false }
-    function toggle() { if (open) hide(); else show() }
+    function hide() { waiting = false; cursor.cancel(); open = false }
+    function toggle() { if (open || waiting) hide(); else show() }
     onOpenChanged: if (!open) { linger = true; lingerT.restart() }
     Timer { id: lingerT; interval: (root.pal ? root.pal.dMed : 300) + 100; onTriggered: root.linger = false }
 
@@ -108,6 +118,13 @@ Scope {
         PanelWindow {
             id: win
             visible: true
+            screen: {
+                if (root.followCursor) {
+                    for (var i = 0; i < Quickshell.screens.length; i++)
+                        if (Quickshell.screens[i].name === cursor.screen) return Quickshell.screens[i]
+                }
+                return null
+            }
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
@@ -154,8 +171,11 @@ Scope {
                     radius: root.pal.rXl
                     opacityBody: root.pal.solid ? 1 : 0.96
                     border.color: root.recording ? Qt.alpha(root.pal.bad, 0.35) : root.pal.line
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: root.pal.boxTop + 18 + (1 - qp.reveal) * -12
+                    // at the pointer: centred on it, then kept on the screen (the size changes while it records, so it re-centres)
+                    readonly property real cx: Math.max(12, Math.min(cursor.x - width / 2, qp.width - width - 12))
+                    readonly property real cy: Math.max(12, Math.min(cursor.y - height / 2, qp.height - height - 12))
+                    x: root.followCursor ? cx : Math.round((qp.width - width) / 2)
+                    y: root.followCursor ? cy + (1 - qp.reveal) * 10 : root.pal.boxTop + 18 + (1 - qp.reveal) * -12
                     opacity: qp.reveal
                     scale: 0.96 + 0.04 * qp.reveal
                     Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }

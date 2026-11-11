@@ -71,6 +71,7 @@ pub fn run() -> anyhow::Result<ExitCode> {
     // Read once; `load_librespot_token` moves a corrupt file aside, so do not call it twice.
     let streaming = token_store::load_librespot_token();
 
+    #[allow(clippy::vec_init_then_push)]
     let mut checks = Vec::new();
     checks.push(check_runtime_dir());
     checks.push(check_daemon_socket(&daemon));
@@ -619,7 +620,7 @@ fn judge_connect_device(view: crate::connect::DoctorView) -> Check {
             "connect device",
             Status::Info,
             if compiled {
-                "not enabled (set HALCYON_CONNECT=1 and run --connect-spike to try it)"
+                "not enabled (turn it on in Settings > Spotify Connect, or set HALCYON_CONNECT=1)"
             } else {
                 "not built in (cargo build --features connect to try it)"
             },
@@ -627,7 +628,7 @@ fn judge_connect_device(view: crate::connect::DoctorView) -> Check {
         DoctorView::RequestedNotRegistered { compiled } => check_hint(
             "connect device",
             Status::Warn,
-            "HALCYON_CONNECT is set but no device is registered",
+            "Connect is switched on but no device is registered",
             if compiled {
                 "run halcyon-musicd --connect-spike and read its output"
             } else {

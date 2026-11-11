@@ -29,10 +29,28 @@ Scope {
     readonly property bool panelBottom: spot.charAt(0) === "b"
     readonly property string script: Quickshell.env("HOME") + "/.config/Halcyon/scripts/halcyon-shot.py"
 
-    function show() { open = true; confProc.running = true }
-    function hide() { open = false }
+    // where it opens: at the mouse pointer (the pointer is looked up first, a few ms), or on the side of the screen when that is off
+    // (Settings > Screenshots & recording > "Menus open at the mouse")
+    property bool atCursor: opt.captureAtCursor !== false
+    property bool pending: false
+    readonly property bool followCursor: atCursor && cursor.known
+    CursorSpot {
+        id: cursor
+        onFound: { if (root.pending) { root.pending = false; root.open = true } }
+        onFailed: { if (root.pending) { root.pending = false; root.open = true } }
+    }
+    function show() {
+        confProc.running = true
+        if (atCursor) { pending = true; cursor.ask() }
+        else open = true
+    }
+    function hide() {
+        // closed while the pointer was still being looked up: the panel never opened, so onOpenChanged will not let the frozen screen go
+        if (pending && pendingMode === "") Quickshell.execDetached(["python3", root.script, "unfreeze"])
+        pending = false; cursor.cancel(); open = false
+    }
     function close() { hide() }
-    function toggle() { if (open) hide(); else show() }
+    function toggle() { if (open || pending) hide(); else show() }
 
     property bool linger: false
     onOpenChanged: if (!open) {
@@ -110,6 +128,13 @@ Scope {
         PanelWindow {
             id: win
             visible: true
+            screen: {
+                if (root.followCursor) {
+                    for (var i = 0; i < Quickshell.screens.length; i++)
+                        if (Quickshell.screens[i].name === cursor.screen) return Quickshell.screens[i]
+                }
+                return null
+            }
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
@@ -138,9 +163,14 @@ Scope {
                     opacityBody: root.pal.solid ? 1 : 0.90
                     border.color: root.pal.calm ? root.pal.line : Qt.alpha(root.pal.accent, 0.40)
                     opacity: qp.reveal
-                    x: root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
-                                       : 22 - (1 - qp.reveal) * width * 0.4
-                    y: root.panelBottom ? qp.height - height - root.pal.boxEdge : root.pal.boxTop
+                    // at the pointer: centred on it, then kept on the screen
+                    readonly property real cx: Math.max(12, Math.min(cursor.x - width / 2, qp.width - width - 12))
+                    readonly property real cy: Math.max(12, Math.min(cursor.y - height / 2, qp.height - height - 12))
+                    x: root.followCursor ? cx
+                       : (root.panelRight ? qp.width - width - 22 + (1 - qp.reveal) * width * 0.4
+                                          : 22 - (1 - qp.reveal) * width * 0.4)
+                    y: root.followCursor ? cy + (1 - qp.reveal) * 10
+                       : (root.panelBottom ? qp.height - height - root.pal.boxEdge : root.pal.boxTop)
                     MouseArea { anchors.fill: parent; onPressed: m => { m.accepted = true } }
 
                     NoteStars {

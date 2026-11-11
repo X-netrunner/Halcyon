@@ -172,6 +172,13 @@ pub enum CommandBody {
     /// Off by default: the GUI turns them on only while something that dances is on screen
     /// (the queue drawer, the full-screen player), so nothing is sent or analysed otherwise.
     SetAudioStream { enabled: bool },
+    /// Ask whether Spotify Connect (Halcyon in the phone's Devices list) is on; answered with
+    /// [`EventBody::ConnectSetting`]. An older daemon answers "unsupported".
+    GetConnectSetting,
+    /// Turn Spotify Connect on or off. The choice is saved and the daemon restarts its player so it
+    /// takes effect (playback stops for a moment; the service comes back by itself). Answered with
+    /// [`EventBody::ConnectSetting`] before the restart.
+    SetConnectEnabled { enabled: bool },
     /// Ask whether the optional LLM layer is on and which model it uses; answered with
     /// [`EventBody::LlmStatus`] without contacting the model. An older daemon ignores it.
     GetLlmStatus,
@@ -292,6 +299,13 @@ pub enum EventBody {
     ConnectDevice {
         #[serde(default)]
         name: Option<String>,
+    },
+    /// Whether Spotify Connect is switched on (`enabled`) and whether this daemon build contains
+    /// the Connect code at all (`available`). Without it the switch cannot do anything.
+    ConnectSetting {
+        enabled: bool,
+        #[serde(default)]
+        available: bool,
     },
     /// Successfully authenticated.
     AuthSuccess { user_id: Option<String> },
@@ -646,6 +660,22 @@ mod tests {
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
+    }
+
+    #[test]
+    fn connect_setting_messages_round_trip() {
+        for cmd in [command(CommandBody::GetConnectSetting), command(CommandBody::SetConnectEnabled { enabled: true })] {
+            let line = encode_line(&cmd).expect("encode");
+            let back: Command = decode_line(&line).expect("decode");
+            assert_eq!(cmd, back);
+        }
+        let ev = event(EventBody::ConnectSetting { enabled: false, available: true });
+        let line = encode_line(&ev).expect("encode");
+        let back: Event = decode_line(&line).expect("decode");
+        assert_eq!(ev, back);
+        // `available` is optional on the wire (an older daemon never sends it).
+        let old: Event = decode_line(br#"{"version":1,"type":"connect_setting","enabled":true}"#).expect("decode");
+        assert!(matches!(old.body, EventBody::ConnectSetting { enabled: true, available: false }));
     }
 
     #[test]

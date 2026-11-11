@@ -194,6 +194,8 @@ pub struct AnimationManager {
     pub toast_slide: Animation,
     // Search notch: 1.0 fully out, 0.0 retracted into the title bar
     pub search_reveal: Animation,
+    // The Halcyon star in the tabs row: 0.0 pages tucked away .. 1.0 slid out
+    pub more_expand: Animation,
     /// Recent gaps between animation ticks in milliseconds (newest last), only while moving.
     frame_gaps: VecDeque<f32>,
     /// How long the last few `view` builds took, in milliseconds.
@@ -247,6 +249,7 @@ impl Default for AnimationManager {
             shimmer_phase: 0.0,
             toast_slide: Animation::instant(0.0),
             search_reveal: Animation::instant(1.0),
+            more_expand: Animation::instant(0.0),
         }
     }
 }
@@ -321,6 +324,7 @@ impl AnimationManager {
             || self.queue_expand.is_active()
             || self.toast_slide.is_active()
             || self.search_reveal.is_active()
+            || self.more_expand.is_active()
     }
 
     /// Trigger a page switch transition: the new page floats up into place.
@@ -423,6 +427,22 @@ impl AnimationManager {
     /// 0.0 (retracted) to 1.0 (fully out). Drives the search notch.
     pub fn search_progress(&self) -> f32 {
         self.search_reveal.peek().clamp(0.0, 1.0)
+    }
+
+    /// Slide the pages behind the tabs row's star out (or back in), from wherever they are now.
+    pub fn animate_more(&mut self, open: bool) {
+        let from = self.more_expand.peek();
+        let target = if open { 1.0 } else { 0.0 };
+        if self.reduce_motion {
+            self.more_expand = Animation::instant(target);
+        } else {
+            self.more_expand = Animation::new(from, target, motion::BASE_MS, Easing::Standard);
+        }
+    }
+
+    /// 0.0 (tucked away) to 1.0 (slid out). Drives the width of the pages behind the star.
+    pub fn more_progress(&self) -> f32 {
+        self.more_expand.peek().clamp(0.0, 1.0)
     }
 
     /// Show toast slide-in.
@@ -531,8 +551,7 @@ mod tests {
 
     #[test]
     fn every_started_animation_stays_within_the_slow_token() {
-        let mut m = AnimationManager::default();
-        m.reduce_motion = false;
+        let mut m = AnimationManager { reduce_motion: false, ..Default::default() };
         m.animate_page_switch();
         m.animate_sidebar_pill(2.0);
         m.animate_sidebar(true);
@@ -547,8 +566,7 @@ mod tests {
 
     #[test]
     fn the_reduce_motion_switch_turns_every_animation_off() {
-        let mut m = AnimationManager::default();
-        m.system_reduce_motion = false;
+        let mut m = AnimationManager { system_reduce_motion: false, ..Default::default() };
         m.set_user_reduce_motion(false);
         m.animate_page_switch();
         m.animate_sidebar(true);
@@ -573,8 +591,7 @@ mod tests {
 
     #[test]
     fn the_system_setting_wins_over_the_switch() {
-        let mut m = AnimationManager::default();
-        m.system_reduce_motion = true;
+        let mut m = AnimationManager { system_reduce_motion: true, ..Default::default() };
         m.set_user_reduce_motion(false);
         assert!(m.reduce_motion, "GTK_ENABLE_ANIMATIONS=0 must stay respected");
         assert!(AnimationManager::with_preference(true).reduce_motion);

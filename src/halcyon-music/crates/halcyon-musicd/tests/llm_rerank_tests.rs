@@ -124,20 +124,20 @@ async fn a_warm_cache_makes_no_call_and_still_sends_the_order() {
 #[tokio::test(start_paused = true)]
 async fn a_changed_mix_model_or_taste_asks_again() {
     let (_d, c) = cache();
-    run(&c, &ScriptedLlm::new(vec![Step::Reply(good())]), &taste(), &[personal("m", 30)], true).await;
+    let _ = run(&c, &ScriptedLlm::new(vec![Step::Reply(good())]), &taste(), &[personal("m", 30)], true).await;
     // One song swapped: it is a different mix.
     let mut changed = personal("m", 30);
     if let Some(t) = changed.tracks.get_mut(0) {
         *t = Track::simple("brand-new".into(), "New".into(), "Someone".into(), "Al".into(), 1000);
     }
     let a = ScriptedLlm::new(vec![Step::Reply(good())]);
-    run(&c, &a, &taste(), &[changed], true).await;
+    let _ = run(&c, &a, &taste(), &[changed], true).await;
     assert_eq!(a.calls(), 1);
     let b = ScriptedLlm::new(vec![Step::Reply(good())]).with_model("other");
-    run(&c, &b, &taste(), &[personal("m", 30)], true).await;
+    let _ = run(&c, &b, &taste(), &[personal("m", 30)], true).await;
     assert_eq!(b.calls(), 1);
     let d = ScriptedLlm::new(vec![Step::Reply(good())]);
-    run(&c, &d, &taste_of(&[("Pulse", 12), ("Wave", 8)]), &[personal("m", 30)], true).await;
+    let _ = run(&c, &d, &taste_of(&[("Pulse", 12), ("Wave", 8)]), &[personal("m", 30)], true).await;
     assert_eq!(d.calls(), 1);
 }
 
@@ -269,7 +269,7 @@ async fn no_more_than_three_calls_per_run_and_the_rest_wait_for_the_next() {
 async fn the_model_sees_aliases_and_aggregates_never_ids_or_the_play_log() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(good())]);
-    run(&c, &llm, &taste(), &[personal("secret-mix-id", 30)], true).await;
+    let _ = run(&c, &llm, &taste(), &[personal("secret-mix-id", 30)], true).await;
     let req = llm.last_request().expect("request");
     assert!(!req.user.contains("secret-mix-id"));
     assert!(!req.user.contains("play-track-") && !req.user.contains("Private Song"));
