@@ -11,21 +11,23 @@ use std::path::Path;
 
 /// Spacing scale (logical pixels). Use these instead of ad-hoc numbers.
 pub mod space {
-    pub const XS: f32 = 4.0;
-    pub const SM: f32 = 8.0;
-    pub const MD: f32 = 12.0;
-    pub const LG: f32 = 16.0;
-    pub const XL: f32 = 24.0;
+    use halcyon_music_core::tokens::space;
+    pub const XS: f32 = space::XS;
+    pub const SM: f32 = space::SM;
+    pub const MD: f32 = space::MD;
+    pub const LG: f32 = space::LG;
+    pub const XL: f32 = space::XL;
     pub const XXL: f32 = 32.0;
 }
 
 /// Corner radii.
 pub mod radius {
-    pub const SM: f32 = 12.0;
-    pub const MD: f32 = 20.0;
-    pub const LG: f32 = 28.0;
-    pub const XL: f32 = 36.0;
-    pub const PILL: f32 = 999.0;
+    use halcyon_music_core::tokens::radius;
+    pub const SM: f32 = radius::SM;
+    pub const MD: f32 = radius::MD;
+    pub const LG: f32 = radius::LG;
+    pub const XL: f32 = radius::XL;
+    pub const PILL: f32 = radius::PILL;
     /// The page card, inset in the window frame (used by the layout parts, not yet).
     #[allow(dead_code)]
     pub const PAGE: f32 = 22.0;
@@ -43,16 +45,16 @@ pub mod radius {
 
 /// Type scale (font sizes): caption, small, body, title, heading.
 pub mod type_size {
-    pub const CAPTION: f32 = 11.0;
-    pub const SMALL: f32 = 12.0;
-    pub const BODY: f32 = 14.0;
-    pub const TITLE: f32 = 18.0;
-    pub const HEADING: f32 = 24.0;
+    use halcyon_music_core::tokens::text;
+    pub const CAPTION: f32 = text::CAPTION;
+    pub const SMALL: f32 = text::SMALL;
+    pub const BODY: f32 = text::BODY_LG;
+    pub const TITLE: f32 = text::TITLE;
+    pub const HEADING: f32 = text::DISPLAY;
 }
 
 /// Longest one-shot animation in the app, in milliseconds. Everything is at or under this.
-/// The calm redesign uses slower, softer motion than the old 180 ms snap.
-pub const MAX_ANIMATION_MS: u64 = 420;
+pub const MAX_ANIMATION_MS: u64 = halcyon_music_core::tokens::motion::SLOW_MS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Density {
