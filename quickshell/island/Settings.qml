@@ -203,6 +203,10 @@ Scope {
             return
         }
         if (typeof key === "string" && key.indexOf("fx:") === 0) {
+            if (key === "fx:safe") {
+                root.action(v ? "fx-safe-on" : "fx-safe-off")
+                return
+            }
             if (key === "fx:profile" && !fxConf.safe) {
                 var fc2 = JSON.parse(JSON.stringify(fxConf))
                 fc2.profile = v                                 // show it at once; the real state is read again below
@@ -1034,7 +1038,7 @@ Scope {
         ] },
         { id: "profiles", title: "Profiles & safe mode", section: "Performance", items: [
             { type: "seg", adv: true, drop: true, key: "fx:profile", label: "Profile", desc: "One switch for stars, blur, island motion, screen brightness and the top bar. Work: no stars, blur on, fast motion. Gaming: no stars, no blur, no motion, top bar off. Battery: no stars, no blur, fast motion, brightness 40 %. Night: stars on, brightness 15 %. Custom is your own setup: it is saved when you leave it and comes back when you pick Custom again. Terminal: halcyon profile <name>. To change what a profile does, edit ~/.local/state/island/profiles.json (halcyon profile --help).", opts: [o("custom", "Custom"), o("work", "Work"), o("gaming", "Gaming"), o("battery", "Battery"), o("night", "Night")] },
-            { type: "acts", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off).", btns: [{ id: "fx-safe-on", btn: "Turn on safe mode", done: "Reloading...", when: "fx:safe=false" }, { id: "fx-safe-off", btn: "Back to normal", done: "Restoring...", when: "fx:safe=true" }] }
+            { type: "toggle", key: "fx:safe", label: "Safe mode", desc: "If the desktop is slow, flickers or will not draw properly: turns off blur, shadows, window animations, stars, island motion and the other heavy effects, and reloads the island. Your values are saved first and Back to normal restores them. It also works from a terminal when the island is unusable: halcyon safe-mode, then halcyon safe-mode back. Shortcut: Super + Alt + F12 (on / off)." }
         ] },
         { id: "suggestions", title: "Suggestions", section: "Performance", items: [
             { type: "acts", adv: true, label: "Balanced look and speed", desc: "Faster without losing the look: applies 60 fps, 2-pass blur (size 5), disables window shadows and moving bar star particles, enables lazy-loading & automatic memory cleanup. Saves ~50-80 MB RAM and keeps idle CPU <0.5%.", btns: [{ id: "opt-sweet-spot", btn: "Apply Sweet Spot", done: "Applied" }] },
