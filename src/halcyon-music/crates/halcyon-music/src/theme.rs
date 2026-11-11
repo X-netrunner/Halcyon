@@ -325,8 +325,7 @@ impl HalcyonPalette {
 
     /// Where the rice writes the wallpaper colours.
     pub fn rice_file() -> std::path::PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/netrunner".into());
-        Path::new(&home).join(".local/state/halcyon-music/palette.toml")
+        halcyon_music_core::paths::state_dir().join("palette.toml")
     }
 
     /// When the rice last rewrote its colours (`None` when there is no file). The app compares
