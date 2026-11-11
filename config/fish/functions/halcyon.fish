@@ -31,10 +31,18 @@ function halcyon --description 'Open and control the Halcyon desktop from a term
         printf "  %-20s %s\n" "vpn" "vpn status|up|down|toggle: NetworkManager VPN / WireGuard / Tailscale"
         printf "  %-20s %s\n" "ai" "ai ask|do|clip|brief|explain|safety|organise|lyrics|updates|study|commit: the local AI helpers (halcyon ai --help)"
         printf "  %-20s %s\n" "selftest" "selftest [--quick] [--rust] [DIR]: the CI checks on this machine, plus is the island running and loaded"
+        printf "  %-20s %s\n" "doctor" "doctor [--json]: Halcyon, Luna, AI Antivirus, AI Firewall, Halcyon Music: installed, versions, services, sockets, permissions"
         return 0
     end
 
     # these two run a script, not the island, so they still work when the island is stuck or not running (also from a TTY)
+    if test "$argv[1]" = doctor
+        set -l hal $HOME/.config/Halcyon/bin/hal
+        command -q hal; and set hal (command -s hal)
+        $hal doctor $argv[2..-1]
+        return $status
+    end
+
     if contains -- $argv[1] safe-mode profile
         python3 $HOME/.config/Halcyon/scripts/halcyon-fx.py $argv
         return $status
