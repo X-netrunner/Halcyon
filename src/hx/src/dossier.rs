@@ -99,12 +99,9 @@ fn ts(t: &str) -> String {
     }
 }
 
-fn load_cowrie(
-    logs: &str,
-) -> (
-    HashMap<String, Cowrie>,
-    Vec<(String, String, String, String)>,
-) {
+type LoginEvent = (String, String, String, String);
+
+fn load_cowrie(logs: &str) -> (HashMap<String, Cowrie>, Vec<LoginEvent>) {
     let mut agg: HashMap<String, Cowrie> = HashMap::new();
     let mut logins = Vec::new();
     let raw = fs::read(format!("{}/cowrie/cowrie.json", logs)).unwrap_or_default();

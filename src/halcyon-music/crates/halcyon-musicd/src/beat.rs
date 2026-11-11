@@ -220,9 +220,9 @@ impl Analyzer {
             } else {
                 (self.ref_db - 0.12).max(-36.0)
             };
-            for b in 0..BANDS {
-                let level = ((db[b] - (self.ref_db - RANGE_DB)) / RANGE_DB).clamp(0.0, 1.0);
-                frame.bands[b] = (level.powf(1.2) * 255.0).round() as u8;
+            for (band, &d) in frame.bands.iter_mut().zip(db.iter()) {
+                let level = ((d - (self.ref_db - RANGE_DB)) / RANGE_DB).clamp(0.0, 1.0);
+                *band = (level.powf(1.2) * 255.0).round() as u8;
             }
             let bass: f32 = frame.bands[..6].iter().map(|&v| v as f32).sum::<f32>() / 6.0;
             frame.bass = bass.round() as u8;
