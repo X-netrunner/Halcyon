@@ -16,13 +16,18 @@ fn read_i64(path: &Path) -> Option<i64> {
 }
 
 fn read_text(path: &Path) -> String {
-    fs::read_to_string(path).map(|s| s.trim().to_string()).unwrap_or_default()
+    fs::read_to_string(path)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
 }
 
 /// Names of the entries of a /sys/class/<class> directory, sorted like a shell glob would.
 fn sorted_names(dir: &str) -> Vec<String> {
     let mut names: Vec<String> = match fs::read_dir(dir) {
-        Ok(rd) => rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect(),
+        Ok(rd) => rd
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect(),
         Err(_) => Vec::new(),
     };
     names.sort();
@@ -57,7 +62,10 @@ fn kbd_list() -> Vec<String> {
             Some(i) => name[i + "keyboard".len()..].contains("backlight"),
             None => false,
         };
-        if !(name.contains("kbd_backlight") || name.contains("kbd-backlight") || keyboard_then_backlight) {
+        if !(name.contains("kbd_backlight")
+            || name.contains("kbd-backlight")
+            || keyboard_then_backlight)
+        {
             continue;
         }
         let dir = Path::new("/sys/class/leds").join(&name);
@@ -65,7 +73,12 @@ fn kbd_list() -> Vec<String> {
             Some(m) => m,
             None => continue,
         };
-        lines.push(format!("{} {} {}", name, read_text(&dir.join("brightness")), max));
+        lines.push(format!(
+            "{} {} {}",
+            name,
+            read_text(&dir.join("brightness")),
+            max
+        ));
     }
     lines.sort();
     lines.dedup();
@@ -81,7 +94,12 @@ fn write_sysfs(path: &str, val: &str) -> bool {
 
 fn logind_set(class: &str, dev: &str, val: &str) -> bool {
     let user = std::env::var("USER").unwrap_or_default();
-    let mut sess = util::out("loginctl", &["show-user", user.as_str(), "-p", "Display", "--value"]).trim().to_string();
+    let mut sess = util::out(
+        "loginctl",
+        &["show-user", user.as_str(), "-p", "Display", "--value"],
+    )
+    .trim()
+    .to_string();
     if sess.is_empty() {
         sess = String::from("auto");
     }
@@ -114,9 +132,18 @@ pub fn brightness(args: &[String]) -> i32 {
             return 2;
         }
     };
-    let arg = if up { format!("{}%+", step) } else { format!("{}%-", step) };
+    let arg = if up {
+        format!("{}%+", step)
+    } else {
+        format!("{}%-", step)
+    };
 
-    if util::command_exists("brightnessctl") && util::ok("brightnessctl", &["-q", "--min-value=1", "set", arg.as_str()]) {
+    if util::command_exists("brightnessctl")
+        && util::ok(
+            "brightnessctl",
+            &["-q", "--min-value=1", "set", arg.as_str()],
+        )
+    {
         return 0;
     }
 
@@ -168,7 +195,9 @@ pub fn backlight(args: &[String]) -> i32 {
         }
         Some("set") => backlight_set(&args[1..]),
         _ => {
-            eprintln!("usage: hal backlight set <backlight|leds> <device> <raw> | best-screen | kbd");
+            eprintln!(
+                "usage: hal backlight set <backlight|leds> <device> <raw> | best-screen | kbd"
+            );
             2
         }
     }
@@ -192,7 +221,9 @@ fn backlight_set(args: &[String]) -> i32 {
         return 2;
     }
 
-    if util::command_exists("brightnessctl") && util::ok("brightnessctl", &["-q", "-c", class, "-d", dev, "set", val]) {
+    if util::command_exists("brightnessctl")
+        && util::ok("brightnessctl", &["-q", "-c", class, "-d", dev, "set", val])
+    {
         return 0;
     }
     if write_sysfs(&format!("/sys/class/{}/{}/brightness", class, dev), val) {
@@ -258,7 +289,9 @@ pub fn kbd_list_info() -> Vec<(String, i64, i64)> {
 }
 
 pub fn backlight_set_direct(class: &str, dev: &str, val: &str) {
-    if util::command_exists("brightnessctl") && util::ok("brightnessctl", &["-q", "-c", class, "-d", dev, "set", val]) {
+    if util::command_exists("brightnessctl")
+        && util::ok("brightnessctl", &["-q", "-c", class, "-d", dev, "set", val])
+    {
         return;
     }
     if write_sysfs(&format!("/sys/class/{}/{}/brightness", class, dev), val) {
@@ -277,8 +310,16 @@ mod tests {
             let vals: Vec<i64> = (1..=30).map(|i| fade_value(from, to, 400, i, 30)).collect();
             assert_eq!(*vals.last().unwrap(), to);
             let down = from > to;
-            assert!(vals.windows(2).all(|w| if down { w[0] >= w[1] } else { w[0] <= w[1] }), "{vals:?}");
-            assert!(vals.iter().all(|v| *v >= from.min(to) && *v <= from.max(to)), "{vals:?}");
+            assert!(
+                vals.windows(2)
+                    .all(|w| if down { w[0] >= w[1] } else { w[0] <= w[1] }),
+                "{vals:?}"
+            );
+            assert!(
+                vals.iter()
+                    .all(|v| *v >= from.min(to) && *v <= from.max(to)),
+                "{vals:?}"
+            );
         }
     }
 

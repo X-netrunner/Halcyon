@@ -54,9 +54,20 @@ const MIN_CPU_TICKS: u64 = 100;
 const GPU_QUERY_EVERY: u32 = 3;
 
 const PAUSE_APPS: &[&str] = &[
-    "zen-bin", "spotify", "qbittorrent", "telegram-desktop", "code",
+    "zen-bin",
+    "spotify",
+    "qbittorrent",
+    "telegram-desktop",
+    "code",
 ];
-const HEAVY_CLASSES: &[&str] = &["steam_app", "gamescope", "Lutris", "heroic", "Minecraft", "Blender"];
+const HEAVY_CLASSES: &[&str] = &[
+    "steam_app",
+    "gamescope",
+    "Lutris",
+    "heroic",
+    "Minecraft",
+    "Blender",
+];
 
 const GAMEMODE_FLAG: &str = "/dev/shm/halcyon-gamemode";
 const DIM_FLAG: &str = "/dev/shm/halcyon-dim";
@@ -100,7 +111,13 @@ impl PowerMode {
             PowerMode::Battery | PowerMode::Idle => "power-saver",
             PowerMode::ACBalanced => "balanced",
             PowerMode::ACPerformance | PowerMode::Gaming => "performance",
-            PowerMode::Thermal => if ac { THERMAL_PROFILE } else { "power-saver" },
+            PowerMode::Thermal => {
+                if ac {
+                    THERMAL_PROFILE
+                } else {
+                    "power-saver"
+                }
+            }
         }
     }
 }
@@ -140,7 +157,9 @@ fn find_pid(name: &str) -> Option<i32> {
     let mut b = [0u8; 32];
     for e in fs::read_dir("/proc").ok()?.flatten() {
         let fname = e.file_name();
-        let Some(pid) = fname.to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
+        let Some(pid) = fname.to_str().and_then(|s| s.parse::<i32>().ok()) else {
+            continue;
+        };
         if read_trim(e.path().join("comm"), &mut b) == Some(name) {
             return Some(pid);
         }
@@ -153,12 +172,18 @@ fn find_pid(name: &str) -> Option<i32> {
 fn signal_apps(sig: i32) {
     // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let uid = unsafe { libc::getuid() };
-    let Ok(rd) = fs::read_dir("/proc") else { return };
+    let Ok(rd) = fs::read_dir("/proc") else {
+        return;
+    };
     let mut b = [0u8; 32];
     for e in rd.flatten() {
         let fname = e.file_name();
-        let Some(pid) = fname.to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
-        let Some(comm) = read_trim(e.path().join("comm"), &mut b) else { continue };
+        let Some(pid) = fname.to_str().and_then(|s| s.parse::<i32>().ok()) else {
+            continue;
+        };
+        let Some(comm) = read_trim(e.path().join("comm"), &mut b) else {
+            continue;
+        };
         if !PAUSE_APPS.iter().any(|a| comm == &a[..a.len().min(15)]) {
             continue;
         }
@@ -199,8 +224,12 @@ fn next_str<'a>(json: &'a str, pat: &str, pos: &mut usize) -> Option<&'a str> {
         let i = json.get(*pos..)?.find(pat)? + *pos;
         *pos = i + pat.len();
         let rest = json[*pos..].trim_start();
-        let Some(rest) = rest.strip_prefix(':') else { continue };
-        let Some(rest) = rest.trim_start().strip_prefix('"') else { continue };
+        let Some(rest) = rest.strip_prefix(':') else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('"') else {
+            continue;
+        };
         let end = rest.find('"')?;
         return Some(&rest[..end]);
     }
@@ -213,7 +242,10 @@ fn first_str<'a>(json: &'a str, key: &str) -> Option<&'a str> {
 
 fn num_field(obj: &str, key: &str) -> Option<f64> {
     let pat = format!("\"{key}\"");
-    let rest = obj[obj.find(&pat)? + pat.len()..].trim_start().strip_prefix(':')?.trim_start();
+    let rest = obj[obj.find(&pat)? + pat.len()..]
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start();
     let end = rest
         .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
         .unwrap_or(rest.len());
@@ -322,7 +354,13 @@ fn parse_monitor_detail(json: &str) -> Option<(String, String, String, String, f
         .or_else(|| num_field(m, "refreshRate").map(|r| r.round() as u64))
         .unwrap_or(144);
 
-    Some((name.to_string(), format!("{w}x{h}@{max_hz}"), format!("{w}x{h}@60"), format!("{x}x{y}"), scale))
+    Some((
+        name.to_string(),
+        format!("{w}x{h}@{max_hz}"),
+        format!("{w}x{h}@60"),
+        format!("{x}x{y}"),
+        scale,
+    ))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -384,7 +422,8 @@ impl Hypr {
     }
 
     fn heavy_window(&mut self) -> bool {
-        self.query("j/clients").is_some_and(|j| heavy_class_present(&j))
+        self.query("j/clients")
+            .is_some_and(|j| heavy_class_present(&j))
     }
 
     fn fullscreen(&mut self) -> bool {
@@ -395,13 +434,26 @@ impl Hypr {
         // Disabled by default: changing monitor refresh rate triggers a full kernel DRM modeset,
         // which blanks/blacks out the screen for 1-2 seconds every time the system transitions
         // between idle and active modes. Enabled only when explicitly requested via HALCYON_DYNAMIC_REFRESH=1.
-        if std::env::var("HALCYON_DYNAMIC_REFRESH").map(|v| v == "1").unwrap_or(false) {
-            if let Some(cfg) = self.query("j/monitors").and_then(|j| parse_monitor_detail(&j)) {
+        if std::env::var("HALCYON_DYNAMIC_REFRESH")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+        {
+            if let Some(cfg) = self
+                .query("j/monitors")
+                .and_then(|j| parse_monitor_detail(&j))
+            {
                 self.monitor_cfg = Some(cfg);
             }
-            let (name, res_high, res_low, pos, scale) = self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
-                (DEFAULT_MONITOR.to_string(), DEFAULT_RES_HIGH.to_string(), DEFAULT_RES_LOW.to_string(), "0x0".to_string(), 1.0)
-            });
+            let (name, res_high, res_low, pos, scale) =
+                self.monitor_cfg.as_ref().cloned().unwrap_or_else(|| {
+                    (
+                        DEFAULT_MONITOR.to_string(),
+                        DEFAULT_RES_HIGH.to_string(),
+                        DEFAULT_RES_LOW.to_string(),
+                        "0x0".to_string(),
+                        1.0,
+                    )
+                });
             let res = if high { res_high } else { res_low };
             let cmd = format!(
                 "eval hl.monitor({{ output = '{name}', mode = '{res}', position = '{pos}', scale = {scale} }})"
@@ -425,7 +477,9 @@ struct Ac {
 impl Ac {
     fn discover(&mut self) {
         self.files.clear();
-        let Ok(rd) = fs::read_dir("/sys/class/power_supply") else { return };
+        let Ok(rd) = fs::read_dir("/sys/class/power_supply") else {
+            return;
+        };
         let mut b = [0u8; 16];
         for e in rd.flatten() {
             let dir = e.path();
@@ -435,7 +489,9 @@ impl Ac {
                 || name.starts_with("ADP")
                 || name.starts_with("ucsi")
                 || read_trim(dir.join("type"), &mut b).is_some_and(|t| {
-                    t.eq_ignore_ascii_case("Mains") || t.eq_ignore_ascii_case("USB") || t.eq_ignore_ascii_case("USB_PD")
+                    t.eq_ignore_ascii_case("Mains")
+                        || t.eq_ignore_ascii_case("USB")
+                        || t.eq_ignore_ascii_case("USB_PD")
                 });
             if is_ac {
                 let online = dir.join("online");
@@ -481,7 +537,9 @@ impl Temp {
         if let Ok(rd) = fs::read_dir("/sys/class/hwmon") {
             for e in rd.flatten() {
                 let dir = e.path();
-                let Some(name) = read_trim(dir.join("name"), &mut b) else { continue };
+                let Some(name) = read_trim(dir.join("name"), &mut b) else {
+                    continue;
+                };
                 if name == "k10temp" || name == "coretemp" {
                     for t in ["temp1_input", "temp2_input"] {
                         let p = dir.join(t);
@@ -495,11 +553,15 @@ impl Temp {
         }
 
         // 2. thermal zones: a package sensor wins outright, otherwise the hottest of the candidates
-        let Ok(rd) = fs::read_dir("/sys/class/thermal") else { return };
+        let Ok(rd) = fs::read_dir("/sys/class/thermal") else {
+            return;
+        };
         let mut others = Vec::new();
         for e in rd.flatten() {
             let dir = e.path();
-            let Some(t) = read_trim(dir.join("type"), &mut b) else { continue };
+            let Some(t) = read_trim(dir.join("type"), &mut b) else {
+                continue;
+            };
             let preferred = matches!(t, "x86_pkg_temp" | "k10temp" | "Tctl");
             if preferred || t == "acpitz" || t.contains("cpu") {
                 let p = dir.join("temp");
@@ -523,7 +585,9 @@ impl Temp {
             .files
             .iter()
             .filter_map(|p| read_milli_c(p))
-            .fold(None, |acc: Option<f64>, c| Some(acc.map_or(c, |m| m.max(c))));
+            .fold(None, |acc: Option<f64>, c| {
+                Some(acc.map_or(c, |m| m.max(c)))
+            });
         if hottest.is_none() {
             self.files.clear(); // sensor vanished: rediscover next poll
         }
@@ -559,7 +623,9 @@ struct Cpu {
 impl Cpu {
     /// Busy % since the previous accepted sample (no sleeping, deltas across poll intervals).
     fn usage(&mut self) -> f64 {
-        let Some((busy2, total2)) = cpu_snapshot() else { return 0.0 };
+        let Some((busy2, total2)) = cpu_snapshot() else {
+            return 0.0;
+        };
         let Some((busy1, total1)) = self.prev else {
             self.prev = Some((busy2, total2));
             return 0.0;
@@ -587,7 +653,9 @@ fn discover_nvidia_pci() -> (Option<PathBuf>, Vec<PathBuf>) {
                 if ctrl.exists() {
                     control_paths.push(ctrl);
                 }
-                if status_path.is_none() && read_trim(p.join("class"), &mut b).is_some_and(|c| c.starts_with("0x03")) {
+                if status_path.is_none()
+                    && read_trim(p.join("class"), &mut b).is_some_and(|c| c.starts_with("0x03"))
+                {
                     let st = p.join("power/runtime_status");
                     if st.exists() {
                         status_path = Some(st);
@@ -605,19 +673,32 @@ fn dgpu_asleep() -> bool {
     let (status_path, _) = discover_nvidia_pci();
     match status_path {
         Some(st) => read_trim(&st, &mut b).is_some_and(|s| s.starts_with("suspend")),
-        None => !Path::new(DGPU_STATUS).exists() || read_trim(DGPU_STATUS, &mut b).is_none_or(|s| s.starts_with("suspend")),
+        None => {
+            !Path::new(DGPU_STATUS).exists()
+                || read_trim(DGPU_STATUS, &mut b).is_none_or(|s| s.starts_with("suspend"))
+        }
     }
 }
 
 fn query_nvidia() -> f64 {
     Command::new("nvidia-smi")
-        .args(["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next()?.trim().parse().ok())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()?
+                .trim()
+                .parse()
+                .ok()
+        })
         .unwrap_or(0.0)
 }
 
@@ -656,12 +737,17 @@ impl Input {
             let mut b = [0u8; 128];
             for e in rd.flatten() {
                 let fname = e.file_name();
-                let Some(fname) = fname.to_str() else { continue };
+                let Some(fname) = fname.to_str() else {
+                    continue;
+                };
                 if !fname.starts_with("event") {
                     continue;
                 }
                 // same string EVIOCGNAME returns, without opening the device just to ask
-                let Some(name) = read_trim(format!("/sys/class/input/{fname}/device/name"), &mut b) else { continue };
+                let Some(name) = read_trim(format!("/sys/class/input/{fname}/device/name"), &mut b)
+                else {
+                    continue;
+                };
                 let n = name.to_ascii_lowercase();
                 let keyboard = n.contains("keyboard") || n.contains("kbd");
                 let pointer = n.contains("mouse")
@@ -671,7 +757,11 @@ impl Input {
                 if !(keyboard || pointer) {
                     continue;
                 }
-                if let Ok(f) = OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK).open(e.path()) {
+                if let Ok(f) = OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(e.path())
+                {
                     self.devs.push(f);
                 }
             }
@@ -679,7 +769,11 @@ impl Input {
         self.pfds = self
             .devs
             .iter()
-            .map(|f| libc::pollfd { fd: f.as_raw_fd(), events: libc::POLLIN, revents: 0 })
+            .map(|f| libc::pollfd {
+                fd: f.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            })
             .collect();
     }
 
@@ -699,7 +793,8 @@ impl Input {
                 p.revents = 0;
             }
             // SAFETY: pointer and length come from the same live pollfd array.
-            let n = unsafe { libc::poll(self.pfds.as_mut_ptr(), self.pfds.len() as libc::nfds_t, 0) };
+            let n =
+                unsafe { libc::poll(self.pfds.as_mut_ptr(), self.pfds.len() as libc::nfds_t, 0) };
             if n > 0 {
                 for (i, p) in self.pfds.iter().enumerate() {
                     if p.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
@@ -734,12 +829,20 @@ impl Input {
 fn json_int(j: &str) -> Option<i64> {
     if let Some(i) = j.find("\"int\"") {
         let r = j[i + 5..].trim_start().strip_prefix(':')?.trim_start();
-        let end = r.find(|c: char| !(c.is_ascii_digit() || c == '-')).unwrap_or(r.len());
+        let end = r
+            .find(|c: char| !(c.is_ascii_digit() || c == '-'))
+            .unwrap_or(r.len());
         return r[..end].parse().ok();
     }
     let i = j.find("\"bool\"")?;
     let r = j[i + 6..].trim_start().strip_prefix(':')?.trim_start();
-    if r.starts_with("true") { Some(1) } else if r.starts_with("false") { Some(0) } else { None }
+    if r.starts_with("true") {
+        Some(1)
+    } else if r.starts_with("false") {
+        Some(0)
+    } else {
+        None
+    }
 }
 
 struct Daemon {
@@ -770,12 +873,26 @@ impl Daemon {
             state_tmp: format!("{state_path}.tmp"),
             state_path,
             dgpu_mode_file: format!("{home}/.config/Halcyon/gpu-mode"),
-            hypr: Hypr { runtime: runtime.to_string(), path: None, monitor_cfg: None },
+            hypr: Hypr {
+                runtime: runtime.to_string(),
+                path: None,
+                monitor_cfg: None,
+            },
             ac: Ac { files: Vec::new() },
             temp: Temp { files: Vec::new() },
-            cpu: Cpu { prev: cpu_snapshot(), last_pct: 0.0 },
-            gpu: Gpu { phase: 0, last: 0.0 },
-            input: Input { devs: Vec::new(), pfds: Vec::new(), polls: 0 },
+            cpu: Cpu {
+                prev: cpu_snapshot(),
+                last_pct: 0.0,
+            },
+            gpu: Gpu {
+                phase: 0,
+                last: 0.0,
+            },
+            input: Input {
+                devs: Vec::new(),
+                pfds: Vec::new(),
+                polls: 0,
+            },
         }
     }
 
@@ -783,7 +900,9 @@ impl Daemon {
     /// island/scripts/stats.sh) to know Auto is on and what it is doing; a file older than
     /// ~a minute counts as "daemon not running". Removed on clean exit.
     fn write_state(&self, mode: &str, profile: &str) {
-        let epoch = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
         // write + rename so a reader never sees a half-written file
         if fs::write(&self.state_tmp, format!("{mode} {profile} {epoch}\n")).is_ok() {
             let _ = fs::rename(&self.state_tmp, &self.state_path);
@@ -798,7 +917,9 @@ impl Daemon {
         // gamemoded (Steam/Lutris launch options, `gamemoderun`) works under any shell
         let mut b = [0u8; 32];
         let running = match self.gamemoded_pid {
-            Some(pid) if read_trim(format!("/proc/{pid}/comm"), &mut b) == Some("gamemoded") => true,
+            Some(pid) if read_trim(format!("/proc/{pid}/comm"), &mut b) == Some("gamemoded") => {
+                true
+            }
             _ => {
                 self.gamemoded_pid = find_pid("gamemoded");
                 self.gamemoded_pid.is_some()
@@ -816,7 +937,11 @@ impl Daemon {
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
-            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("is active"))
+            .is_ok_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .to_lowercase()
+                    .contains("is active")
+            })
     }
 
     fn determine_mode(&mut self, ac: bool) -> PowerMode {
@@ -824,7 +949,11 @@ impl Daemon {
 
         // Thermal guard: hold throttled while hot, with hysteresis
         if let Some(t) = self.temp.read() {
-            let limit = if gaming { GAMING_THROTTLE_TEMP } else { THERMAL_THROTTLE_TEMP };
+            let limit = if gaming {
+                GAMING_THROTTLE_TEMP
+            } else {
+                THERMAL_THROTTLE_TEMP
+            };
             let holding = self.mode == Some(PowerMode::Thermal) && t > THERMAL_RECOVER_TEMP;
             if holding || t > limit {
                 return PowerMode::Thermal;
@@ -896,7 +1025,11 @@ impl Daemon {
     }
 
     fn gpu_runtime_pm(&self, allow_sleep: bool) {
-        let val = if allow_sleep && !self.dgpu_forced() { "auto" } else { "on" };
+        let val = if allow_sleep && !self.dgpu_forced() {
+            "auto"
+        } else {
+            "on"
+        };
         let (_, control_paths) = discover_nvidia_pci();
         if !control_paths.is_empty() {
             for ctrl in control_paths {
@@ -917,7 +1050,10 @@ impl Daemon {
     }
 
     fn option_int(&mut self, name: &str) -> i64 {
-        self.hypr.query(&format!("j/getoption {name}")).and_then(|j| json_int(&j)).unwrap_or(-1)
+        self.hypr
+            .query(&format!("j/getoption {name}"))
+            .and_then(|j| json_int(&j))
+            .unwrap_or(-1)
     }
 
     fn gaming_tweaks(&mut self, on: bool) {
@@ -948,8 +1084,13 @@ impl Daemon {
     /// Put animations / blur / shadow back the way they were before gaming mode (not simply "on").
     fn restore_effects(&mut self) {
         let saved = self.gaming_saved_path();
-        let Ok(raw) = fs::read_to_string(&saved) else { return };
-        let v: Vec<i64> = raw.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        let Ok(raw) = fs::read_to_string(&saved) else {
+            return;
+        };
+        let v: Vec<i64> = raw
+            .split_whitespace()
+            .filter_map(|x| x.parse().ok())
+            .collect();
         if v.len() == 3 && v.iter().all(|&x| x == 0 || x == 1) {
             let b = |x: i64| if x == 1 { "true" } else { "false" };
             let cmd = format!(
@@ -1066,8 +1207,16 @@ fn main() {
 
     let sfd = termination_signalfd();
     let mut pfds = [
-        libc::pollfd { fd: listener.as_raw_fd(), events: libc::POLLIN, revents: 0 },
-        libc::pollfd { fd: sfd, events: libc::POLLIN, revents: 0 }, // a negative fd is ignored by poll()
+        libc::pollfd {
+            fd: listener.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: sfd,
+            events: libc::POLLIN,
+            revents: 0,
+        }, // a negative fd is ignored by poll()
     ];
 
     println!("Power Manager Daemon started...");
@@ -1149,23 +1298,36 @@ mod tests {
 
     #[test]
     fn heavy_classes_match_by_substring() {
-        assert!(heavy_class_present(r#"[{"class": "zen"},{"class": "steam_app_1245620"}]"#));
-        assert!(!heavy_class_present(r#"[{"class": "zen","initialClass": "Blender"}]"#));
+        assert!(heavy_class_present(
+            r#"[{"class": "zen"},{"class": "steam_app_1245620"}]"#
+        ));
+        assert!(!heavy_class_present(
+            r#"[{"class": "zen","initialClass": "Blender"}]"#
+        ));
         assert!(!heavy_class_present("[]"));
     }
 
     #[test]
     fn getoption_int_parses() {
-        assert_eq!(json_int(r#"{"option": "animations:enabled", "int": 1, "set": true}"#), Some(1));
+        assert_eq!(
+            json_int(r#"{"option": "animations:enabled", "int": 1, "set": true}"#),
+            Some(1)
+        );
         assert_eq!(json_int(r#"{"option":"x","int":0}"#), Some(0));
         assert_eq!(json_int(r#"{"option": "x", "float": 1.0}"#), None);
-        assert_eq!(json_int(r#"{"option": "animations:enabled", "bool": true, "set": true}"#), Some(1));
+        assert_eq!(
+            json_int(r#"{"option": "animations:enabled", "bool": true, "set": true}"#),
+            Some(1)
+        );
         assert_eq!(json_int(r#"{"option":"x","bool":false}"#), Some(0));
     }
 
     #[test]
     fn cpu_line_parses() {
-        assert_eq!(parse_cpu_line("cpu  100 20 30 800 10 0 0 0 0 0"), Some((150, 960)));
+        assert_eq!(
+            parse_cpu_line("cpu  100 20 30 800 10 0 0 0 0 0"),
+            Some((150, 960))
+        );
         assert_eq!(parse_cpu_line("cpu  1 2"), None);
     }
 

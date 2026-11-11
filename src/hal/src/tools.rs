@@ -33,13 +33,25 @@ fn is_tty() -> bool {
 /// Run a program, feeding `input` on stdin; (exit code, stdout). A program that cannot start is (127, "").
 fn sh(cmd: &str, args: &[&str], input: Option<&str>) -> (i32, String) {
     let mut c = Command::new(cmd);
-    c.args(args).stdout(Stdio::piped()).stderr(Stdio::null()).stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() });
-    let Ok(mut child) = c.spawn() else { return (127, String::new()) };
+    c.args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        });
+    let Ok(mut child) = c.spawn() else {
+        return (127, String::new());
+    };
     if let (Some(text), Some(mut si)) = (input, child.stdin.take()) {
         let _ = si.write_all(text.as_bytes());
     }
     match child.wait_with_output() {
-        Ok(o) => (o.status.code().unwrap_or(1), String::from_utf8_lossy(&o.stdout).into_owned()),
+        Ok(o) => (
+            o.status.code().unwrap_or(1),
+            String::from_utf8_lossy(&o.stdout).into_owned(),
+        ),
         Err(_) => (127, String::new()),
     }
 }
@@ -48,7 +60,14 @@ fn need(cmd: &str, hint: &str) -> Result<(), Fail> {
     if command_exists(cmd) {
         Ok(())
     } else {
-        fail(format!("{cmd} is not installed{}", if hint.is_empty() { String::new() } else { format!(" ({hint})") }))
+        fail(format!(
+            "{cmd} is not installed{}",
+            if hint.is_empty() {
+                String::new()
+            } else {
+                format!(" ({hint})")
+            }
+        ))
     }
 }
 
@@ -65,7 +84,13 @@ fn dispatch(lua: &str, legacy: &[&str]) -> Result<(), Fail> {
             return Ok(());
         }
     }
-    fail(format!("Hyprland refused {lua}: {}", out.lines().next().map(str::to_string).unwrap_or_else(|| format!("exit {rc}"))))
+    fail(format!(
+        "Hyprland refused {lua}: {}",
+        out.lines()
+            .next()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("exit {rc}"))
+    ))
 }
 
 fn copy(text: &str) -> Result<(), Fail> {
@@ -107,7 +132,12 @@ fn pick(options: &[String], prompt: &str) -> Result<Option<usize>, Fail> {
     let lines = options.len().min(12).to_string();
     let p1 = format!("{prompt}> ");
     let menus: [(&str, Vec<&str>); 3] = [
-        ("fuzzel", vec!["--dmenu", "--prompt", &p1, "--width", "50", "--lines", &lines]),
+        (
+            "fuzzel",
+            vec![
+                "--dmenu", "--prompt", &p1, "--width", "50", "--lines", &lines,
+            ],
+        ),
         ("wofi", vec!["--dmenu", "--prompt", prompt]),
         ("rofi", vec!["-dmenu", "-p", prompt]),
     ];
@@ -129,11 +159,17 @@ fn runtime_dir() -> PathBuf {
 }
 
 fn state_dir() -> PathBuf {
-    std::env::var("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(home()).join(".local/state")).join("island")
+    std::env::var("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(home()).join(".local/state"))
+        .join("island")
 }
 
 fn conf_dir() -> PathBuf {
-    std::env::var("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(home()).join(".config")).join("Halcyon")
+    std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(home()).join(".config"))
+        .join("Halcyon")
 }
 
 // ------------------------------------------------------------------------------------------------ colour picker
@@ -142,7 +178,11 @@ fn crc32(data: &[u8]) -> u32 {
     for &b in data {
         c ^= b as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
     }
     !c
@@ -151,7 +191,11 @@ fn crc32(data: &[u8]) -> u32 {
 /// zlib framing around "stored" deflate blocks: no compression needed for a 12 KB swatch.
 fn zlib_stored(data: &[u8]) -> Vec<u8> {
     let mut o = vec![0x78, 0x01];
-    let chunks: Vec<&[u8]> = if data.is_empty() { vec![&[][..]] } else { data.chunks(65535).collect() };
+    let chunks: Vec<&[u8]> = if data.is_empty() {
+        vec![&[][..]]
+    } else {
+        data.chunks(65535).collect()
+    };
     for (i, ch) in chunks.iter().enumerate() {
         o.push(if i + 1 == chunks.len() { 1 } else { 0 });
         let n = ch.len() as u16;
@@ -201,7 +245,10 @@ pub fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
     (0..b.len()).find_map(|i| {
         let h = s.get(i..i + 6)?;
         let before_ok = i == 0 || !b[i - 1].is_ascii_hexdigit();
-        let after_ok = b.get(i + 6).map(|c| !c.is_ascii_alphanumeric()).unwrap_or(true);
+        let after_ok = b
+            .get(i + 6)
+            .map(|c| !c.is_ascii_alphanumeric())
+            .unwrap_or(true);
         if before_ok && after_ok && h.bytes().all(|c| c.is_ascii_hexdigit()) {
             let v = |k: usize| u8::from_str_radix(&h[k..k + 2], 16).ok();
             Some((v(0)?, v(2)?, v(4)?))
@@ -212,14 +259,22 @@ pub fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
 }
 
 pub fn rgb_to_hsl(rgb: (u8, u8, u8)) -> (i32, i32, i32) {
-    let (r, g, b) = (rgb.0 as f64 / 255.0, rgb.1 as f64 / 255.0, rgb.2 as f64 / 255.0);
+    let (r, g, b) = (
+        rgb.0 as f64 / 255.0,
+        rgb.1 as f64 / 255.0,
+        rgb.2 as f64 / 255.0,
+    );
     let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
     let l = (mx + mn) / 2.0;
     if mx == mn {
         return (0, 0, (l * 100.0).round() as i32);
     }
     let d = mx - mn;
-    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    let s = if l > 0.5 {
+        d / (2.0 - mx - mn)
+    } else {
+        d / (mx + mn)
+    };
     let h = if mx == r {
         (g - b) / d + if g < b { 6.0 } else { 0.0 }
     } else if mx == g {
@@ -227,7 +282,11 @@ pub fn rgb_to_hsl(rgb: (u8, u8, u8)) -> (i32, i32, i32) {
     } else {
         (r - g) / d + 4.0
     };
-    ((h * 60.0).round() as i32 % 360, (s * 100.0).round() as i32, (l * 100.0).round() as i32)
+    (
+        (h * 60.0).round() as i32 % 360,
+        (s * 100.0).round() as i32,
+        (l * 100.0).round() as i32,
+    )
 }
 
 pub fn format_color(rgb: (u8, u8, u8), fmt: &str) -> String {
@@ -249,7 +308,11 @@ fn pixel_with_grim() -> Result<Option<(u8, u8, u8)>, Fail> {
     if rc != 0 || pt.trim().is_empty() {
         return Ok(None);
     }
-    let o = Command::new("grim").args(["-g", pt.trim(), "-t", "ppm", "-"]).stdin(Stdio::null()).stderr(Stdio::null()).output();
+    let o = Command::new("grim")
+        .args(["-g", pt.trim(), "-t", "ppm", "-"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
     match o {
         Ok(o) if o.status.success() && o.stdout.starts_with(b"P6") && o.stdout.len() >= 3 => {
             let n = o.stdout.len();
@@ -260,7 +323,10 @@ fn pixel_with_grim() -> Result<Option<(u8, u8, u8)>, Fail> {
 }
 
 fn colorpick(args: &[String]) -> R {
-    let fmt = args.first().map(|s| s.to_ascii_lowercase()).unwrap_or_else(|| "hex".into());
+    let fmt = args
+        .first()
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_else(|| "hex".into());
     if !["hex", "rgb", "hsl"].contains(&fmt.as_str()) {
         return fail("colorpick: format is hex, rgb or hsl");
     }
@@ -282,19 +348,41 @@ fn colorpick(args: &[String]) -> R {
     let text = format_color(rgb, &fmt);
     copy(&text)?;
     let png = runtime_dir().join("halcyon-swatch.png");
-    let wrote = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&png).and_then(|mut f| f.write_all(&swatch_png(rgb, 64))).is_ok();
+    let wrote = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&png)
+        .and_then(|mut f| f.write_all(&swatch_png(rgb, 64)))
+        .is_ok();
     if wrote && command_exists("systemd-run") {
         let p = png.to_string_lossy();
-        sh("systemd-run", &["--user", "--quiet", "--on-active=60s", "rm", "-f", &p], None);
+        sh(
+            "systemd-run",
+            &["--user", "--quiet", "--on-active=60s", "rm", "-f", &p],
+            None,
+        );
     }
     let st = state_dir();
     let _ = fs::create_dir_all(&st);
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(st.join("colors.log")) {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(st.join("colors.log"))
+    {
         let _ = writeln!(f, "{secs} {}", format_color(rgb, "hex"));
     }
     let icon = png.to_string_lossy().to_string();
-    done("Colour copied", &text, if wrote { Some(icon.as_str()) } else { None });
+    done(
+        "Colour copied",
+        &text,
+        if wrote { Some(icon.as_str()) } else { None },
+    );
     Ok(0)
 }
 
@@ -305,13 +393,20 @@ fn measure() -> R {
     if rc != 0 || out.trim().is_empty() {
         return Ok(1);
     }
-    let v: Vec<i64> = out.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+    let v: Vec<i64> = out
+        .split_whitespace()
+        .filter_map(|x| x.parse().ok())
+        .collect();
     if v.len() != 4 {
         return fail("could not read the size");
     }
     let text = format!("{}x{}", v[0], v[1]);
     copy(&text)?;
-    done("Size copied", &format!("{text} px  ·  at {},{}", v[2], v[3]), None);
+    done(
+        "Size copied",
+        &format!("{text} px  ·  at {},{}", v[2], v[3]),
+        None,
+    );
     Ok(0)
 }
 
@@ -344,13 +439,30 @@ fn zoom(args: &[String]) -> R {
         return fail("zoom: in | out | reset | toggle");
     }
     need("hyprctl", "")?;
-    let cur = json::parse(&sh("hyprctl", &["getoption", "cursor:zoom_factor", "-j"], None).1).and_then(|j| j.num("float")).unwrap_or(1.0);
+    let cur = json::parse(&sh("hyprctl", &["getoption", "cursor:zoom_factor", "-j"], None).1)
+        .and_then(|j| j.num("float"))
+        .unwrap_or(1.0);
     let z = zoom_next(cur, sub);
-    let (rc, out) = sh("hyprctl", &["eval", &format!("hl.config({{ cursor = {{ zoom_factor = {z} }} }})")], None);
+    let (rc, out) = sh(
+        "hyprctl",
+        &[
+            "eval",
+            &format!("hl.config({{ cursor = {{ zoom_factor = {z} }} }})"),
+        ],
+        None,
+    );
     if out.trim() != "ok" {
-        let (rc2, out2) = sh("hyprctl", &["keyword", "cursor:zoom_factor", &z.to_string()], None);
+        let (rc2, out2) = sh(
+            "hyprctl",
+            &["keyword", "cursor:zoom_factor", &z.to_string()],
+            None,
+        );
         if out2.trim() != "ok" {
-            let why = if out2.trim().is_empty() { format!("exit {}", if rc2 != 0 { rc2 } else { rc }) } else { out2.trim().to_string() };
+            let why = if out2.trim().is_empty() {
+                format!("exit {}", if rc2 != 0 { rc2 } else { rc })
+            } else {
+                out2.trim().to_string()
+            };
             return fail(format!("Hyprland did not take the zoom: {why}"));
         }
     }
@@ -361,7 +473,18 @@ fn zoom(args: &[String]) -> R {
 fn load_snippets() -> Vec<(String, String)> {
     let text = fs::read_to_string(conf_dir().join("snippets.json")).unwrap_or_default();
     let mut v: Vec<(String, String)> = json::parse(&text)
-        .map(|j| j.entries().iter().filter_map(|(k, x)| if let Json::Str(s) = x { Some((k.clone(), s.clone())) } else { None }).collect())
+        .map(|j| {
+            j.entries()
+                .iter()
+                .filter_map(|(k, x)| {
+                    if let Json::Str(s) = x {
+                        Some((k.clone(), s.clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
         .unwrap_or_default();
     v.sort_by(|a, b| a.0.cmp(&b.0));
     v
@@ -383,7 +506,11 @@ pub fn expand(text: &str, date: &dyn Fn(&str) -> String, clip: &dyn Fn() -> Stri
 }
 
 fn expand_now(text: &str) -> String {
-    expand(text, &|f| sh("date", &[f], None).1.trim().to_string(), &clipboard_text)
+    expand(
+        text,
+        &|f| sh("date", &[f], None).1.trim().to_string(),
+        &clipboard_text,
+    )
 }
 
 /// Type it into the focused window with wtype; without wtype, copy it and press Ctrl+V.
@@ -395,7 +522,10 @@ fn type_text(text: &str) -> Result<(), Fail> {
     copy(text)?;
     if command_exists("hyprctl") {
         std::thread::sleep(std::time::Duration::from_millis(150));
-        dispatch("hl.dsp.send_shortcut({ mods = \"CTRL\", key = \"V\" })", &["sendshortcut", "CTRL,V,activewindow"])?;
+        dispatch(
+            "hl.dsp.send_shortcut({ mods = \"CTRL\", key = \"V\" })",
+            &["sendshortcut", "CTRL,V,activewindow"],
+        )?;
     }
     Ok(())
 }
@@ -407,7 +537,10 @@ fn first_line(s: &str, n: usize) -> String {
 fn snippets(args: &[String]) -> R {
     let sub = args.first().map(String::as_str).unwrap_or("pick");
     let d = load_snippets();
-    let get = |name: Option<&String>| name.and_then(|n| d.iter().find(|(k, _)| k == n)).map(|(_, v)| v.clone());
+    let get = |name: Option<&String>| {
+        name.and_then(|n| d.iter().find(|(k, _)| k == n))
+            .map(|(_, v)| v.clone())
+    };
     match sub {
         "list" => {
             for (k, v) in &d {
@@ -498,20 +631,33 @@ pub fn window_order(mut v: Vec<Win>) -> Vec<Win> {
 }
 
 pub fn window_label(c: &Win) -> String {
-    let ws = if c.ws_name.is_empty() { c.ws_id.to_string() } else { c.ws_name.clone() };
+    let ws = if c.ws_name.is_empty() {
+        c.ws_id.to_string()
+    } else {
+        c.ws_name.clone()
+    };
     let t = c.title.trim();
-    let title: String = (if t.is_empty() { c.class.as_str() } else { t }).chars().take(60).collect();
+    let title: String = (if t.is_empty() { c.class.as_str() } else { t })
+        .chars()
+        .take(60)
+        .collect();
     format!("{}  ·  {title}  [{ws}]", c.class)
 }
 
 fn clients() -> Result<Vec<Win>, Fail> {
     need("hyprctl", "")?;
-    parse_clients(&sh("hyprctl", &["clients", "-j"], None).1).map_or_else(|| fail("hyprctl gave no window list (is Hyprland running?)"), Ok)
+    parse_clients(&sh("hyprctl", &["clients", "-j"], None).1).map_or_else(
+        || fail("hyprctl gave no window list (is Hyprland running?)"),
+        Ok,
+    )
 }
 
 fn focus(c: &Win) -> Result<(), Fail> {
     let a = format!("address:{}", c.address);
-    dispatch(&format!("hl.dsp.focus({{ window = \"{a}\" }})"), &["focuswindow", &a])?;
+    dispatch(
+        &format!("hl.dsp.focus({{ window = \"{a}\" }})"),
+        &["focuswindow", &a],
+    )?;
     dispatch("hl.dsp.window.bring_to_top()", &["bringactivetotop"])
 }
 
@@ -534,9 +680,15 @@ fn windows(args: &[String]) -> R {
             if order.is_empty() {
                 return Ok(1);
             }
-            let active = json::parse(&sh("hyprctl", &["activewindow", "-j"], None).1).and_then(|j| j.str("address").map(str::to_string)).unwrap_or_default();
+            let active = json::parse(&sh("hyprctl", &["activewindow", "-j"], None).1)
+                .and_then(|j| j.str("address").map(str::to_string))
+                .unwrap_or_default();
             let n = order.len() as i64;
-            let idx = order.iter().position(|c| c.address == active).map(|i| i as i64).unwrap_or(-1);
+            let idx = order
+                .iter()
+                .position(|c| c.address == active)
+                .map(|i| i as i64)
+                .unwrap_or(-1);
             let step = if sub == "next" { 1 } else { -1 };
             focus(&order[((idx + step).rem_euclid(n)) as usize])?;
             Ok(0)
@@ -581,7 +733,12 @@ pub fn run(args: &[String]) -> i32 {
             if is_tty() || !command_exists("notify-send") {
                 eprintln!("halcyon {tool}: {msg}");
             } else {
-                notify(&format!("Halcyon: {tool}"), &msg, Some("dialog-warning"), 5000);
+                notify(
+                    &format!("Halcyon: {tool}"),
+                    &msg,
+                    Some("dialog-warning"),
+                    5000,
+                );
             }
             1
         }
@@ -621,9 +778,21 @@ mod tests {
 
     #[test]
     fn snippet_placeholders() {
-        let d = |f: &str| if f.contains('Y') { "2026-10-22".to_string() } else { "18:30".to_string() };
-        assert_eq!(expand("on {date} at {time}: {clip}", &d, &|| "X".to_string()), "on 2026-10-22 at 18:30: X");
-        assert_eq!(expand("plain", &d, &|| panic!("clipboard read without {{clip}}")), "plain");
+        let d = |f: &str| {
+            if f.contains('Y') {
+                "2026-10-22".to_string()
+            } else {
+                "18:30".to_string()
+            }
+        };
+        assert_eq!(
+            expand("on {date} at {time}: {clip}", &d, &|| "X".to_string()),
+            "on 2026-10-22 at 18:30: X"
+        );
+        assert_eq!(
+            expand("plain", &d, &|| panic!("clipboard read without {{clip}}")),
+            "plain"
+        );
     }
 
     #[test]

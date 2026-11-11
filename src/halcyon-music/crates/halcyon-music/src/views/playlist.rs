@@ -40,7 +40,10 @@ pub fn visible_range(scroll_y: f32, viewport_h: f32, len: usize) -> (usize, usiz
     let first_visible = ((scroll_y - HEADER_H) / ROW_H).floor().max(0.0) as usize;
     let on_screen = (viewport_h.max(ROW_H) / ROW_H).ceil() as usize + 1;
     let start = first_visible.saturating_sub(BUFFER).min(len);
-    let end = first_visible.saturating_add(on_screen).saturating_add(BUFFER).min(len);
+    let end = first_visible
+        .saturating_add(on_screen)
+        .saturating_add(BUFFER)
+        .min(len);
     (start, end.max(start))
 }
 
@@ -103,8 +106,17 @@ fn pulse(shimmer: f32) -> f32 {
 fn block<'a, M: 'a>(w: f32, h: f32, r: f32, palette: HalcyonPalette, alpha: f32) -> Element<'a, M> {
     container(Space::new(w, h))
         .style(move |_t| container::Style {
-            background: Some(iced::Color { a: alpha, ..palette.surface_variant }.into()),
-            border: iced::Border { radius: r.into(), ..Default::default() },
+            background: Some(
+                iced::Color {
+                    a: alpha,
+                    ..palette.surface_variant
+                }
+                .into(),
+            ),
+            border: iced::Border {
+                radius: r.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into()
@@ -130,9 +142,15 @@ fn skeleton_row<'a, M: 'a>(palette: HalcyonPalette, alpha: f32) -> Element<'a, M
     .into()
 }
 
-fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, impl Fn(usize) -> M, impl Fn(usize) -> M>) -> Element<'a, M> {
+fn header<'a, M: Clone + 'a>(
+    p: &Page<'a>,
+    a: &Actions<M, impl Fn(usize) -> M, impl Fn(usize) -> M, impl Fn(usize) -> M>,
+) -> Element<'a, M> {
     let pal = p.palette;
-    let count = p.total.max(p.playlist.total_tracks as usize).max(p.tracks.len());
+    let count = p
+        .total
+        .max(p.playlist.total_tracks as usize)
+        .max(p.tracks.len());
     let count_label = match (p.phase.clone(), count) {
         (Phase::Loading, 0) => "Loading songs…".to_string(),
         (_, 1) => "1 song".to_string(),
@@ -157,9 +175,24 @@ fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, i
     let mut actions = row![
         crate::views::play_orb(Icon::Play, 56.0, pal, can_play.then(|| a.play_all.clone())),
         Space::with_width(space::SM),
-        crate::views::icon_action(Icon::Shuffle, "Shuffle", pal, can_play.then(|| a.shuffle.clone())),
-        crate::views::icon_action(Icon::Queue, "Add to queue", pal, can_play.then(|| a.add_to_queue.clone())),
-        crate::views::icon_action(Icon::Plus, "Play next", pal, can_play.then(|| a.play_next.clone())),
+        crate::views::icon_action(
+            Icon::Shuffle,
+            "Shuffle",
+            pal,
+            can_play.then(|| a.shuffle.clone())
+        ),
+        crate::views::icon_action(
+            Icon::Queue,
+            "Add to queue",
+            pal,
+            can_play.then(|| a.add_to_queue.clone())
+        ),
+        crate::views::icon_action(
+            Icon::Plus,
+            "Play next",
+            pal,
+            can_play.then(|| a.play_next.clone())
+        ),
     ]
     .spacing(space::XS)
     .align_y(Alignment::Center);
@@ -173,18 +206,33 @@ fn header<'a, M: Clone + 'a>(p: &Page<'a>, a: &Actions<M, impl Fn(usize) -> M, i
     }
     actions = actions.push(Space::with_width(Length::Fill));
     if let Some(del) = a.delete.clone() {
-        actions = actions.push(crate::views::icon_action(Icon::Trash, "Delete playlist", pal, Some(del)));
+        actions = actions.push(crate::views::icon_action(
+            Icon::Trash,
+            "Delete playlist",
+            pal,
+            Some(del),
+        ));
     }
 
-    let kicker = if p.playlist.id.starts_with("mix:") { "MADE FOR YOU BY HALCYON" } else { "PLAYLIST" };
+    let kicker = if p.playlist.id.starts_with("mix:") {
+        "MADE FOR YOU BY HALCYON"
+    } else {
+        "PLAYLIST"
+    };
     let info = column![
         text(kicker).size(type_size::CAPTION).color(pal.accent),
         Space::with_height(space::XS),
-        text(crate::views::ellipsize(&p.playlist.name, 60)).size(32).color(pal.text),
+        text(crate::views::ellipsize(&p.playlist.name, 60))
+            .size(32)
+            .color(pal.text),
         Space::with_height(space::SM),
-        text(format!("{} · {}", crate::views::ellipsize(&p.playlist.owner, 40), count_label))
-            .size(type_size::BODY)
-            .color(pal.text_muted),
+        text(format!(
+            "{} · {}",
+            crate::views::ellipsize(&p.playlist.owner, 40),
+            count_label
+        ))
+        .size(type_size::BODY)
+        .color(pal.text_muted),
         Space::with_height(space::XL),
         actions,
     ];
@@ -218,7 +266,9 @@ fn table_head<'a, M: 'a>(pal: HalcyonPalette) -> Element<'a, M> {
             Space::with_width(52),
             cap("TITLE").width(Length::FillPortion(5)),
             cap("ALBUM").width(Length::FillPortion(3)),
-            container(icon(Icon::Clock, 13.0, pal.text_muted)).width(56).center_x(56),
+            container(icon(Icon::Clock, 13.0, pal.text_muted))
+                .width(56)
+                .center_x(56),
             Space::with_width(32.0 + space::SM),
         ]
         .align_y(Alignment::Center)
@@ -227,7 +277,11 @@ fn table_head<'a, M: 'a>(pal: HalcyonPalette) -> Element<'a, M> {
     .height(32)
     .center_y(32)
     .style(move |_t| container::Style {
-        border: iced::Border { color: pal.border, width: 0.5, radius: 0.0.into() },
+        border: iced::Border {
+            color: pal.border,
+            width: 0.5,
+            radius: 0.0.into(),
+        },
         ..Default::default()
     })
     .into()
@@ -256,25 +310,47 @@ fn song_row<'a, M: Clone + 'a>(
     .style(move |_t, status| button::Style {
         background: Some(
             if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                iced::Color { a: 0.18, ..pal.accent }
+                iced::Color {
+                    a: 0.18,
+                    ..pal.accent
+                }
             } else {
                 iced::Color::TRANSPARENT
             }
             .into(),
         ),
-        border: iced::Border { radius: 26.0.into(), ..Default::default() },
+        border: iced::Border {
+            radius: 26.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
 
     let content = row![
-        container(text(format!("{}", idx + 1)).size(type_size::SMALL + 1.0).color(if selected { pal.accent } else { pal.text_muted }))
-            .width(44)
-            .center_x(44),
-        crate::art::cover(t.art_url.as_deref(), ArtSize::Small, 40.0, radius::SM, Icon::Music, &t.title, pal),
+        container(
+            text(format!("{}", idx + 1))
+                .size(type_size::SMALL + 1.0)
+                .color(if selected { pal.accent } else { pal.text_muted })
+        )
+        .width(44)
+        .center_x(44),
+        crate::art::cover(
+            t.art_url.as_deref(),
+            ArtSize::Small,
+            40.0,
+            radius::SM,
+            Icon::Music,
+            &t.title,
+            pal
+        ),
         Space::with_width(space::MD),
         column![
-            text(crate::views::ellipsize(&t.title, 60)).size(type_size::BODY).color(if selected { pal.accent } else { pal.text }),
-            text(crate::views::ellipsize(&t.artist, 50)).size(type_size::SMALL).color(pal.text_muted),
+            text(crate::views::ellipsize(&t.title, 60))
+                .size(type_size::BODY)
+                .color(if selected { pal.accent } else { pal.text }),
+            text(crate::views::ellipsize(&t.artist, 50))
+                .size(type_size::SMALL)
+                .color(pal.text_muted),
         ]
         .spacing(2)
         .width(Length::FillPortion(5)),
@@ -282,9 +358,13 @@ fn song_row<'a, M: Clone + 'a>(
             .size(type_size::SMALL + 1.0)
             .color(pal.text_muted)
             .width(Length::FillPortion(3)),
-        container(text(format_duration(t.duration_ms)).size(type_size::SMALL + 1.0).color(pal.text_muted))
-            .width(56)
-            .align_x(iced::alignment::Horizontal::Right),
+        container(
+            text(format_duration(t.duration_ms))
+                .size(type_size::SMALL + 1.0)
+                .color(pal.text_muted)
+        )
+        .width(56)
+        .align_x(iced::alignment::Horizontal::Right),
         Space::with_width(space::SM),
         play_btn,
     ]
@@ -301,16 +381,25 @@ fn song_row<'a, M: Clone + 'a>(
             button::Style {
                 background: Some(
                     if selected {
-                        iced::Color { a: 0.7, ..pal.surface_variant }
+                        iced::Color {
+                            a: 0.7,
+                            ..pal.surface_variant
+                        }
                     } else if hovered {
-                        iced::Color { a: 0.5, ..pal.surface_variant }
+                        iced::Color {
+                            a: 0.5,
+                            ..pal.surface_variant
+                        }
                     } else {
                         iced::Color::TRANSPARENT
                     }
                     .into(),
                 ),
                 text_color: pal.text,
-                border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: radius::SM.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         });
@@ -360,7 +449,12 @@ pub fn view<'a, M: Clone + 'a>(
     let pal = p.palette;
     let alpha = pulse(p.shimmer);
 
-    let mut page = column![header(&p, &a), Space::with_height(space::XL), table_head(pal)].width(Length::Fill);
+    let mut page = column![
+        header(&p, &a),
+        Space::with_height(space::XL),
+        table_head(pal)
+    ]
+    .width(Length::Fill);
 
     match p.phase {
         Phase::Loading => {
@@ -400,7 +494,9 @@ pub fn view<'a, M: Clone + 'a>(
                     ));
                 }
             }
-            page = page.push(Space::with_height(p.tracks.len().saturating_sub(end) as f32 * ROW_H));
+            page = page.push(Space::with_height(
+                p.tracks.len().saturating_sub(end) as f32 * ROW_H,
+            ));
             if p.more_failed {
                 page = page.push(notice(
                     "Couldn't load more songs",
@@ -416,7 +512,9 @@ pub fn view<'a, M: Clone + 'a>(
         }
     }
 
-    container(page.padding([space::XL, space::XL])).width(Length::Fill).into()
+    container(page.padding([space::XL, space::XL]))
+        .width(Length::Fill)
+        .into()
 }
 
 #[cfg(test)]
@@ -425,7 +523,15 @@ mod tests {
 
     fn tracks(n: usize) -> Vec<Track> {
         (0..n)
-            .map(|i| Track::simple(format!("id{i}"), format!("t{i}"), "a".into(), "b".into(), 1000))
+            .map(|i| {
+                Track::simple(
+                    format!("id{i}"),
+                    format!("t{i}"),
+                    "a".into(),
+                    "b".into(),
+                    1000,
+                )
+            })
             .collect()
     }
 

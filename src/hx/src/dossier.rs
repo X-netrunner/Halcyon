@@ -38,7 +38,15 @@ struct Cowrie {
 }
 
 fn clean(s: &str) -> String {
-    s.chars().map(|c| if (c as u32) < 0x20 || c as u32 == 0x7f { '?' } else { c }).collect()
+    s.chars()
+        .map(|c| {
+            if (c as u32) < 0x20 || c as u32 == 0x7f {
+                '?'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 /// "2026-10-03T18:04:11.123Z" -> "10-03 23:34" in local time; anything odd falls back to the first 16 chars.
@@ -65,7 +73,10 @@ fn ts(t: &str) -> String {
     let days = era * 146097 + doe - 719468;
     let mut secs = days * 86400 + h * 3600 + mi * 60 + s;
     // an explicit +hh:mm offset (cowrie writes Z, but be tolerant)
-    if let Some(off) = t.get(19..).and_then(|r| r.rfind(['+', '-']).map(|i| &r[i..])) {
+    if let Some(off) = t
+        .get(19..)
+        .and_then(|r| r.rfind(['+', '-']).map(|i| &r[i..]))
+    {
         if off.len() >= 6 {
             if let (Ok(oh), Ok(om)) = (off[1..3].parse::<i64>(), off[4..6].parse::<i64>()) {
                 let o = oh * 3600 + om * 60;
@@ -78,11 +89,22 @@ fn ts(t: &str) -> String {
         let tt = secs as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();
         libc::localtime_r(&tt, &mut tm);
-        format!("{:02}-{:02} {:02}:{:02}", tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min)
+        format!(
+            "{:02}-{:02} {:02}:{:02}",
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min
+        )
     }
 }
 
-fn load_cowrie(logs: &str) -> (HashMap<String, Cowrie>, Vec<(String, String, String, String)>) {
+fn load_cowrie(
+    logs: &str,
+) -> (
+    HashMap<String, Cowrie>,
+    Vec<(String, String, String, String)>,
+) {
     let mut agg: HashMap<String, Cowrie> = HashMap::new();
     let mut logins = Vec::new();
     let raw = fs::read(format!("{}/cowrie/cowrie.json", logs)).unwrap_or_default();
@@ -101,7 +123,10 @@ fn load_cowrie(logs: &str) -> (HashMap<String, Cowrie>, Vec<(String, String, Str
         match ev.as_str() {
             "cowrie.session.connect" => d.sessions += 1,
             "cowrie.login.success" => {
-                let (u, p) = (s("username").unwrap_or_default(), s("password").unwrap_or_default());
+                let (u, p) = (
+                    s("username").unwrap_or_default(),
+                    s("password").unwrap_or_default(),
+                );
                 d.logins.add(&format!("{}:{}", u, p));
                 logins.push((ip.clone(), u, p, t.clone()));
             }
@@ -125,7 +150,8 @@ fn load_recon(logs: &str) -> HashMap<String, Counter> {
     let mut agg: HashMap<String, Counter> = HashMap::new();
     let any_ip = Regex::new(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b").expect("valid regex");
     let head = Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").expect("valid regex");
-    let from_ip = Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").expect("valid regex");
+    let from_ip = Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b")
+        .expect("valid regex");
     let raw = fs::read(format!("{}/recon-attempts.log", logs)).unwrap_or_default();
     for line in String::from_utf8_lossy(&raw).lines() {
         if !line.contains("[ALERT]") {
@@ -156,7 +182,13 @@ pub fn run(target: Option<&str>) {
         println!("  Total Cowrie SSH Sessions : {}", c.sessions);
         println!("  Last Cowrie Hit           : {}", ts(&c.last));
         if !c.logins.is_empty() {
-            let creds: Vec<String> = c.logins.most_common().into_iter().take(10).map(|(k, _)| k).collect();
+            let creds: Vec<String> = c
+                .logins
+                .most_common()
+                .into_iter()
+                .take(10)
+                .map(|(k, _)| k)
+                .collect();
             println!("  Captured SSH Credentials  : {}", clean(&creds.join(", ")));
         }
         if !c.cmds.is_empty() {
@@ -174,7 +206,8 @@ pub fn run(target: Option<&str>) {
         let scan_log = format!("{}/attacker-scans.log", logs);
         if std::path::Path::new(&scan_log).is_file() {
             println!("\n  Counter-Scan Intel        :");
-            let content = String::from_utf8_lossy(&fs::read(&scan_log).unwrap_or_default()).into_owned();
+            let content =
+                String::from_utf8_lossy(&fs::read(&scan_log).unwrap_or_default()).into_owned();
             if content.contains(ip) {
                 for b in content.split("===== COUNTER-SCAN") {
                     if b.contains(ip) {
@@ -194,8 +227,18 @@ pub fn run(target: Option<&str>) {
     let sess: u64 = cow.values().map(|d| d.sessions).sum();
     let logn: u64 = cow.values().map(|d| d.logins.total()).sum();
     let cmds: usize = cow.values().map(|d| d.cmds.len()).sum();
-    println!("  sessions {}   logins captured {}   commands {}", sess, logn, cmds);
-    for (ip, u, p, t) in login_events.iter().rev().take(6).collect::<Vec<_>>().into_iter().rev() {
+    println!(
+        "  sessions {}   logins captured {}   commands {}",
+        sess, logn, cmds
+    );
+    for (ip, u, p, t) in login_events
+        .iter()
+        .rev()
+        .take(6)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
         println!("    {}:{}  @ {}  {}", u, p, ip, ts(t));
     }
 
@@ -212,14 +255,30 @@ pub fn run(target: Option<&str>) {
         .map(|ip| {
             let c = cow.get(ip).unwrap_or(&empty_c);
             let r = recon.get(ip).unwrap_or(&empty_r);
-            (ip, c.sessions + c.logins.total() + c.cmds.len() as u64 + r.total(), c, r)
+            (
+                ip,
+                c.sessions + c.logins.total() + c.cmds.len() as u64 + r.total(),
+                c,
+                r,
+            )
         })
         .collect();
     rows.sort_by(|a, b| b.1.cmp(&a.1));
     for (ip, total, c, r) in rows {
-        println!("\n  {}   activity: {}   (last cowrie hit {})", ip, total, ts(&c.last));
+        println!(
+            "\n  {}   activity: {}   (last cowrie hit {})",
+            ip,
+            total,
+            ts(&c.last)
+        );
         if !c.logins.is_empty() {
-            let creds: Vec<String> = c.logins.most_common().into_iter().take(5).map(|(k, _)| k).collect();
+            let creds: Vec<String> = c
+                .logins
+                .most_common()
+                .into_iter()
+                .take(5)
+                .map(|(k, _)| k)
+                .collect();
             println!("    SSH creds:  {}", clean(&creds.join(", ")));
         }
         if !c.cmds.is_empty() {

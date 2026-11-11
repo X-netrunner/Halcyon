@@ -9,7 +9,10 @@ pub enum V {
 impl V {
     pub fn get(&self, key: &str) -> Option<&V> {
         match self {
-            V::M(m) => m.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
+            V::M(m) => m
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v),
             V::S(_) => None,
         }
     }
@@ -120,15 +123,30 @@ mod tests {
         let v = parse("\"AppState\"\n{\n\t\"appid\"\t\t\"1145360\"\n\t\"name\"\t\t\"Hades\"\n\t\"installdir\" \"Hades\"\n\t\"LastPlayed\"\t\"1700000000\"\n // c\n\t\"UserConfig\" { \"language\" \"english\" }\n}");
         let name = v.get("AppState").and_then(|a| a.str("name"));
         assert_eq!(name, Some("Hades"));
-        assert_eq!(v.get("appstate").and_then(|x| x.get("userconfig")).and_then(|x| x.str("language")), Some("english"));
+        assert_eq!(
+            v.get("appstate")
+                .and_then(|x| x.get("userconfig"))
+                .and_then(|x| x.str("language")),
+            Some("english")
+        );
     }
 
     #[test]
     fn libraries() {
         let v = parse("\"libraryfolders\"\n{\n\"0\"\n{\n\"path\"\t\"/home/u/.local/share/Steam\"\n\"apps\"\n{\n\"228980\"\t\"1\"\n}\n}\n\"1\"\n{\n\"path\"\t\"/mnt/games/SteamLibrary\"\n}\n}");
         let lf = v.get("libraryfolders");
-        let paths: Vec<&str> = lf.map(|l| l.entries().iter().filter_map(|(_, f)| f.str("path")).collect()).unwrap_or_default();
-        assert_eq!(paths, vec!["/home/u/.local/share/Steam", "/mnt/games/SteamLibrary"]);
+        let paths: Vec<&str> = lf
+            .map(|l| {
+                l.entries()
+                    .iter()
+                    .filter_map(|(_, f)| f.str("path"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(
+            paths,
+            vec!["/home/u/.local/share/Steam", "/mnt/games/SteamLibrary"]
+        );
     }
 
     #[test]

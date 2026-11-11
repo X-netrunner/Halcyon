@@ -79,31 +79,46 @@ pub fn view<'a, M: Clone + 'static>(
             border: iced::Border {
                 radius: radius::MD.into(),
                 width: 1.0,
-                color: if matches!(status, text_input::Status::Focused) { palette.accent } else { alpha(palette.border, 0.30) },
+                color: if matches!(status, text_input::Status::Focused) {
+                    palette.accent
+                } else {
+                    alpha(palette.border, 0.30)
+                },
             },
             icon: palette.text_muted,
             placeholder: palette.text_muted,
             value: palette.text,
-            selection: iced::Color { a: 0.3, ..palette.accent },
+            selection: iced::Color {
+                a: 0.3,
+                ..palette.accent
+            },
         });
 
     let go_label = if working { "Working…" } else { "Make a mix" };
-    let go = button(text(go_label).size(type_size::BODY).color(if can_send { palette.text } else { palette.text_muted }))
-        .on_press_maybe(can_send.then(|| on_submit.clone()))
-        .padding([space::SM, space::LG])
-        .style(move |_t, status| button::Style {
-            background: Some(
-                if can_send && matches!(status, button::Status::Hovered | button::Status::Pressed) {
-                    alpha(palette.accent, 0.20)
-                } else {
-                    alpha(palette.accent, 0.08)
-                }
-                .into(),
-            ),
-            text_color: palette.text,
-            border: iced::Border { color: alpha(palette.accent, 0.30), width: 1.0, radius: radius::MD.into() },
-            ..Default::default()
-        });
+    let go = button(text(go_label).size(type_size::BODY).color(if can_send {
+        palette.text
+    } else {
+        palette.text_muted
+    }))
+    .on_press_maybe(can_send.then(|| on_submit.clone()))
+    .padding([space::SM, space::LG])
+    .style(move |_t, status| button::Style {
+        background: Some(
+            if can_send && matches!(status, button::Status::Hovered | button::Status::Pressed) {
+                alpha(palette.accent, 0.20)
+            } else {
+                alpha(palette.accent, 0.08)
+            }
+            .into(),
+        ),
+        text_color: palette.text,
+        border: iced::Border {
+            color: alpha(palette.accent, 0.30),
+            width: 1.0,
+            radius: radius::MD.into(),
+        },
+        ..Default::default()
+    });
 
     let input_row = row![input, Space::with_width(space::SM), go].align_y(Alignment::Center);
 
@@ -111,17 +126,27 @@ pub fn view<'a, M: Clone + 'static>(
     let (status_text, status_color): (String, iced::Color) = match phase {
         Phase::Working(step) => (step_label(step).to_string(), palette.text_muted),
         Phase::Failed(reason) => (reason.clone(), palette.danger),
-        Phase::Idle if !enabled => ("Turn on Smart suggestions in Settings to describe a mood.".to_string(), palette.text_muted),
-        Phase::Idle => ("Try “rainy night coding, no lyrics” or “upbeat 90s workout”.".to_string(), palette.text_muted),
+        Phase::Idle if !enabled => (
+            "Turn on Smart suggestions in Settings to describe a mood.".to_string(),
+            palette.text_muted,
+        ),
+        Phase::Idle => (
+            "Try “rainy night coding, no lyrics” or “upbeat 90s workout”.".to_string(),
+            palette.text_muted,
+        ),
     };
     let settings_btn: Element<'a, M> = if enabled {
         Space::with_width(0).into()
     } else {
-        button(text("Open Settings").size(type_size::SMALL).color(palette.accent))
-            .on_press(on_settings)
-            .padding([space::XS, space::SM])
-            .style(crate::views::ghost(palette))
-            .into()
+        button(
+            text("Open Settings")
+                .size(type_size::SMALL)
+                .color(palette.accent),
+        )
+        .on_press(on_settings)
+        .padding([space::XS, space::SM])
+        .style(crate::views::ghost(palette))
+        .into()
     };
     let status_row = row![
         container(text(status_text).size(type_size::SMALL).color(status_color)).width(Length::Fill),
@@ -130,7 +155,14 @@ pub fn view<'a, M: Clone + 'static>(
     .align_y(Alignment::Start)
     .height(Length::Fixed(STATUS_H));
 
-    let mut card = column![header, Space::with_height(10), input_row, Space::with_height(6), status_row].spacing(0);
+    let mut card = column![
+        header,
+        Space::with_height(10),
+        input_row,
+        Space::with_height(6),
+        status_row
+    ]
+    .spacing(0);
 
     if let Some(mix) = mix {
         let uris: Vec<String> = mix.tracks.iter().map(|t| t.uri.clone()).collect();
@@ -148,22 +180,34 @@ pub fn view<'a, M: Clone + 'static>(
         }
         let preview = format!("{} songs · {}", mix.tracks.len(), artists.join(", "));
 
-        let title_btn = button(text(super::ellipsize(&mix.title, 32)).size(type_size::BODY).color(palette.text))
-            .padding(0)
-            .on_press(on_open(mix.id.clone()))
-            .style(|_t, _s| button::Style::default());
+        let title_btn = button(
+            text(super::ellipsize(&mix.title, 32))
+                .size(type_size::BODY)
+                .color(palette.text),
+        )
+        .padding(0)
+        .on_press(on_open(mix.id.clone()))
+        .style(|_t, _s| button::Style::default());
         let info = column![
             title_btn,
-            text(super::ellipsize(&mix.description, 70)).size(type_size::SMALL).color(palette.text_muted),
-            text(super::ellipsize(&preview, 60)).size(type_size::CAPTION).color(alpha(palette.text_muted, 0.85)),
+            text(super::ellipsize(&mix.description, 70))
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
+            text(super::ellipsize(&preview, 60))
+                .size(type_size::CAPTION)
+                .color(alpha(palette.text_muted, 0.85)),
         ]
         .spacing(3)
         .width(Length::Fill);
 
-        let clear_btn = button(text("Clear").size(type_size::SMALL).color(palette.text_muted))
-            .on_press(on_clear)
-            .padding([space::XS, space::SM])
-            .style(crate::views::ghost(palette));
+        let clear_btn = button(
+            text("Clear")
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
+        )
+        .on_press(on_clear)
+        .padding([space::XS, space::SM])
+        .style(crate::views::ghost(palette));
         let save_btn = button(
             container(icon(Icon::Plus, 14.0, palette.text))
                 .width(30)
@@ -177,22 +221,40 @@ pub fn view<'a, M: Clone + 'static>(
             let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
                 background: Some(alpha(palette.text, if hot { 0.16 } else { 0.08 }).into()),
-                border: iced::Border { color: alpha(palette.text, 0.18), width: 1.0, radius: 15.0.into() },
+                border: iced::Border {
+                    color: alpha(palette.text, 0.18),
+                    width: 1.0,
+                    radius: 15.0.into(),
+                },
                 ..Default::default()
             }
         });
-        let play_btn = crate::views::play_orb(Icon::Play, 34.0, palette, Some(on_play(tracks, mix.title.clone())));
+        let play_btn = crate::views::play_orb(
+            Icon::Play,
+            34.0,
+            palette,
+            Some(on_play(tracks, mix.title.clone())),
+        );
 
         let result = container(
-            row![info, Space::with_width(space::MD), clear_btn, save_btn, play_btn]
-                .spacing(6)
-                .align_y(Alignment::Center),
+            row![
+                info,
+                Space::with_width(space::MD),
+                clear_btn,
+                save_btn,
+                play_btn
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
         )
         .padding(space::MD)
         .width(Length::Fill)
         .style(move |_t| container::Style {
             background: Some(alpha(palette.surface, 0.55).into()),
-            border: iced::Border { radius: 24.0.into(), ..Default::default() },
+            border: iced::Border {
+                radius: 24.0.into(),
+                ..Default::default()
+            },
             ..Default::default()
         });
         card = card.push(Space::with_height(space::SM)).push(result);

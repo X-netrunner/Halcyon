@@ -19,7 +19,11 @@ pub fn has_art(g: &Game) -> bool {
 }
 
 fn ext_of(url: &str) -> &'static str {
-    let path = url.split(['?', '#']).next().unwrap_or(url).to_ascii_lowercase();
+    let path = url
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(url)
+        .to_ascii_lowercase();
     if path.ends_with(".png") {
         "png"
     } else if path.ends_with(".webp") {
@@ -62,8 +66,12 @@ fn steam_urls(appid: &str) -> Vec<String> {
         return v;
     }
     for f in ["library_600x900.jpg", "header.jpg"] {
-        v.push(format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/{f}"));
-        v.push(format!("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/{f}"));
+        v.push(format!(
+            "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/{f}"
+        ));
+        v.push(format!(
+            "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/{f}"
+        ));
     }
     v
 }
@@ -89,14 +97,27 @@ fn gog_url(id: &str) -> Option<String> {
 /// SteamGridDB: search by name, then the first portrait grid of the first match.
 fn sgdb_url(name: &str, key: &str) -> Option<String> {
     let hdr = format!("Authorization: Bearer {key}");
-    let s = curl_run(&format!("https://www.steamgriddb.com/api/v2/search/autocomplete/{}", url_encode(name)), Some(hdr.as_str()), None)?;
+    let s = curl_run(
+        &format!(
+            "https://www.steamgriddb.com/api/v2/search/autocomplete/{}",
+            url_encode(name)
+        ),
+        Some(hdr.as_str()),
+        None,
+    )?;
     let j = json::parse(&s)?;
     let first = j.get("data")?.items().first()?;
     let gid = match first.get("id")? {
         Json::Num(n) => format!("{}", *n as u64),
         _ => return None,
     };
-    let g = curl_run(&format!("https://www.steamgriddb.com/api/v2/grids/game/{gid}?dimensions=600x900&types=static"), Some(hdr.as_str()), None)?;
+    let g = curl_run(
+        &format!(
+            "https://www.steamgriddb.com/api/v2/grids/game/{gid}?dimensions=600x900&types=static"
+        ),
+        Some(hdr.as_str()),
+        None,
+    )?;
     let gj = json::parse(&g)?;
     let url = gj.get("data")?.items().first()?.str("url")?;
     if url.starts_with("https://") {
@@ -114,7 +135,10 @@ pub struct Ctx {
 
 impl Ctx {
     pub fn new() -> Ctx {
-        Ctx { key: Conf::load().get("steamgriddb_key").map(|s| s.to_string()), epic: None }
+        Ctx {
+            key: Conf::load().get("steamgriddb_key").map(|s| s.to_string()),
+            epic: None,
+        }
     }
     pub fn has_key(&self) -> bool {
         self.key.is_some()

@@ -180,8 +180,11 @@ impl ArtFetcher {
     async fn download(&self, url: &str) -> Result<Vec<u8>, ArtError> {
         // The client has connect + total timeouts; the outer timeout is a
         // second line of defence so a stalled body can never hold a permit.
-        match tokio::time::timeout(TOTAL_TIMEOUT + Duration::from_secs(2), self.download_inner(url))
-            .await
+        match tokio::time::timeout(
+            TOTAL_TIMEOUT + Duration::from_secs(2),
+            self.download_inner(url),
+        )
+        .await
         {
             Ok(r) => r,
             Err(_) => Err(ArtError::Network("timed out".into())),
@@ -204,7 +207,11 @@ impl ArtFetcher {
                 return Err(ArtError::TooLarge(MAX_ART_BYTES));
             }
         }
-        let mut body: Vec<u8> = Vec::with_capacity(resp.content_length().unwrap_or(64 * 1024).min(MAX_ART_BYTES as u64) as usize);
+        let mut body: Vec<u8> = Vec::with_capacity(
+            resp.content_length()
+                .unwrap_or(64 * 1024)
+                .min(MAX_ART_BYTES as u64) as usize,
+        );
         while let Some(chunk) = resp
             .chunk()
             .await
@@ -285,7 +292,10 @@ pub fn is_acceptable_url(raw: &str) -> bool {
     };
     match parsed.scheme() {
         "https" => parsed.host_str().is_some(),
-        "http" => matches!(parsed.host_str(), Some("127.0.0.1") | Some("localhost") | Some("[::1]")),
+        "http" => matches!(
+            parsed.host_str(),
+            Some("127.0.0.1") | Some("localhost") | Some("[::1]")
+        ),
         _ => false,
     }
 }

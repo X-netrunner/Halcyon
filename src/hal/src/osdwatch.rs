@@ -48,7 +48,11 @@ fn find_kbd() -> Option<(PathBuf, i64)> {
 }
 
 fn read_val(p: &Path) -> Option<i64> {
-    fs::read_to_string(p.join("brightness")).ok()?.trim().parse().ok()
+    fs::read_to_string(p.join("brightness"))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 pub fn run() -> i32 {
@@ -80,7 +84,10 @@ pub fn run() -> i32 {
                 if b != lb {
                     if lb != -1 && quiet == 0 && bmax > 0 {
                         let pct = (b * 100) / bmax;
-                        if writeln!(out, "{{\"k\":\"bright\",\"p\":{}}}", pct).and_then(|_| out.flush()).is_err() {
+                        if writeln!(out, "{{\"k\":\"bright\",\"p\":{}}}", pct)
+                            .and_then(|_| out.flush())
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -95,7 +102,10 @@ pub fn run() -> i32 {
                 if k != lk {
                     if lk != -1 && quiet == 0 && kmax > 0 {
                         let pct = (k * 100) / kmax;
-                        if writeln!(out, "{{\"k\":\"kbd\",\"p\":{}}}", pct).and_then(|_| out.flush()).is_err() {
+                        if writeln!(out, "{{\"k\":\"kbd\",\"p\":{}}}", pct)
+                            .and_then(|_| out.flush())
+                            .is_err()
+                        {
                             break;
                         }
                     }

@@ -60,7 +60,10 @@ fn scan_proc() -> Vec<DiscoveredProc> {
 }
 
 fn run_mem() -> i32 {
-    println!("{:<22} {:>6} {:>9} {:>9}", "process", "pid", "RSS MB", "PSS MB");
+    println!(
+        "{:<22} {:>6} {:>9} {:>9}",
+        "process", "pid", "RSS MB", "PSS MB"
+    );
     let mut total_rss = 0u64;
     let mut total_pss = 0u64;
 
@@ -88,7 +91,8 @@ fn run_mem() -> i32 {
 
     for p in &all_procs {
         if p.comm == "quickshell" || p.comm == "qs" {
-            let sub = p.cmdline
+            let sub = p
+                .cmdline
                 .split("quickshell/")
                 .nth(1)
                 .and_then(|s| s.split_whitespace().next())
@@ -130,7 +134,10 @@ fn run_mem() -> i32 {
         }
     }
 
-    println!("{:<22} {:>6} {:>9} {:>9}", "TOTAL", "", total_rss, total_pss);
+    println!(
+        "{:<22} {:>6} {:>9} {:>9}",
+        "TOTAL", "", total_rss, total_pss
+    );
     0
 }
 
@@ -167,7 +174,11 @@ fn classify_mapping(name: &str) -> &'static str {
         "gpu drivers (libraries)"
     } else if name.contains("libQt6") || name.contains("/qt6/") || name.contains("qml") {
         "Qt libraries and QML plugins"
-    } else if name.ends_with(".ttf") || name.ends_with(".otf") || name.ends_with(".ttc") || name.contains("fonts") {
+    } else if name.ends_with(".ttf")
+        || name.ends_with(".otf")
+        || name.ends_with(".ttc")
+        || name.contains("fonts")
+    {
         "fonts"
     } else if name.contains(".so") {
         "other libraries"
@@ -187,7 +198,11 @@ fn run_mem_where(args: &[String]) -> i32 {
         Some(p) => p,
         None => {
             let out = crate::util::out("pgrep", &["-x", "quickshell"]);
-            match out.lines().next().and_then(|s| s.trim().parse::<u32>().ok()) {
+            match out
+                .lines()
+                .next()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+            {
                 Some(p) => p,
                 None => {
                     eprintln!("no quickshell process found (pass a pid)");

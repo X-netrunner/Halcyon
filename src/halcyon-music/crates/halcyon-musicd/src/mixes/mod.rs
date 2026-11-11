@@ -24,7 +24,10 @@ pub mod store;
 
 use crate::reco::bandit::fnv64;
 use crate::taste::artist_key;
-use clock::{date_string, last_weekday_on_or_before, local_day, local_hour, next_weekday_after, to_unix, weekday, weekday_name};
+use clock::{
+    date_string, last_weekday_on_or_before, local_day, local_hour, next_weekday_after, to_unix,
+    weekday, weekday_name,
+};
 use halcyon_music_core::state::Track;
 
 /// Most Daily Mixes (one per taste cluster).
@@ -57,8 +60,14 @@ pub enum MixKind {
 }
 
 impl MixKind {
-    pub const ALL: [MixKind; 6] =
-        [MixKind::DailyMix, MixKind::DiscoverWeekly, MixKind::ReleaseRadar, MixKind::OnRepeat, MixKind::RepeatRewind, MixKind::Daylist];
+    pub const ALL: [MixKind; 6] = [
+        MixKind::DailyMix,
+        MixKind::DiscoverWeekly,
+        MixKind::ReleaseRadar,
+        MixKind::OnRepeat,
+        MixKind::RepeatRewind,
+        MixKind::Daylist,
+    ];
 
     /// The wire name (`MixMeta::kind`).
     pub fn name(self) -> &'static str {
@@ -123,7 +132,9 @@ pub fn mix_id(kind: MixKind, slot: usize) -> String {
 pub fn parse_mix_id(id: &str) -> Option<(MixKind, usize)> {
     if let Some(n) = id.strip_prefix("daily-mix-") {
         let slot: usize = n.parse().ok()?;
-        return (1..=MAX_DAILY_MIXES).contains(&slot).then_some((MixKind::DailyMix, slot));
+        return (1..=MAX_DAILY_MIXES)
+            .contains(&slot)
+            .then_some((MixKind::DailyMix, slot));
     }
     match id {
         "discover-weekly" => Some((MixKind::DiscoverWeekly, 0)),
@@ -144,9 +155,18 @@ pub fn period_key(kind: MixKind, now: u64, tz: i64) -> String {
     let day = local_day(now, tz);
     match kind {
         MixKind::DailyMix | MixKind::OnRepeat => format!("d:{}", date_string(day)),
-        MixKind::DiscoverWeekly => format!("w:{}", date_string(last_weekday_on_or_before(day, DISCOVER_WEEKDAY))),
-        MixKind::ReleaseRadar => format!("w:{}", date_string(last_weekday_on_or_before(day, RELEASE_WEEKDAY))),
-        MixKind::RepeatRewind => format!("w:{}", date_string(last_weekday_on_or_before(day, REWIND_WEEKDAY))),
+        MixKind::DiscoverWeekly => format!(
+            "w:{}",
+            date_string(last_weekday_on_or_before(day, DISCOVER_WEEKDAY))
+        ),
+        MixKind::ReleaseRadar => format!(
+            "w:{}",
+            date_string(last_weekday_on_or_before(day, RELEASE_WEEKDAY))
+        ),
+        MixKind::RepeatRewind => format!(
+            "w:{}",
+            date_string(last_weekday_on_or_before(day, REWIND_WEEKDAY))
+        ),
         MixKind::Daylist => {
             let (d, slot) = daylist_slot(now, tz);
             format!("dl:{}#{slot}", date_string(d))
@@ -225,8 +245,16 @@ pub fn daily_mix_title(slot: usize, label: &str) -> String {
 /// `Tuesday late-night synthwave`. Without a tag: `Tuesday late-night mix`.
 pub fn daylist_title(now: u64, tz: i64, tag: Option<&str>) -> String {
     let day = local_day(now, tz);
-    let word = tag.map(str::trim).filter(|t| !t.is_empty()).unwrap_or("mix");
-    format!("{} {} {}", weekday_name(weekday(day)), day_part(local_hour(now, tz)), word)
+    let word = tag
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or("mix");
+    format!(
+        "{} {} {}",
+        weekday_name(weekday(day)),
+        day_part(local_hour(now, tz)),
+        word
+    )
 }
 
 /// `A`, `A and B`, `A, B and C`.
@@ -247,7 +275,10 @@ pub fn lead_artists(tracks: &[Track], top_keys: &[String], n: usize) -> Vec<Stri
         if t.artist.trim().is_empty() || seen.iter().any(|(_, _, a)| artist_key(a) == key) {
             continue;
         }
-        let rank = top_keys.iter().position(|k| *k == key).unwrap_or(usize::MAX);
+        let rank = top_keys
+            .iter()
+            .position(|k| *k == key)
+            .unwrap_or(usize::MAX);
         seen.push((rank, pos, t.artist.clone()));
     }
     seen.sort_by_key(|(rank, pos, _)| (*rank, *pos));
@@ -261,7 +292,9 @@ pub fn mix_reason(kind: MixKind, leads: &[String], label: &str) -> String {
     let label = label.trim();
     match kind {
         MixKind::DailyMix => match (label.is_empty(), who.is_empty()) {
-            (false, false) => format!("Your {label} listening: {who} and more, with a few new ones"),
+            (false, false) => {
+                format!("Your {label} listening: {who} and more, with a few new ones")
+            }
             (false, true) => format!("Your {label} listening, with a few new ones"),
             (true, false) => format!("Because you've been playing {who}, with a few new ones"),
             (true, true) => "Songs you know, with a few new ones".to_string(),
@@ -335,7 +368,13 @@ mod tests {
     const D: u64 = 86_400;
 
     fn track(artist: &str, art: Option<&str>) -> Track {
-        let mut t = Track::simple(format!("id-{artist}"), "Song".into(), artist.into(), "Album".into(), 1000);
+        let mut t = Track::simple(
+            format!("id-{artist}"),
+            "Song".into(),
+            artist.into(),
+            "Album".into(),
+            1000,
+        );
         t.art_url = art.map(str::to_string);
         t
     }
@@ -346,7 +385,13 @@ mod tests {
         assert_eq!(parse_mix_id("daily-mix-3"), Some((MixKind::DailyMix, 3)));
         assert_eq!(parse_mix_id("daily-mix-0"), None);
         assert_eq!(parse_mix_id("daily-mix-9"), None);
-        for k in [MixKind::DiscoverWeekly, MixKind::ReleaseRadar, MixKind::OnRepeat, MixKind::RepeatRewind, MixKind::Daylist] {
+        for k in [
+            MixKind::DiscoverWeekly,
+            MixKind::ReleaseRadar,
+            MixKind::OnRepeat,
+            MixKind::RepeatRewind,
+            MixKind::Daylist,
+        ] {
             assert_eq!(parse_mix_id(&mix_id(k, 0)).map(|x| x.0), Some(k));
         }
         assert_eq!(parse_mix_id("liked-songs"), None);
@@ -359,11 +404,24 @@ mod tests {
         let sun_before = period_key(MixKind::DiscoverWeekly, MON - H, 0);
         assert_ne!(mon, sun_before, "Monday starts a new list");
         for d in 0..7u64 {
-            assert_eq!(period_key(MixKind::DiscoverWeekly, MON + d * D + 3 * H, 0), mon, "day {d} of the week");
+            assert_eq!(
+                period_key(MixKind::DiscoverWeekly, MON + d * D + 3 * H, 0),
+                mon,
+                "day {d} of the week"
+            );
         }
-        assert_ne!(period_key(MixKind::DiscoverWeekly, MON + 7 * D, 0), mon, "the next Monday");
+        assert_ne!(
+            period_key(MixKind::DiscoverWeekly, MON + 7 * D, 0),
+            mon,
+            "the next Monday"
+        );
         assert!(!is_due(MixKind::DiscoverWeekly, Some(&mon), MON + 5 * D, 0));
-        assert!(is_due(MixKind::DiscoverWeekly, Some(&mon), MON + 7 * D + H, 0));
+        assert!(is_due(
+            MixKind::DiscoverWeekly,
+            Some(&mon),
+            MON + 7 * D + H,
+            0
+        ));
         assert!(is_due(MixKind::DiscoverWeekly, None, MON, 0));
     }
 
@@ -374,8 +432,16 @@ mod tests {
         let sun = period_key(MixKind::ReleaseRadar, MON + 6 * D, 0);
         assert_ne!(thu, fri);
         assert_eq!(fri, sun);
-        assert_eq!(period_key(MixKind::ReleaseRadar, MON + 10 * D + 23 * H, 0), fri, "through next Thursday");
-        assert_ne!(period_key(MixKind::ReleaseRadar, MON + 11 * D, 0), fri, "next Friday");
+        assert_eq!(
+            period_key(MixKind::ReleaseRadar, MON + 10 * D + 23 * H, 0),
+            fri,
+            "through next Thursday"
+        );
+        assert_ne!(
+            period_key(MixKind::ReleaseRadar, MON + 11 * D, 0),
+            fri,
+            "next Friday"
+        );
     }
 
     #[test]
@@ -385,12 +451,18 @@ mod tests {
         // 18:29 UTC is 23:59 in India, 18:30 UTC is already the next day there.
         assert_eq!(period_key(MixKind::DailyMix, MON + 18 * H + 29 * 60, tz), a);
         assert_ne!(period_key(MixKind::DailyMix, MON + 18 * H + 30 * 60, tz), a);
-        assert_eq!(next_refresh_at(MixKind::DailyMix, MON + 10 * H, tz), MON + 18 * H + 30 * 60);
+        assert_eq!(
+            next_refresh_at(MixKind::DailyMix, MON + 10 * H, tz),
+            MON + 18 * H + 30 * 60
+        );
     }
 
     #[test]
     fn daylist_changes_three_times_a_day() {
-        let keys: Vec<String> = [3u64, 6, 11, 12, 18, 19, 23].iter().map(|h| period_key(MixKind::Daylist, MON + h * H, 0)).collect();
+        let keys: Vec<String> = [3u64, 6, 11, 12, 18, 19, 23]
+            .iter()
+            .map(|h| period_key(MixKind::Daylist, MON + h * H, 0))
+            .collect();
         // 03:00 is the evening slot of Sunday; 06:00 and 11:00 are the morning slot.
         assert!(keys[0].ends_with("#2") && keys[0].contains("2026-11-08"));
         assert_eq!(keys[1], keys[2]);
@@ -399,10 +471,23 @@ mod tests {
         assert_ne!(keys[4], keys[5], "19:00 starts the evening slot");
         assert_eq!(keys[5], keys[6]);
         let distinct: std::collections::BTreeSet<&String> = keys.iter().collect();
-        assert_eq!(distinct.len(), 4, "three slots in the day plus the tail of last night");
-        assert_eq!(next_refresh_at(MixKind::Daylist, MON + 6 * H, 0), MON + 12 * H);
-        assert_eq!(next_refresh_at(MixKind::Daylist, MON + 20 * H, 0), MON + D + 5 * H);
-        assert_eq!(next_refresh_at(MixKind::Daylist, MON + 2 * H, 0), MON + 5 * H);
+        assert_eq!(
+            distinct.len(),
+            4,
+            "three slots in the day plus the tail of last night"
+        );
+        assert_eq!(
+            next_refresh_at(MixKind::Daylist, MON + 6 * H, 0),
+            MON + 12 * H
+        );
+        assert_eq!(
+            next_refresh_at(MixKind::Daylist, MON + 20 * H, 0),
+            MON + D + 5 * H
+        );
+        assert_eq!(
+            next_refresh_at(MixKind::Daylist, MON + 2 * H, 0),
+            MON + 5 * H
+        );
     }
 
     #[test]
@@ -411,18 +496,32 @@ mod tests {
             for start in [MON + H, MON + 4 * D + 13 * H, MON + 6 * D + 23 * H] {
                 let at = next_refresh_at(kind, start, 0);
                 assert!(at > start, "{kind:?} next refresh is in the future");
-                assert_ne!(period_key(kind, at, 0), period_key(kind, start, 0), "{kind:?} changes exactly then");
-                assert_eq!(period_key(kind, at - 1, 0), period_key(kind, start, 0), "{kind:?} not a second sooner");
+                assert_ne!(
+                    period_key(kind, at, 0),
+                    period_key(kind, start, 0),
+                    "{kind:?} changes exactly then"
+                );
+                assert_eq!(
+                    period_key(kind, at - 1, 0),
+                    period_key(kind, start, 0),
+                    "{kind:?} not a second sooner"
+                );
             }
         }
     }
 
     #[test]
     fn titles_follow_the_examples() {
-        assert_eq!(daily_mix_title(2, "lo-fi, chillhop"), "Daily Mix 2: lo-fi, chillhop");
+        assert_eq!(
+            daily_mix_title(2, "lo-fi, chillhop"),
+            "Daily Mix 2: lo-fi, chillhop"
+        );
         assert_eq!(daily_mix_title(1, "  "), "Daily Mix 1");
         // Tuesday 2026-11-10 at 23:30.
-        assert_eq!(daylist_title(MON + D + 23 * H + 1800, 0, Some("synthwave")), "Tuesday late-night synthwave");
+        assert_eq!(
+            daylist_title(MON + D + 23 * H + 1800, 0, Some("synthwave")),
+            "Tuesday late-night synthwave"
+        );
         assert_eq!(daylist_title(MON + 8 * H, 0, None), "Monday morning mix");
         assert_eq!(day_part(2), "late-night");
         assert_eq!(day_part(13), "afternoon");
@@ -440,10 +539,22 @@ mod tests {
 
     #[test]
     fn lead_artists_prefer_what_you_play_most() {
-        let tracks = vec![track("Zed", None), track("Mid", None), track("Zed", None), track("Top", None)];
+        let tracks = vec![
+            track("Zed", None),
+            track("Mid", None),
+            track("Zed", None),
+            track("Top", None),
+        ];
         let top = vec!["top".to_string(), "mid".to_string()];
-        assert_eq!(lead_artists(&tracks, &top, 2), vec!["Top".to_string(), "Mid".to_string()]);
-        assert_eq!(lead_artists(&tracks, &[], 2), vec!["Zed".to_string(), "Mid".to_string()], "list order without a ranking");
+        assert_eq!(
+            lead_artists(&tracks, &top, 2),
+            vec!["Top".to_string(), "Mid".to_string()]
+        );
+        assert_eq!(
+            lead_artists(&tracks, &[], 2),
+            vec!["Zed".to_string(), "Mid".to_string()],
+            "list order without a ranking"
+        );
     }
 
     #[test]
@@ -453,14 +564,25 @@ mod tests {
             assert!(!mix_reason(kind, &leads, "lo-fi").is_empty());
             assert!(!mix_reason(kind, &[], "").is_empty());
         }
-        assert_eq!(mix_reason(MixKind::DailyMix, &leads, ""), "Because you've been playing Nujabes and Tycho, with a few new ones");
+        assert_eq!(
+            mix_reason(MixKind::DailyMix, &leads, ""),
+            "Because you've been playing Nujabes and Tycho, with a few new ones"
+        );
         assert!(mix_reason(MixKind::ReleaseRadar, &leads, "").contains("Friday"));
         assert!(mix_reason(MixKind::DiscoverWeekly, &[], "").contains("Monday"));
     }
 
     #[test]
     fn covers_use_four_distinct_thumbnails_and_the_hue_is_stable() {
-        let tracks = vec![track("A", Some("u1")), track("B", Some("u1")), track("C", None), track("D", Some("u2")), track("E", Some("u3")), track("F", Some("u4")), track("G", Some("u5"))];
+        let tracks = vec![
+            track("A", Some("u1")),
+            track("B", Some("u1")),
+            track("C", None),
+            track("D", Some("u2")),
+            track("E", Some("u3")),
+            track("F", Some("u4")),
+            track("G", Some("u5")),
+        ];
         assert_eq!(cover_urls(&tracks), vec!["u1", "u2", "u3", "u4"]);
         assert!(cover_urls(&[track("A", None)]).is_empty());
         assert_eq!(cover_hue("daily-mix-1"), cover_hue("daily-mix-1"));

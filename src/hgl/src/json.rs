@@ -55,7 +55,11 @@ struct P {
 }
 
 pub fn parse(text: &str) -> Option<Json> {
-    let mut p = P { c: text.chars().collect(), i: 0, depth: 0 };
+    let mut p = P {
+        c: text.chars().collect(),
+        i: 0,
+        depth: 0,
+    };
     p.ws();
     let v = p.value()?;
     p.ws();
@@ -257,7 +261,10 @@ mod tests {
         assert_eq!(j.get("b").and_then(|b| b.str("c")), Some("x"));
         assert_eq!(j.get("t"), Some(&Json::Bool(true)));
         assert_eq!(j.get("n"), Some(&Json::Null));
-        assert_eq!(j.get("a").map(|a| a.items()[2].clone()), Some(Json::Num(-300.0)));
+        assert_eq!(
+            j.get("a").map(|a| a.items()[2].clone()),
+            Some(Json::Num(-300.0))
+        );
     }
 
     #[test]

@@ -25,25 +25,30 @@ pub fn notify_main_pid() {
 }
 
 fn send(msg: &str) {
-    let Some(sock_var) = std::env::var_os("NOTIFY_SOCKET") else { return };
+    let Some(sock_var) = std::env::var_os("NOTIFY_SOCKET") else {
+        return;
+    };
     let addr_os = std::ffi::OsStr::new(&sock_var);
     let bytes = addr_os.as_bytes();
 
     // systemd uses an abstract socket when the path starts with '@'.
-    let (addr, addr_len): (Vec<u8>, libc::socklen_t) =
-        if let Some(rest) = bytes.first().filter(|b| **b == b'@').and_then(|_| bytes.get(1..)) {
-            let mut raw = vec![0u8; 1 + rest.len()]; // leading NUL = abstract
-            if let Some(dst) = raw.get_mut(1..) {
-                dst.copy_from_slice(rest);
-            }
-            let len = raw.len() as libc::socklen_t;
-            (raw, len)
-        } else {
-            let mut raw = Vec::from(bytes);
-            raw.push(0); // NUL terminator for filesystem paths
-            let len = raw.len() as libc::socklen_t;
-            (raw, len)
-        };
+    let (addr, addr_len): (Vec<u8>, libc::socklen_t) = if let Some(rest) = bytes
+        .first()
+        .filter(|b| **b == b'@')
+        .and_then(|_| bytes.get(1..))
+    {
+        let mut raw = vec![0u8; 1 + rest.len()]; // leading NUL = abstract
+        if let Some(dst) = raw.get_mut(1..) {
+            dst.copy_from_slice(rest);
+        }
+        let len = raw.len() as libc::socklen_t;
+        (raw, len)
+    } else {
+        let mut raw = Vec::from(bytes);
+        raw.push(0); // NUL terminator for filesystem paths
+        let len = raw.len() as libc::socklen_t;
+        (raw, len)
+    };
 
     let c_msg = match CString::new(msg) {
         Ok(m) => m,

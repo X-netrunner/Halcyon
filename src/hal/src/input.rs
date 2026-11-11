@@ -45,7 +45,8 @@ fn conf_path() -> PathBuf {
 /// What an id does until Settings changes it (the way Halcyon always behaved: 4 fingers = workspaces,
 /// 3 fingers up / down = scratch, pinch = tree view ...).
 fn default_of(id: &str) -> &'static str {
-    let right4 = util::first_line(&util::state_dir().join("ws-swipe4")).is_some_and(|s| s == "right");
+    let right4 =
+        util::first_line(&util::state_dir().join("ws-swipe4")).is_some_and(|s| s == "right");
     match id {
         "g3-up" | "g3-down" => "scratch",
         "g3-pinchin" | "g3-pinchout" => "overview",
@@ -224,31 +225,51 @@ fn print_conf() {
     let c = load();
     let part = |ids: &[String]| -> String {
         ids.iter()
-            .map(|id| format!("\"{}\":{{\"a\":\"{}\",\"c\":\"{}\"}}", id, jesc(&c.act[id]), jesc(&c.cmd[id])))
+            .map(|id| {
+                format!(
+                    "\"{}\":{{\"a\":\"{}\",\"c\":\"{}\"}}",
+                    id,
+                    jesc(&c.act[id]),
+                    jesc(&c.cmd[id])
+                )
+            })
             .collect::<Vec<String>>()
             .join(",")
     };
     let g = part(&gesture_ids());
     let m = part(&mouse_ids());
-    println!("{{\"gestures\":{{{}}},\"mouse\":{{{}}},\"mice\":{}}}", g, m, mice_json());
+    println!(
+        "{{\"gestures\":{{{}}},\"mouse\":{{{}}},\"mice\":{}}}",
+        g,
+        m,
+        mice_json()
+    );
 }
 
 fn cmd_set(args: &[String]) -> i32 {
     let id = args.first().map(|s| s.as_str()).unwrap_or("");
     let act = args.get(1).map(|s| s.as_str()).unwrap_or("");
-    let cmd = args.get(2).map(|s| s.replace('\n', " ")).unwrap_or_default();
+    let cmd = args
+        .get(2)
+        .map(|s| s.replace('\n', " "))
+        .unwrap_or_default();
     let mut c = load();
     if !valid_id(&c, id) {
         eprintln!("unknown id: {}", id);
         return 2;
     }
-    if act.is_empty() || !act.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-') {
+    if act.is_empty()
+        || !act
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+    {
         eprintln!("bad action: {}", act);
         return 2;
     }
     c.act.insert(id.to_string(), act.to_string());
     let keep_cmd = act == "app" || act == "cmd";
-    c.cmd.insert(id.to_string(), if keep_cmd { cmd } else { String::new() });
+    c.cmd
+        .insert(id.to_string(), if keep_cmd { cmd } else { String::new() });
     if save(&c) {
         0
     } else {
@@ -282,7 +303,10 @@ fn cmd_reset(args: &[String]) -> i32 {
 
 fn ipc(h: &str, name: &str) {
     let island = format!("{}/quickshell/island", h);
-    util::ok("quickshell", &["ipc", "-p", island.as_str(), "call", "island", name]);
+    util::ok(
+        "quickshell",
+        &["ipc", "-p", island.as_str(), "call", "island", name],
+    );
 }
 
 fn hd(arg: &str) {
@@ -327,8 +351,8 @@ fn do_action(action: &str, cmd: &str) -> i32 {
         }
         "music" => exec(&script("special.sh"), &["music"]),
         "comm" => exec(&script("special.sh"), &["communication"]),
-        "overview" | "launcher" | "settings" | "cheatsheet" | "notifcenter" | "quickterm" | "lock" | "dnd" | "clearnotifs" | "gaming"
-        | "caffeine" | "focus" => {
+        "overview" | "launcher" | "settings" | "cheatsheet" | "notifcenter" | "quickterm"
+        | "lock" | "dnd" | "clearnotifs" | "gaming" | "caffeine" | "focus" => {
             ipc(&h, action);
             0
         }
@@ -358,7 +382,10 @@ fn do_action(action: &str, cmd: &str) -> i32 {
         "playpause" => exec("playerctl", &["play-pause"]),
         "nexttrack" => exec("playerctl", &["next"]),
         "prevtrack" => exec("playerctl", &["previous"]),
-        "volup" => exec("wpctl", &["set-volume", "-l", "1", "@DEFAULT_AUDIO_SINK@", "5%+"]),
+        "volup" => exec(
+            "wpctl",
+            &["set-volume", "-l", "1", "@DEFAULT_AUDIO_SINK@", "5%+"],
+        ),
         "voldown" => exec("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]),
         "mute" => exec("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]),
         "brightup" => exec("brightnessctl", &["set", "10%+"]),
@@ -442,7 +469,11 @@ mod tests {
     #[test]
     fn conf_lines_override_defaults_and_unknown_ids_are_ignored() {
         let (mut act, mut cmd) = defaults();
-        apply_conf("g3-up=app\ng3-up.cmd=firefox --private-window\nbogus=x\nm275=playpause\n", &mut act, &mut cmd);
+        apply_conf(
+            "g3-up=app\ng3-up.cmd=firefox --private-window\nbogus=x\nm275=playpause\n",
+            &mut act,
+            &mut cmd,
+        );
         assert_eq!(act["g3-up"], "app");
         assert_eq!(cmd["g3-up"], "firefox --private-window");
         assert_eq!(act["m275"], "playpause");
@@ -452,7 +483,11 @@ mod tests {
     #[test]
     fn a_command_may_contain_equals_signs() {
         let (mut act, mut cmd) = defaults();
-        apply_conf("g3-down=cmd\ng3-down.cmd=env A=1 B=2 foo\n", &mut act, &mut cmd);
+        apply_conf(
+            "g3-down=cmd\ng3-down.cmd=env A=1 B=2 foo\n",
+            &mut act,
+            &mut cmd,
+        );
         assert_eq!(cmd["g3-down"], "env A=1 B=2 foo");
     }
 

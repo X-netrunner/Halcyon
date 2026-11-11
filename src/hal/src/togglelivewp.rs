@@ -11,7 +11,15 @@ pub fn run(args: &[String]) -> i32 {
     if let Some(target) = args.first() {
         let ok = crate::util::ok(
             "quickshell",
-            &["ipc", "-p", &island_str, "call", "wallpaper", "live", target],
+            &[
+                "ipc",
+                "-p",
+                &island_str,
+                "call",
+                "wallpaper",
+                "live",
+                target,
+            ],
         );
         if !ok {
             crate::util::notify("Live wallpaper", "The island is not running", None, 2500);

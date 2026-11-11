@@ -91,7 +91,11 @@ pub fn epoch() -> f64 {
 pub fn hostname() -> String {
     let h = read("/proc/sys/kernel/hostname");
     let h = h.trim();
-    if h.is_empty() { "localhost".into() } else { h.into() }
+    if h.is_empty() {
+        "localhost".into()
+    } else {
+        h.into()
+    }
 }
 
 /// SYS_USER / SYS_HOME like sysmode: environment first, then /etc/sysmode.conf, then the defaults it ships with.
@@ -135,8 +139,12 @@ fn detect_user() -> String {
     "root".to_string()
 }
 
-pub fn sys_user() -> String { sys_conf("SYS_USER", &detect_user()) }
-pub fn sys_home() -> String { sys_conf("SYS_HOME", &format!("/home/{}", sys_user())) }
+pub fn sys_user() -> String {
+    sys_conf("SYS_USER", &detect_user())
+}
+pub fn sys_home() -> String {
+    sys_conf("SYS_HOME", &format!("/home/{}", sys_user()))
+}
 /// /var/log/halcyon is where the root daemons write (root-owned, ~/logs is a symlink to it). As root (hx ids) it is used and created
 /// always; as the user it is used when it exists, else the old ~/logs.
 pub fn logs_dir() -> String {
@@ -146,6 +154,8 @@ pub fn logs_dir() -> String {
         let _ = std::fs::create_dir_all(D);
         return D.to_string();
     }
-    if std::path::Path::new(D).is_dir() { return D.to_string(); }
+    if std::path::Path::new(D).is_dir() {
+        return D.to_string();
+    }
     format!("{}/logs", sys_home())
 }

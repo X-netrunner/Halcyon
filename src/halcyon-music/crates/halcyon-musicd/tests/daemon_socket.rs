@@ -34,7 +34,10 @@ fn daemon_speaks_the_protocol_over_its_socket() {
     });
 
     let sock = halcyon_music_core::paths::ctl_socket();
-    assert!(wait_for(&sock, Duration::from_secs(10)), "daemon never created its socket");
+    assert!(
+        wait_for(&sock, Duration::from_secs(10)),
+        "daemon never created its socket"
+    );
 
     let mut stream = UnixStream::connect(&sock).expect("connect");
     stream
@@ -46,12 +49,18 @@ fn daemon_speaks_the_protocol_over_its_socket() {
     let mut line = String::new();
     reader.read_line(&mut line).expect("read hello");
     let ev: protocol::Event = protocol::decode_line(line.as_bytes()).expect("decode hello");
-    assert!(matches!(ev.body, EventBody::Hello { .. }), "first event must be Hello");
+    assert!(
+        matches!(ev.body, EventBody::Hello { .. }),
+        "first event must be Hello"
+    );
 
     line.clear();
     reader.read_line(&mut line).expect("read state");
     let ev: protocol::Event = protocol::decode_line(line.as_bytes()).expect("decode state");
-    assert!(matches!(ev.body, EventBody::State { .. }), "second event must be State");
+    assert!(
+        matches!(ev.body, EventBody::State { .. }),
+        "second event must be State"
+    );
 
     // 2. Send GetState, expect a State reply.
     let cmd = protocol::command(CommandBody::GetState);
@@ -96,5 +105,8 @@ fn daemon_speaks_the_protocol_over_its_socket() {
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    assert!(parsed.is_some(), "state file was persisted with volume 42 after a change");
+    assert!(
+        parsed.is_some(),
+        "state file was persisted with volume 42 after a change"
+    );
 }

@@ -25,8 +25,12 @@ pub fn list<'a, M: 'a>(state: &'a PlayerState, palette: HalcyonPalette) -> Eleme
     let mut rows = column![].spacing(2).width(Length::Fill);
     for track in queue_column::upcoming(state) {
         let info = column![
-            text(crate::views::ellipsize(&track.title, TITLE_CHARS)).size(14).color(palette.text),
-            text(crate::views::ellipsize(&track.artist, ARTIST_CHARS)).size(12).color(palette.text_muted),
+            text(crate::views::ellipsize(&track.title, TITLE_CHARS))
+                .size(14)
+                .color(palette.text),
+            text(crate::views::ellipsize(&track.artist, ARTIST_CHARS))
+                .size(12)
+                .color(palette.text_muted),
         ]
         .spacing(2)
         .width(Length::Fill);
@@ -52,7 +56,13 @@ mod tests {
     use halcyon_music_core::Track;
 
     fn track(i: usize) -> Track {
-        Track::simple(format!("t{i}"), format!("Song {i}"), "Artist".into(), "Album".into(), 1000)
+        Track::simple(
+            format!("t{i}"),
+            format!("Song {i}"),
+            "Artist".into(),
+            "Album".into(),
+            1000,
+        )
     }
 
     #[test]

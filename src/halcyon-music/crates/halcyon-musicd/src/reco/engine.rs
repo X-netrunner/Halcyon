@@ -10,14 +10,19 @@ use super::bandit::shelf_seed;
 use super::features::{explain_text, extract, is_unheard, FeatureCtx, Features};
 use super::model::{catch_up, default_path, RecoState, ReplayCfg};
 use super::rerank::{recent_map, rerank, Pick, RerankCfg, Scored};
-use super::retrieve::{gather, merge, load_listenbrainz_config, Pool, RetrieveCfg, RetrieveEnv, SourceReport};
+use super::retrieve::{
+    gather, load_listenbrainz_config, merge, Pool, RetrieveCfg, RetrieveEnv, SourceReport,
+};
 use super::tags::{ensure_tags, TAGS_PER_BUILD};
 use super::{phase_for, Candidate, Phase, Source};
 use crate::api::SpotifyClient;
-use crate::mixes::plan::{apply_feedback, enforce_caps, first_big_enough, near_seed, play_stats, refresh_jitter, seed_boost, separate_neighbours, PlanCtx, PoolPlan};
-use crate::mixes::store::Feedback;
 use crate::cache::{Cache, PlayLogEntry};
 use crate::eval::{Item, Ranker, TrainCtx, K};
+use crate::mixes::plan::{
+    apply_feedback, enforce_caps, first_big_enough, near_seed, play_stats, refresh_jitter,
+    seed_boost, separate_neighbours, PlanCtx, PoolPlan,
+};
+use crate::mixes::store::Feedback;
 use crate::taste::{bucket_of, TagTable, TasteProfile};
 use crate::token_store::now_secs;
 use halcyon_music_core::models::Track;
@@ -30,7 +35,12 @@ use std::time::Duration;
 fn eval_candidates(items: &[Item]) -> Vec<Candidate> {
     items
         .iter()
-        .map(|it| Candidate { artist: it.artist.clone(), track_id: Some(it.track_id.clone()), sources: vec![Source::History], ..Default::default() })
+        .map(|it| Candidate {
+            artist: it.artist.clone(),
+            track_id: Some(it.track_id.clone()),
+            sources: vec![Source::History],
+            ..Default::default()
+        })
         .collect()
 }
 
@@ -46,9 +56,15 @@ fn rank_scores(ctx: &TrainCtx<'_>, items: &[Item]) -> (Vec<Candidate>, Vec<f64>,
     let profile = TasteProfile::build(ctx.plays, ctx.liked, ctx.now, &tags, 0);
     let mut model = super::model::OnlineModel::prior();
     model.train_replay(ctx.plays, ctx.liked, ctx.now, &tags, &ReplayCfg::eval());
-    let fctx = FeatureCtx { now: ctx.now, bucket: None };
+    let fctx = FeatureCtx {
+        now: ctx.now,
+        bucket: None,
+    };
     let cands = eval_candidates(items);
-    let raw: Vec<f64> = cands.iter().map(|c| model.logit(&extract(c, &profile, &fctx))).collect();
+    let raw: Vec<f64> = cands
+        .iter()
+        .map(|c| model.logit(&extract(c, &profile, &fctx)))
+        .collect();
     (cands, raw, profile)
 }
 
@@ -88,10 +104,22 @@ impl Ranker for Part5Pipeline {
             .zip(raw.iter())
             .map(|(cand, score)| {
                 let unheard = is_unheard(&cand, &profile);
-                Scored { cand, score: *score, unheard }
+                Scored {
+                    cand,
+                    score: *score,
+                    unheard,
+                }
             })
             .collect();
-        let picks = rerank(&scored, &Default::default(), ctx.now, &RerankCfg::eval(K), "eval", &Default::default(), 0);
+        let picks = rerank(
+            &scored,
+            &Default::default(),
+            ctx.now,
+            &RerankCfg::eval(K),
+            "eval",
+            &Default::default(),
+            0,
+        );
         picks_to_scores(&raw, &picks)
     }
 }
@@ -112,7 +140,12 @@ pub struct ShelfSpec {
 
 impl ShelfSpec {
     pub fn shelf(id: &str, n: usize) -> Self {
-        ShelfSpec { id: id.to_string(), n, rerank: RerankCfg::shelf(n), epoch: 0 }
+        ShelfSpec {
+            id: id.to_string(),
+            n,
+            rerank: RerankCfg::shelf(n),
+            epoch: 0,
+        }
     }
 }
 
@@ -165,7 +198,10 @@ pub fn load_history(cache: &Cache) -> History {
     History {
         plays: cache.get_recent_plays(1_000_000).unwrap_or_default(),
         skips: cache.get_skips(1_000_000).unwrap_or_default(),
-        liked: cache.get_liked_tracks(100_000, 0).map(|(t, _)| t.into_iter().map(|t| t.id).collect()).unwrap_or_default(),
+        liked: cache
+            .get_liked_tracks(100_000, 0)
+            .map(|(t, _)| t.into_iter().map(|t| t.id).collect())
+            .unwrap_or_default(),
     }
 }
 
@@ -182,12 +218,22 @@ impl History {
 }
 
 /// Score candidates with the current model.
-pub fn score_pool(pool: &[Candidate], profile: &TasteProfile, state: &RecoState, now: u64, bucket: Option<usize>) -> Vec<Scored> {
+pub fn score_pool(
+    pool: &[Candidate],
+    profile: &TasteProfile,
+    state: &RecoState,
+    now: u64,
+    bucket: Option<usize>,
+) -> Vec<Scored> {
     let ctx = FeatureCtx { now, bucket };
     pool.iter()
         .map(|c| {
             let f: Features = extract(c, profile, &ctx);
-            Scored { cand: c.clone(), score: state.model.logit(&f), unheard: is_unheard(c, profile) }
+            Scored {
+                cand: c.clone(),
+                score: state.model.logit(&f),
+                unheard: is_unheard(c, profile),
+            }
         })
         .collect()
 }
@@ -237,18 +283,45 @@ pub async fn prepare(cache: &Cache, http: &reqwest::Client, tz_offset_secs: i64)
     let path = default_path();
     let (mut state, _) = RecoState::load_or_default(&path);
     if !state.bootstrapped {
-        catch_up(&mut state, &history.plays, &history.skips, &history.liked, &tags, now, tz_offset_secs);
+        catch_up(
+            &mut state,
+            &history.plays,
+            &history.skips,
+            &history.liked,
+            &tags,
+            now,
+            tz_offset_secs,
+        );
         let _ = state.save(&path);
     }
 
-    let cfg = RetrieveCfg { listenbrainz: load_listenbrainz_config(), ..Default::default() };
-    let env = RetrieveEnv { cache, http, profile: &profile, tags: &tags, now };
-    let Pool { mut candidates, reports } = gather(&env, &cfg, phase).await;
+    let cfg = RetrieveCfg {
+        listenbrainz: load_listenbrainz_config(),
+        ..Default::default()
+    };
+    let env = RetrieveEnv {
+        cache,
+        http,
+        profile: &profile,
+        tags: &tags,
+        now,
+    };
+    let Pool {
+        mut candidates,
+        reports,
+    } = gather(&env, &cfg, phase).await;
 
     // Tags for the artists the pool brought in, a few per build, then attach what is known.
     if phase == Phase::Personal {
-        let wanted: Vec<String> = candidates.iter().filter(|c| c.tags.is_empty()).map(|c| c.artist.clone()).collect();
-        if !ensure_tags(cache, http, &tags, &wanted, now, TAGS_PER_BUILD).await.is_empty() {
+        let wanted: Vec<String> = candidates
+            .iter()
+            .filter(|c| c.tags.is_empty())
+            .map(|c| c.artist.clone())
+            .collect();
+        if !ensure_tags(cache, http, &tags, &wanted, now, TAGS_PER_BUILD)
+            .await
+            .is_empty()
+        {
             tags = tag_table(cache, now);
         }
     }
@@ -259,7 +332,18 @@ pub async fn prepare(cache: &Cache, http: &reqwest::Client, tz_offset_secs: i64)
             }
         }
     }
-    Prepared { now, tz: tz_offset_secs, history, merged, profile, tags, phase, state, pool: candidates, reports }
+    Prepared {
+        now,
+        tz: tz_offset_secs,
+        history,
+        merged,
+        profile,
+        tags,
+        phase,
+        state,
+        pool: candidates,
+        reports,
+    }
 }
 
 /// Build one list. Never fails: a source that does not answer is in `reports`, a pick that cannot
@@ -277,10 +361,20 @@ pub async fn build_shelf(
 
 /// One list from an already prepared pool: filter by plan, drop what was ruled out, score, rerank,
 /// match on Spotify, enforce the artist caps, and tell the exploration bandit what was served.
-pub async fn shelf_from(prep: &mut Prepared, spotify: &SpotifyClient, cache: &Cache, spec: &ShelfSpec, extras: &Extras) -> ShelfResult {
+pub async fn shelf_from(
+    prep: &mut Prepared,
+    spotify: &SpotifyClient,
+    cache: &Cache,
+    spec: &ShelfSpec,
+    extras: &Extras,
+) -> ShelfResult {
     let now = prep.now;
     let stats = play_stats(&prep.history.plays, now);
-    let base = if extras.extra_pool.is_empty() { prep.pool.clone() } else { merge(vec![prep.pool.clone(), extras.extra_pool.clone()]) };
+    let base = if extras.extra_pool.is_empty() {
+        prep.pool.clone()
+    } else {
+        merge(vec![prep.pool.clone(), extras.extra_pool.clone()])
+    };
     let base = apply_feedback(base, &extras.feedback);
     let base = match &extras.seed {
         Some(seed) => {
@@ -289,9 +383,17 @@ pub async fn shelf_from(prep: &mut Prepared, spotify: &SpotifyClient, cache: &Ca
         }
         None => base,
     };
-    let plans = if extras.plans.is_empty() { vec![PoolPlan::All] } else { extras.plans.clone() };
+    let plans = if extras.plans.is_empty() {
+        vec![PoolPlan::All]
+    } else {
+        extras.plans.clone()
+    };
     let (plan_used, pool) = {
-        let ctx = PlanCtx { profile: &prep.profile, now, stats: &stats };
+        let ctx = PlanCtx {
+            profile: &prep.profile,
+            now,
+            stats: &stats,
+        };
         first_big_enough(&plans, &base, &ctx, extras.min_pool).unwrap_or((0, Vec::new()))
     };
 
@@ -308,7 +410,15 @@ pub async fn shelf_from(prep: &mut Prepared, spotify: &SpotifyClient, cache: &Ca
     }
     let mut rcfg = spec.rerank.clone();
     rcfg.n = spec.n * OVERSHOOT_NUM / OVERSHOOT_DEN;
-    let picks = rerank(&scored, &recent_map(&prep.merged), now, &rcfg, &spec.id, &prep.state.bandit, shelf_seed(&spec.id, now, spec.epoch));
+    let picks = rerank(
+        &scored,
+        &recent_map(&prep.merged),
+        now,
+        &rcfg,
+        &spec.id,
+        &prep.state.bandit,
+        shelf_seed(&spec.id, now, spec.epoch),
+    );
 
     crate::suggestions::grant_search_budget(LOOKUPS_PER_SHELF);
     let mut result = resolve_picks(spotify, cache, &scored, &picks, spec.n, &extras.avoid).await;
@@ -335,32 +445,60 @@ pub async fn shelf_from(prep: &mut Prepared, spotify: &SpotifyClient, cache: &Ca
 }
 
 /// The source of the exploration pick that became `track_id` (looked up by position).
-fn picks_source(scored: &[Scored], picks: &[Pick], track_id: &str, result: &ShelfResult) -> Option<Source> {
+fn picks_source(
+    scored: &[Scored],
+    picks: &[Pick],
+    track_id: &str,
+    result: &ShelfResult,
+) -> Option<Source> {
     let pos = result.tracks.iter().position(|t| t.id == track_id)?;
     let origin = *result.origins.get(pos)?;
     let pick = picks.get(origin)?;
     scored.get(pick.index)?.cand.primary_source()
 }
 
-async fn resolve_picks(spotify: &SpotifyClient, cache: &Cache, scored: &[Scored], picks: &[Pick], want: usize, avoid: &HashSet<String>) -> ShelfResult {
+async fn resolve_picks(
+    spotify: &SpotifyClient,
+    cache: &Cache,
+    scored: &[Scored],
+    picks: &[Pick],
+    want: usize,
+    avoid: &HashSet<String>,
+) -> ShelfResult {
     let mut out = ShelfResult::default();
     let mut seen: HashSet<String> = HashSet::new();
     for (pick_pos, p) in picks.iter().enumerate() {
         if out.tracks.len() >= want {
             break;
         }
-        let Some(s) = scored.get(p.index) else { continue };
+        let Some(s) = scored.get(p.index) else {
+            continue;
+        };
         let c = &s.cand;
         let track = match &c.track_id {
             Some(id) => Some(cache.get_track(id).ok().flatten().unwrap_or_else(|| {
-                Track::simple(id.clone(), c.title.clone(), c.artist.clone(), String::new(), c.duration_ms.unwrap_or(0))
+                Track::simple(
+                    id.clone(),
+                    c.title.clone(),
+                    c.artist.clone(),
+                    String::new(),
+                    c.duration_ms.unwrap_or(0),
+                )
             })),
             None => {
                 let before = crate::suggestions::search_pause_remaining();
                 let t = if c.is_album {
-                    crate::suggestions::resolve_outside_album(spotify, cache, &c.artist, &c.title).await
+                    crate::suggestions::resolve_outside_album(spotify, cache, &c.artist, &c.title)
+                        .await
                 } else {
-                    crate::suggestions::resolve_outside_track(spotify, cache, &c.artist, &c.title, c.duration_ms).await
+                    crate::suggestions::resolve_outside_track(
+                        spotify,
+                        cache,
+                        &c.artist,
+                        &c.title,
+                        c.duration_ms,
+                    )
+                    .await
                 };
                 if t.is_some() || crate::suggestions::search_pause_remaining() != before {
                     out.lookups_used += 1;
@@ -400,12 +538,24 @@ const LEARN_FIRST_DELAY: Duration = Duration::from_secs(90);
 const LEARN_EVERY: Duration = Duration::from_secs(300);
 
 /// One pass: bring `path`'s state up to date with the cache. Returns what was learned.
-pub fn learn_once(cache: &Cache, path: &Path, tz_offset_secs: i64) -> Result<super::model::CatchUp, String> {
+pub fn learn_once(
+    cache: &Cache,
+    path: &Path,
+    tz_offset_secs: i64,
+) -> Result<super::model::CatchUp, String> {
     let now = now_secs();
     let history = load_history(cache);
     let tags = tag_table(cache, now);
     let (mut state, _) = RecoState::load_or_default(path);
-    let report = catch_up(&mut state, &history.plays, &history.skips, &history.liked, &tags, now, tz_offset_secs);
+    let report = catch_up(
+        &mut state,
+        &history.plays,
+        &history.skips,
+        &history.liked,
+        &tags,
+        now,
+        tz_offset_secs,
+    );
     if report.examples > 0 || report.bootstrapped_now {
         state.save(path)?;
     }
@@ -425,7 +575,11 @@ pub async fn learner_loop(cache: Cache) -> anyhow::Result<()> {
         // SQLite and a few thousand rows: off the async threads.
         let outcome = tokio::task::spawn_blocking(move || learn_once(&cache, &path, 0)).await;
         match outcome {
-            Ok(Ok(r)) if r.examples > 0 => tracing::info!("reco: learned from {} new plays/skips ({} exploration songs judged)", r.examples, r.explored),
+            Ok(Ok(r)) if r.examples > 0 => tracing::info!(
+                "reco: learned from {} new plays/skips ({} exploration songs judged)",
+                r.examples,
+                r.explored
+            ),
             Ok(Ok(_)) => {}
             Ok(Err(e)) => tracing::warn!("reco: could not save the learned state: {e}"),
             Err(e) => tracing::warn!("reco: learner task failed: {e}"),
@@ -445,7 +599,10 @@ pub fn explain(cache: &Cache, artist: &str, title: &str, tz_offset_secs: i64) ->
     let profile = TasteProfile::build(&merged, &history.liked, now, &tags, tz_offset_secs);
     let (state, recovered) = RecoState::load_or_default(&default_path());
     let mut cand = Candidate::new(artist, title, Source::History);
-    if let Some(p) = merged.iter().find(|p| crate::taste::artist_key(&p.artist) == crate::taste::artist_key(artist) && (title.is_empty() || p.title.eq_ignore_ascii_case(title))) {
+    if let Some(p) = merged.iter().find(|p| {
+        crate::taste::artist_key(&p.artist) == crate::taste::artist_key(artist)
+            && (title.is_empty() || p.title.eq_ignore_ascii_case(title))
+    }) {
         cand.track_id = Some(p.track_id.clone());
         if title.is_empty() {
             cand.title = p.title.clone();
@@ -454,22 +611,40 @@ pub fn explain(cache: &Cache, artist: &str, title: &str, tz_offset_secs: i64) ->
     if let Some(t) = tags.get(&crate::taste::artist_key(artist)) {
         cand.tags = t.clone();
     }
-    let f = extract(&cand, &profile, &FeatureCtx { now, bucket: Some(bucket_of(now, tz_offset_secs)) });
+    let f = extract(
+        &cand,
+        &profile,
+        &FeatureCtx {
+            now,
+            bucket: Some(bucket_of(now, tz_offset_secs)),
+        },
+    );
     let mut s = String::new();
     s.push_str(&format!(
         "{} - {}  ({} plays seen, {}, model updates: {}{})\n\n",
         cand.artist,
-        if cand.title.is_empty() { "(any song)" } else { cand.title.as_str() },
+        if cand.title.is_empty() {
+            "(any song)"
+        } else {
+            cand.title.as_str()
+        },
         profile.plays_seen,
         match phase_for(profile.plays_seen) {
             Phase::ColdStart => "cold start: charts and editorial only",
             Phase::Personal => "personal",
         },
         state.model.updates,
-        if recovered { ", the saved model was unreadable and was reset" } else { "" },
+        if recovered {
+            ", the saved model was unreadable and was reset"
+        } else {
+            ""
+        },
     ));
     s.push_str(&explain_text(&state.model.weights, state.model.bias, &f));
-    s.push_str(&format!("\nchance of being finished: {:.0}%\n", state.model.probability(&f) * 100.0));
+    s.push_str(&format!(
+        "\nchance of being finished: {:.0}%\n",
+        state.model.probability(&f) * 100.0
+    ));
     s
 }
 
@@ -505,37 +680,92 @@ pub async fn probe_sources(http: &reqwest::Client) -> Vec<ProbeRow> {
     })
     .await;
     rows.push(match dz {
-        Ok(Some((r, s))) if r > 0 && s > 0 => ProbeRow { name: "Deezer related + top songs", ok: true, detail: format!("{r} related artists, {s} songs") },
-        Ok(Some((r, s))) => ProbeRow { name: "Deezer related + top songs", ok: false, detail: format!("{r} related artists, {s} songs") },
-        _ => ProbeRow { name: "Deezer related + top songs", ok: false, detail: "no answer".into() },
+        Ok(Some((r, s))) if r > 0 && s > 0 => ProbeRow {
+            name: "Deezer related + top songs",
+            ok: true,
+            detail: format!("{r} related artists, {s} songs"),
+        },
+        Ok(Some((r, s))) => ProbeRow {
+            name: "Deezer related + top songs",
+            ok: false,
+            detail: format!("{r} related artists, {s} songs"),
+        },
+        _ => ProbeRow {
+            name: "Deezer related + top songs",
+            ok: false,
+            detail: "no answer".into(),
+        },
     });
 
-    let it = tokio::time::timeout(t, crate::suggestions::fetch_itunes_artist_albums(http, "Radiohead")).await;
+    let it = tokio::time::timeout(
+        t,
+        crate::suggestions::fetch_itunes_artist_albums(http, "Radiohead"),
+    )
+    .await;
     rows.push(match it {
-        Ok(a) if !a.is_empty() => ProbeRow { name: "iTunes albums", ok: true, detail: format!("{} albums", a.len()) },
-        _ => ProbeRow { name: "iTunes albums", ok: false, detail: "no answer".into() },
+        Ok(a) if !a.is_empty() => ProbeRow {
+            name: "iTunes albums",
+            ok: true,
+            detail: format!("{} albums", a.len()),
+        },
+        _ => ProbeRow {
+            name: "iTunes albums",
+            ok: false,
+            detail: "no answer".into(),
+        },
     });
 
     let ch = tokio::time::timeout(t, crate::suggestions::fetch_chart_pool(http)).await;
     rows.push(match ch {
-        Ok(c) if !c.is_empty() => ProbeRow { name: "charts", ok: true, detail: format!("{} songs", c.len()) },
-        _ => ProbeRow { name: "charts", ok: false, detail: "no answer".into() },
+        Ok(c) if !c.is_empty() => ProbeRow {
+            name: "charts",
+            ok: true,
+            detail: format!("{} songs", c.len()),
+        },
+        _ => ProbeRow {
+            name: "charts",
+            ok: false,
+            detail: "no answer".into(),
+        },
     });
 
     rows.push(match load_listenbrainz_config() {
-        None => ProbeRow { name: "ListenBrainz recommendations", ok: true, detail: "opt-in is off (listenbrainz.json), nothing was asked".into() },
+        None => ProbeRow {
+            name: "ListenBrainz recommendations",
+            ok: true,
+            detail: "opt-in is off (listenbrainz.json), nothing was asked".into(),
+        },
         Some(cfg) => {
-            let url = format!("https://api.listenbrainz.org/1/cf/recommendation/user/{}/recording", cfg.user);
+            let url = format!(
+                "https://api.listenbrainz.org/1/cf/recommendation/user/{}/recording",
+                cfg.user
+            );
             match tokio::time::timeout(t, http.get(url).query(&[("count", "5")]).send()).await {
                 Ok(Ok(r)) if r.status().is_success() => match r.json::<serde_json::Value>().await {
                     Ok(v) => {
                         let n = super::retrieve::parse_lb_recommendations(&v).len();
-                        ProbeRow { name: "ListenBrainz recommendations", ok: n > 0, detail: format!("{n} recommendations parsed") }
+                        ProbeRow {
+                            name: "ListenBrainz recommendations",
+                            ok: n > 0,
+                            detail: format!("{n} recommendations parsed"),
+                        }
                     }
-                    Err(e) => ProbeRow { name: "ListenBrainz recommendations", ok: false, detail: e.to_string() },
+                    Err(e) => ProbeRow {
+                        name: "ListenBrainz recommendations",
+                        ok: false,
+                        detail: e.to_string(),
+                    },
                 },
-                Ok(Ok(r)) => ProbeRow { name: "ListenBrainz recommendations", ok: false, detail: format!("HTTP {}", r.status()) },
-                _ => ProbeRow { name: "ListenBrainz recommendations", ok: false, detail: "no answer".into() },
+                Ok(Ok(r)) => ProbeRow {
+                    name: "ListenBrainz recommendations",
+                    ok: false,
+                    detail: format!("HTTP {}", r.status()),
+                },
+                _ => ProbeRow {
+                    name: "ListenBrainz recommendations",
+                    ok: false,
+                    detail: "no answer".into(),
+                },
             }
         }
     });

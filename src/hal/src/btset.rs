@@ -17,9 +17,14 @@ use std::process::{Command, Stdio};
 /// Wakes net.sh (the bar's Wi-Fi / Bluetooth label) so it shows the result now, not at its next slow tick.
 /// The wake file is a named pipe; opening it for reading and writing never blocks.
 fn poke_net() {
-    let dir = env::var("XDG_RUNTIME_DIR").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| "/tmp".to_string());
+    let dir = env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/tmp".to_string());
     let wake = PathBuf::from(dir).join("halcyon-net.wake");
-    let is_fifo = fs::metadata(&wake).map(|m| m.file_type().is_fifo()).unwrap_or(false);
+    let is_fifo = fs::metadata(&wake)
+        .map(|m| m.file_type().is_fifo())
+        .unwrap_or(false);
     if !is_fifo {
         return;
     }
@@ -55,7 +60,8 @@ fn act(args: &[String]) -> i32 {
         return 0;
     }
 
-    let quiet = util::first_line(&util::state_dir().join("conn-errors-only")).as_deref() == Some("1");
+    let quiet =
+        util::first_line(&util::state_dir().join("conn-errors-only")).as_deref() == Some("1");
 
     if action == "connect" {
         // not paired yet: pair and trust first
@@ -67,7 +73,11 @@ fn act(args: &[String]) -> i32 {
     }
 
     // stdout and stderr together, as `2>&1` had them
-    let (succeeded, text) = match Command::new("bluetoothctl").args([action, mac]).stdin(Stdio::null()).output() {
+    let (succeeded, text) = match Command::new("bluetoothctl")
+        .args([action, mac])
+        .stdin(Stdio::null())
+        .output()
+    {
         Ok(o) => {
             let mut t = String::from_utf8_lossy(&o.stdout).to_string();
             t.push_str(&String::from_utf8_lossy(&o.stderr));
@@ -80,11 +90,20 @@ fn act(args: &[String]) -> i32 {
         if quiet {
             return 0;
         }
-        let summary = if action == "connect" { "Connected" } else { "Disconnected" };
+        let summary = if action == "connect" {
+            "Connected"
+        } else {
+            "Disconnected"
+        };
         util::notify_app("Bluetooth", summary, name, Some("bluetooth"));
     } else {
         let last = text.trim_end().lines().last().unwrap_or("");
-        util::notify_app("Bluetooth", &format!("Couldn't {} {}", action, name), last, Some("dialog-warning"));
+        util::notify_app(
+            "Bluetooth",
+            &format!("Couldn't {} {}", action, name),
+            last,
+            Some("dialog-warning"),
+        );
     }
     0
 }

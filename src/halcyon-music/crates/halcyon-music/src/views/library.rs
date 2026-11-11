@@ -77,11 +77,17 @@ fn tab_strip<'a, Message: Clone + 'a>(
     let mut strip = row![].spacing(28).align_y(Alignment::End);
     for (tab, count) in counts {
         let is_active = *tab == active_tab;
-        let tint = if is_active { palette.text } else { palette.text_muted };
+        let tint = if is_active {
+            palette.text
+        } else {
+            palette.text_muted
+        };
         let label = row![
             text(tab.label()).size(14).color(tint),
             Space::with_width(6),
-            text(count.to_string()).size(11).color(crate::theme::alpha(palette.text_muted, 0.8)),
+            text(count.to_string())
+                .size(11)
+                .color(crate::theme::alpha(palette.text_muted, 0.8)),
         ]
         .align_y(Alignment::Center);
         let underline = container(Space::with_height(2))
@@ -92,7 +98,10 @@ fn tab_strip<'a, Message: Clone + 'a>(
                 } else {
                     iced::Color::TRANSPARENT.into()
                 }),
-                border: iced::Border { radius: 2.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 2.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
         strip = strip.push(
@@ -101,7 +110,11 @@ fn tab_strip<'a, Message: Clone + 'a>(
                 .padding([4, 2])
                 .style(move |_t, status| button::Style {
                     background: None,
-                    text_color: if status == button::Status::Hovered { palette.text } else { tint },
+                    text_color: if status == button::Status::Hovered {
+                        palette.text
+                    } else {
+                        tint
+                    },
                     ..Default::default()
                 }),
         );
@@ -155,8 +168,15 @@ fn empty_state<'a, Message: Clone + 'a>(
             .padding([6, 12])
             .style(move |_t, status| button::Style {
                 background: Some(
-                    crate::theme::alpha(palette.accent, if status == button::Status::Hovered { 0.20 } else { 0.10 })
-                        .into(),
+                    crate::theme::alpha(
+                        palette.accent,
+                        if status == button::Status::Hovered {
+                            0.20
+                        } else {
+                            0.10
+                        },
+                    )
+                    .into(),
                 ),
                 text_color: palette.accent,
                 border: iced::Border {
@@ -294,7 +314,14 @@ pub fn view<'a, Message: Clone + 'static>(
         } else {
             "Artists you follow on Spotify show up here."
         };
-        page = page.push(empty_state(glyph, headline, hint, elsewhere, palette, on_select_tab));
+        page = page.push(empty_state(
+            glyph,
+            headline,
+            hint,
+            elsewhere,
+            palette,
+            on_select_tab,
+        ));
         return container(page).width(Length::Fill).into();
     }
 
@@ -328,10 +355,20 @@ pub fn view<'a, Message: Clone + 'static>(
             ));
         }
         LibraryTab::Albums => {
-            page = page.push(view_albums_tab(albums, &filter_lower, palette, on_open_album));
+            page = page.push(view_albums_tab(
+                albums,
+                &filter_lower,
+                palette,
+                on_open_album,
+            ));
         }
         LibraryTab::Artists => {
-            page = page.push(view_artists_tab(artists, &filter_lower, palette, on_open_artist));
+            page = page.push(view_artists_tab(
+                artists,
+                &filter_lower,
+                palette,
+                on_open_artist,
+            ));
         }
     }
 
@@ -354,7 +391,12 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     // Filtered & sorted tracks
     let mut filtered: Vec<Track> = tracks
         .iter()
-        .filter(|t| matches(filter, &[t.title.as_str(), t.artist.as_str(), t.album.as_str()]))
+        .filter(|t| {
+            matches(
+                filter,
+                &[t.title.as_str(), t.artist.as_str(), t.album.as_str()],
+            )
+        })
         .cloned()
         .collect();
 
@@ -413,11 +455,13 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     .padding([4, 8])
     .style(|_t, _s| button::Style::default());
 
-    let sort_duration_btn = button(text("Duration").size(12).color(if sort == LikedSort::Duration {
-        palette.accent
-    } else {
-        palette.text_muted
-    }))
+    let sort_duration_btn = button(text("Duration").size(12).color(
+        if sort == LikedSort::Duration {
+            palette.accent
+        } else {
+            palette.text_muted
+        },
+    ))
     .on_press(on_change_sort(LikedSort::Duration))
     .padding([4, 8])
     .style(|_t, _s| button::Style::default());
@@ -425,7 +469,9 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
     let top_bar = row![
         play_all_btn,
         Space::with_width(16),
-        text(format!("{} songs", filtered.len())).size(13).color(palette.text_muted),
+        text(format!("{} songs", filtered.len()))
+            .size(13)
+            .color(palette.text_muted),
         Space::with_width(Length::Fill),
         text("Sort by:").size(12).color(palette.text_muted),
         Space::with_width(6),
@@ -465,9 +511,19 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
             let context_clone = all_context.clone();
             let row_btn = button(
                 row![
-                    text(format!("{}", i + 1)).size(12).color(palette.text_muted),
+                    text(format!("{}", i + 1))
+                        .size(12)
+                        .color(palette.text_muted),
                     Space::with_width(12),
-                    crate::art::cover(t.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 36.0, 9.0, Icon::Music, &t.title, palette),
+                    crate::art::cover(
+                        t.art_url.as_deref(),
+                        halcyon_music_core::art::ArtSize::Small,
+                        36.0,
+                        9.0,
+                        Icon::Music,
+                        &t.title,
+                        palette
+                    ),
                     Space::with_width(12),
                     column![
                         text(t.title.clone()).size(13).color(palette.text),
@@ -478,7 +534,9 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
                         .size(12)
                         .color(palette.text_muted)
                         .width(Length::FillPortion(2)),
-                    text(format_duration(t.duration_ms)).size(12).color(palette.text_muted),
+                    text(format_duration(t.duration_ms))
+                        .size(12)
+                        .color(palette.text_muted),
                     Space::with_width(12),
                     icon(Icon::Play, 16.0, palette.accent),
                 ]
@@ -489,7 +547,11 @@ fn view_liked_tab<'a, Message: Clone + 'static>(
             .on_press(on_play_context(context_clone, i))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
+                    if s == button::Status::Hovered {
+                        crate::theme::mix(palette.surface, palette.accent, 0.16)
+                    } else {
+                        crate::theme::alpha(palette.surface, 0.62)
+                    }
                     .into(),
                 ),
                 border: iced::Border {
@@ -596,13 +658,27 @@ fn view_playlists_tab<'a, Message: Clone + 'static>(
         tiles.push(
             button(
                 row![
-                    crate::art::cover(pl.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 56.0, 14.0, Icon::Playlist, &pl.name, palette),
+                    crate::art::cover(
+                        pl.art_url.as_deref(),
+                        halcyon_music_core::art::ArtSize::Small,
+                        56.0,
+                        14.0,
+                        Icon::Playlist,
+                        &pl.name,
+                        palette
+                    ),
                     Space::with_width(14),
                     column![
-                        text(super::ellipsize(&pl.name, 30)).size(14).color(palette.text),
-                        text(format!("{} · {} songs", super::ellipsize(&pl.owner, 18), pl.total_tracks))
-                            .size(11)
-                            .color(palette.text_muted),
+                        text(super::ellipsize(&pl.name, 30))
+                            .size(14)
+                            .color(palette.text),
+                        text(format!(
+                            "{} · {} songs",
+                            super::ellipsize(&pl.owner, 18),
+                            pl.total_tracks
+                        ))
+                        .size(11)
+                        .color(palette.text_muted),
                     ]
                     .spacing(3)
                     .width(Length::Fill),
@@ -640,10 +716,22 @@ fn view_albums_tab<'a, Message: Clone + 'static>(
         tiles.push(
             button(
                 column![
-                    crate::art::cover(alb.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 120.0, 14.0, Icon::Album, &alb.title, palette),
+                    crate::art::cover(
+                        alb.art_url.as_deref(),
+                        halcyon_music_core::art::ArtSize::Medium,
+                        120.0,
+                        14.0,
+                        Icon::Album,
+                        &alb.title,
+                        palette
+                    ),
                     Space::with_height(10),
-                    text(super::ellipsize(&alb.title, 24)).size(13).color(palette.text),
-                    text(super::ellipsize(&alb.artist, 26)).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&alb.title, 24))
+                        .size(13)
+                        .color(palette.text),
+                    text(super::ellipsize(&alb.artist, 26))
+                        .size(11)
+                        .color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)
                 .padding(12),
@@ -677,9 +765,19 @@ fn view_artists_tab<'a, Message: Clone + 'static>(
         tiles.push(
             button(
                 column![
-                    crate::art::cover(a.image_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 104.0, 52.0, Icon::Artist, &a.name, palette),
+                    crate::art::cover(
+                        a.image_url.as_deref(),
+                        halcyon_music_core::art::ArtSize::Medium,
+                        104.0,
+                        52.0,
+                        Icon::Artist,
+                        &a.name,
+                        palette
+                    ),
                     Space::with_height(10),
-                    text(super::ellipsize(&a.name, 24)).size(13).color(palette.text),
+                    text(super::ellipsize(&a.name, 24))
+                        .size(13)
+                        .color(palette.text),
                     text(sub).size(11).color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)

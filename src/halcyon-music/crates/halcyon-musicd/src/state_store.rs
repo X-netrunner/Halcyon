@@ -52,7 +52,10 @@ pub fn save(path: &Path, state: &PlayerState) -> Result<(), StateError> {
 }
 
 fn temp_path_for(path: &Path) -> PathBuf {
-    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    let mut name = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
     name.push(".tmp");
     path.with_file_name(name)
 }
@@ -67,7 +70,11 @@ pub fn load(path: &Path) -> LoadedState {
                 Ok(_) => match serde_json::from_slice::<PlayerState>(&buf) {
                     Ok(mut state) => {
                         state.sanitize();
-                        LoadedState { state, recovered: false, note: None }
+                        LoadedState {
+                            state,
+                            recovered: false,
+                            note: None,
+                        }
                     }
                     Err(e) => recover_corrupt(path, format!("invalid JSON: {e}")),
                 },
@@ -76,7 +83,11 @@ pub fn load(path: &Path) -> LoadedState {
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             info!(path = %path.display(), "no saved state yet; starting fresh");
-            LoadedState { state: PlayerState::default(), recovered: false, note: None }
+            LoadedState {
+                state: PlayerState::default(),
+                recovered: false,
+                note: None,
+            }
         }
         Err(e) => recover_corrupt(path, format!("cannot open: {e}")),
     }

@@ -17,7 +17,11 @@ fn expand_tilde(s: &str, home: &str) -> String {
 
 fn dialog(cmd: &str, args: &[&str]) {
     // stdout is the answer (the chosen path) and goes straight through; the dialog's own noise is dropped
-    let _ = Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).status();
+    let _ = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 pub fn run(args: &[String]) -> i32 {
@@ -49,11 +53,19 @@ pub fn run(args: &[String]) -> i32 {
             ],
         );
     } else if util::command_exists("kdialog") {
-        dialog("kdialog", &["--getopenfilename", &start, &format!("{}|Images", IMAGES)]);
+        dialog(
+            "kdialog",
+            &["--getopenfilename", &start, &format!("{}|Images", IMAGES)],
+        );
     } else if util::command_exists("yad") {
         dialog("yad", &["--file", title, &format!("--filename={}", start)]);
     } else {
-        util::notify("Halcyon", "No file browser found (sudo pacman -S zenity)", None, 5000);
+        util::notify(
+            "Halcyon",
+            "No file browser found (sudo pacman -S zenity)",
+            None,
+            5000,
+        );
     }
     0
 }
@@ -65,7 +77,10 @@ mod tests {
     #[test]
     fn tilde_becomes_home() {
         assert_eq!(expand_tilde("~", "/home/u"), "/home/u");
-        assert_eq!(expand_tilde("~/Pictures/a.png", "/home/u"), "/home/u/Pictures/a.png");
+        assert_eq!(
+            expand_tilde("~/Pictures/a.png", "/home/u"),
+            "/home/u/Pictures/a.png"
+        );
         assert_eq!(expand_tilde("/tmp/x", "/home/u"), "/tmp/x");
     }
 }

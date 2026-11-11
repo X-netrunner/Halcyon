@@ -56,7 +56,11 @@ pub fn chip<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     on_press: M,
 ) -> Element<'a, M> {
-    let colour = if selected { palette.text } else { palette.text_muted };
+    let colour = if selected {
+        palette.text
+    } else {
+        palette.text_muted
+    };
     button(text(label).size(text_size).color(colour))
         .on_press(on_press)
         .padding([3, 3])
@@ -82,8 +86,15 @@ fn row_style(
             } else {
                 None
             },
-            text_color: if lit || hovered { palette.text } else { palette.text_muted },
-            border: iced::Border { radius: radius.into(), ..Default::default() },
+            text_color: if lit || hovered {
+                palette.text
+            } else {
+                palette.text_muted
+            },
+            border: iced::Border {
+                radius: radius.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -99,7 +110,10 @@ fn liked_cover<'a, M: 'a>(palette: HalcyonPalette) -> Element<'a, M> {
         .center_y(COVER_PX)
         .style(move |_t| container::Style {
             background: Some(tint.into()),
-            border: iced::Border { radius: theme::radius::ROW_COVER.into(), ..Default::default() },
+            border: iced::Border {
+                radius: theme::radius::ROW_COVER.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into()
@@ -113,10 +127,18 @@ fn nav_row<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     on_press: M,
 ) -> Element<'a, M> {
-    let colour = if lit { palette.text } else { palette.text_muted };
+    let colour = if lit {
+        palette.text
+    } else {
+        palette.text_muted
+    };
     button(
-        row![icon(glyph, 16.0, colour), Space::with_width(10), text(label).size(type_size::BODY - 1.0).color(colour)]
-            .align_y(Alignment::Center),
+        row![
+            icon(glyph, 16.0, colour),
+            Space::with_width(10),
+            text(label).size(type_size::BODY - 1.0).color(colour)
+        ]
+        .align_y(Alignment::Center),
     )
     .on_press(on_press)
     .padding([6, 8])
@@ -133,10 +155,20 @@ fn list_row<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     on_press: M,
 ) -> Element<'a, M> {
-    let colour = if lit { palette.text } else { palette.text_muted };
+    let colour = if lit {
+        palette.text
+    } else {
+        palette.text_muted
+    };
     button(
-        row![cover, Space::with_width(8), text(super::ellipsize(name, NAME_CHARS)).size(type_size::SMALL).color(colour)]
-            .align_y(Alignment::Center),
+        row![
+            cover,
+            Space::with_width(8),
+            text(super::ellipsize(name, NAME_CHARS))
+                .size(type_size::SMALL)
+                .color(colour)
+        ]
+        .align_y(Alignment::Center),
     )
     .on_press(on_press)
     .padding([4, 6])
@@ -178,8 +210,20 @@ pub fn view<'a, M: Clone + 'a>(
     let mut col = column![
         account,
         Space::with_height(theme::space::SM),
-        nav_row(Icon::Home, "Home", lit == Some(Tab::Home), palette, on_nav(NavPage::Home)),
-        nav_row(Icon::Sparkles, "Discover", lit == Some(Tab::Discover), palette, on_nav(NavPage::Discover)),
+        nav_row(
+            Icon::Home,
+            "Home",
+            lit == Some(Tab::Home),
+            palette,
+            on_nav(NavPage::Home)
+        ),
+        nav_row(
+            Icon::Sparkles,
+            "Discover",
+            lit == Some(Tab::Discover),
+            palette,
+            on_nav(NavPage::Discover)
+        ),
         Space::with_height(theme::space::MD),
     ]
     .width(Length::Fill);
@@ -210,12 +254,15 @@ pub fn view<'a, M: Clone + 'a>(
     }
 
     // The list itself.
-    let mut list = column![].spacing(2).width(Length::Fill).padding(iced::Padding {
-        top: 2.0,
-        right: 0.0,
-        bottom: 16.0,
-        left: 0.0,
-    });
+    let mut list = column![]
+        .spacing(2)
+        .width(Length::Fill)
+        .padding(iced::Padding {
+            top: 2.0,
+            right: 0.0,
+            bottom: 16.0,
+            left: 0.0,
+        });
     match tab {
         LibraryTab::Albums => {
             for a in albums {
@@ -228,7 +275,13 @@ pub fn view<'a, M: Clone + 'a>(
                     &a.title,
                     palette,
                 );
-                list = list.push(list_row(cover, &a.title, false, palette, on_open_album(a.id.clone())));
+                list = list.push(list_row(
+                    cover,
+                    &a.title,
+                    false,
+                    palette,
+                    on_open_album(a.id.clone()),
+                ));
             }
         }
         LibraryTab::Artists => {
@@ -242,7 +295,13 @@ pub fn view<'a, M: Clone + 'a>(
                     &a.name,
                     palette,
                 );
-                list = list.push(list_row(cover, &a.name, false, palette, on_open_artist(a.id.clone())));
+                list = list.push(list_row(
+                    cover,
+                    &a.name,
+                    false,
+                    palette,
+                    on_open_artist(a.id.clone()),
+                ));
             }
         }
         _ => {
@@ -263,15 +322,25 @@ pub fn view<'a, M: Clone + 'a>(
                     &p.name,
                     palette,
                 );
-                let is_open = ctx.active == NavPage::PlaylistDetail && ctx.active_playlist == Some(p.id.as_str());
-                list = list.push(list_row(cover, &p.name, is_open, palette, on_open_playlist(p.id.clone())));
+                let is_open = ctx.active == NavPage::PlaylistDetail
+                    && ctx.active_playlist == Some(p.id.as_str());
+                list = list.push(list_row(
+                    cover,
+                    &p.name,
+                    is_open,
+                    palette,
+                    on_open_playlist(p.id.clone()),
+                ));
             }
         }
     }
     col = col.push(
         scrollable(list)
             .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new().width(0).scroller_width(0).margin(0),
+                scrollable::Scrollbar::new()
+                    .width(0)
+                    .scroller_width(0)
+                    .margin(0),
             ))
             .height(Length::Fill)
             .width(Length::Fill),
@@ -280,7 +349,12 @@ pub fn view<'a, M: Clone + 'a>(
     container(col)
         .width(WIDTH)
         .height(Length::Fill)
-        .padding(iced::Padding { top: theme::space::SM, right: PAD, bottom: 0.0, left: PAD })
+        .padding(iced::Padding {
+            top: theme::space::SM,
+            right: PAD,
+            bottom: 0.0,
+            left: PAD,
+        })
         .into()
 }
 
@@ -289,7 +363,15 @@ mod tests {
     use super::*;
 
     fn pl(id: &str) -> Playlist {
-        Playlist { id: id.into(), name: format!("List {id}"), owner: "me".into(), snapshot_id: None, art_url: None, total_tracks: 3, uri: String::new() }
+        Playlist {
+            id: id.into(),
+            name: format!("List {id}"),
+            owner: "me".into(),
+            snapshot_id: None,
+            art_url: None,
+            total_tracks: 3,
+            uri: String::new(),
+        }
     }
 
     #[test]
@@ -320,11 +402,22 @@ mod tests {
             total_tracks: 1,
             uri: String::new(),
         }];
-        let artists = vec![Artist { id: "ar".into(), name: "Artist".into(), image_url: None, genres: vec![], uri: String::new() }];
+        let artists = vec![Artist {
+            id: "ar".into(),
+            name: "Artist".into(),
+            image_url: None,
+            genres: vec![],
+            uri: String::new(),
+        }];
         let no_playlists: Vec<Playlist> = Vec::new();
         let no_albums: Vec<Album> = Vec::new();
         let no_artists: Vec<Artist> = Vec::new();
-        for tab in [LibraryTab::Playlists, LibraryTab::Albums, LibraryTab::Artists, LibraryTab::Liked] {
+        for tab in [
+            LibraryTab::Playlists,
+            LibraryTab::Albums,
+            LibraryTab::Artists,
+            LibraryTab::Liked,
+        ] {
             for show_new_input in [false, true] {
                 let sets: [(&[Playlist], &[Album], &[Artist]); 2] = [
                     (&playlists, &albums, &artists),
@@ -332,7 +425,13 @@ mod tests {
                 ];
                 for (p, al, ar) in sets {
                     let _v: Element<'_, String> = view(
-                        Context { active: NavPage::PlaylistDetail, active_playlist: Some("a"), tab, show_new_input, new_name: "" },
+                        Context {
+                            active: NavPage::PlaylistDetail,
+                            active_playlist: Some("a"),
+                            tab,
+                            show_new_input,
+                            new_name: "",
+                        },
                         p,
                         al,
                         ar,

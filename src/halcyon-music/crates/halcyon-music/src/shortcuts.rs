@@ -10,30 +10,30 @@ pub enum ShortcutAction {
     PlayPause,
     Next,
     Previous,
-    SeekBackShort,     // Left: 5s
-    SeekForwardShort,  // Right: 5s
-    SeekBackLong,      // Shift+Left: 30s
-    SeekForwardLong,   // Shift+Right: 30s
-    VolumeUp,          // Up
-    VolumeDown,        // Down
-    ToggleMute,        // M
-    ToggleShuffle,     // S
-    CycleRepeat,       // R
-    ToggleLike,        // L
-    OpenSearch,        // / or Ctrl+K
-    ToggleLyrics,      // Ctrl+L
-    ToggleQueue,       // Q
+    SeekBackShort,       // Left: 5s
+    SeekForwardShort,    // Right: 5s
+    SeekBackLong,        // Shift+Left: 30s
+    SeekForwardLong,     // Shift+Right: 30s
+    VolumeUp,            // Up
+    VolumeDown,          // Down
+    ToggleMute,          // M
+    ToggleShuffle,       // S
+    CycleRepeat,         // R
+    ToggleLike,          // L
+    OpenSearch,          // / or Ctrl+K
+    ToggleLyrics,        // Ctrl+L
+    ToggleQueue,         // Q
     NavigatePage(usize), // 1..=6 (the sidebar rows, in order)
-    BackOrClose,       // Esc
-    PlaySelected,      // Enter
-    PlayNextSelected,  // Shift+Enter
-    EnqueueSelected,   // Ctrl+Enter
-    ToggleFullscreen,  // F
-    Refresh,           // Ctrl+R
-    ToggleHelp,        // ?
-    CycleLayout,       // Ctrl+Shift+L
-    OffsetLyricsMinus, // [
-    OffsetLyricsPlus,  // ]
+    BackOrClose,         // Esc
+    PlaySelected,        // Enter
+    PlayNextSelected,    // Shift+Enter
+    EnqueueSelected,     // Ctrl+Enter
+    ToggleFullscreen,    // F
+    Refresh,             // Ctrl+R
+    ToggleHelp,          // ?
+    CycleLayout,         // Ctrl+Shift+L
+    OffsetLyricsMinus,   // [
+    OffsetLyricsPlus,    // ]
 }
 
 /// What the Settings page lists. One place, so the list cannot drift from `match_shortcut`.
@@ -163,28 +163,55 @@ mod tests {
 
     #[test]
     fn search_shortcuts_are_slash_and_ctrl_k() {
-        assert_eq!(match_shortcut(&Key::Character("/".into()), Modifiers::empty()), Some(ShortcutAction::OpenSearch));
-        assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::CTRL), Some(ShortcutAction::OpenSearch));
-        assert_eq!(match_shortcut(&Key::Character("k".into()), Modifiers::empty()), None);
+        assert_eq!(
+            match_shortcut(&Key::Character("/".into()), Modifiers::empty()),
+            Some(ShortcutAction::OpenSearch)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("k".into()), Modifiers::CTRL),
+            Some(ShortcutAction::OpenSearch)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Character("k".into()), Modifiers::empty()),
+            None
+        );
     }
 
     #[test]
     fn ctrl_shift_l_cycles_the_layout_and_ctrl_l_still_opens_lyrics() {
         let l = Key::Character("L".into());
-        assert_eq!(match_shortcut(&l, Modifiers::CTRL | Modifiers::SHIFT), Some(ShortcutAction::CycleLayout));
+        assert_eq!(
+            match_shortcut(&l, Modifiers::CTRL | Modifiers::SHIFT),
+            Some(ShortcutAction::CycleLayout)
+        );
         let l = Key::Character("l".into());
-        assert_eq!(match_shortcut(&l, Modifiers::CTRL), Some(ShortcutAction::ToggleLyrics));
-        assert_eq!(match_shortcut(&l, Modifiers::empty()), Some(ShortcutAction::ToggleLike));
-        assert!(super::SHORTCUT_HELP.iter().any(|(k, _)| k.contains("Ctrl + Shift + L")));
+        assert_eq!(
+            match_shortcut(&l, Modifiers::CTRL),
+            Some(ShortcutAction::ToggleLyrics)
+        );
+        assert_eq!(
+            match_shortcut(&l, Modifiers::empty()),
+            Some(ShortcutAction::ToggleLike)
+        );
+        assert!(super::SHORTCUT_HELP
+            .iter()
+            .any(|(k, _)| k.contains("Ctrl + Shift + L")));
     }
 
     #[test]
     fn arrows_seek_and_escape_closes() {
         let none = Modifiers::empty();
-        assert_eq!(match_shortcut(&Key::Named(Named::ArrowRight), none), Some(ShortcutAction::SeekForwardShort));
-        assert_eq!(match_shortcut(&Key::Named(Named::ArrowLeft), none), Some(ShortcutAction::SeekBackShort));
-        assert_eq!(match_shortcut(&Key::Named(Named::Escape), none), Some(ShortcutAction::BackOrClose));
+        assert_eq!(
+            match_shortcut(&Key::Named(Named::ArrowRight), none),
+            Some(ShortcutAction::SeekForwardShort)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Named(Named::ArrowLeft), none),
+            Some(ShortcutAction::SeekBackShort)
+        );
+        assert_eq!(
+            match_shortcut(&Key::Named(Named::Escape), none),
+            Some(ShortcutAction::BackOrClose)
+        );
     }
 }
-
-

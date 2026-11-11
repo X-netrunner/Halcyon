@@ -25,7 +25,9 @@ pub fn run() -> i32 {
     let mut list = String::new();
     if let Ok(content) = fs::read_to_string(&binds_file) {
         for line in content.lines() {
-            if let (Some(label_idx), Some(keys_idx)) = (line.find("label: \""), line.find("keys: \"")) {
+            if let (Some(label_idx), Some(keys_idx)) =
+                (line.find("label: \""), line.find("keys: \""))
+            {
                 let after_label = &line[label_idx + 8..];
                 let label = after_label.split('"').next().unwrap_or("");
                 let after_keys = &line[keys_idx + 7..];

@@ -63,12 +63,19 @@ impl RerankCfg {
 
     /// A "describe a mood" playlist: one more song per artist is allowed.
     pub fn prompt_mix(n: usize) -> Self {
-        RerankCfg { max_per_artist: 3, ..Self::shelf(n) }
+        RerankCfg {
+            max_per_artist: 3,
+            ..Self::shelf(n)
+        }
     }
 
     /// A list that is meant to repeat what you play (On Repeat): nothing is suppressed, no exploration.
     pub fn repeat_list(n: usize) -> Self {
-        RerankCfg { suppress_secs: 0, explore_share: 0.0, ..Self::shelf(n) }
+        RerankCfg {
+            suppress_secs: 0,
+            explore_share: 0.0,
+            ..Self::shelf(n)
+        }
     }
 
     /// What `--eval` uses. The offline replay has no outside candidates, so there is nothing to
@@ -76,7 +83,15 @@ impl RerankCfg {
     /// artist as in prompt mixes: a listener with three favourite artists cannot fill ten slots
     /// with two each from their own history.
     pub fn eval(n: usize) -> Self {
-        RerankCfg { n, max_per_artist: 3, lambda: 0.90, explore_share: 0.0, suppress_secs: 0, flow_weight: 0.0, window: (n * 4).max(40) }
+        RerankCfg {
+            n,
+            max_per_artist: 3,
+            lambda: 0.90,
+            explore_share: 0.0,
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            window: (n * 4).max(40),
+        }
     }
 }
 
@@ -95,7 +110,11 @@ pub fn recent_map(plays: &[PlayLogEntry]) -> HashMap<String, u64> {
     for p in plays {
         let by_id = m.entry(p.track_id.clone()).or_insert(0);
         *by_id = (*by_id).max(p.started_at);
-        let name = format!("{}|{}", normalize_string(&p.artist), normalize_string(&p.title));
+        let name = format!(
+            "{}|{}",
+            normalize_string(&p.artist),
+            normalize_string(&p.title)
+        );
         let by_name = m.entry(name).or_insert(0);
         *by_name = (*by_name).max(p.started_at);
     }
@@ -107,14 +126,20 @@ fn is_suppressed(c: &Candidate, recent: &HashMap<String, u64>, now: u64, secs: u
         return false;
     }
     let fresh = |t: Option<&u64>| t.is_some_and(|at| *at <= now && now - *at < secs);
-    c.track_id.as_deref().is_some_and(|id| fresh(recent.get(id))) || fresh(recent.get(&c.key()))
+    c.track_id
+        .as_deref()
+        .is_some_and(|id| fresh(recent.get(id)))
+        || fresh(recent.get(&c.key()))
 }
 
 // ------------------------------------------------------------------ similarity and energy
 
 fn tag_cosine(a: &[(String, f64)], b: &[(String, f64)]) -> f64 {
     let bm: HashMap<&str, f64> = b.iter().map(|(t, w)| (t.as_str(), *w)).collect();
-    let dot: f64 = a.iter().filter_map(|(t, w)| bm.get(t.as_str()).map(|x| w * x)).sum();
+    let dot: f64 = a
+        .iter()
+        .filter_map(|(t, w)| bm.get(t.as_str()).map(|x| w * x))
+        .sum();
     let na = a.iter().map(|(_, w)| w * w).sum::<f64>().sqrt();
     let nb = b.iter().map(|(_, w)| w * w).sum::<f64>().sqrt();
     if na > 1e-12 && nb > 1e-12 {
@@ -134,12 +159,41 @@ pub fn similarity(a: &Candidate, b: &Candidate) -> f64 {
 }
 
 const LOW_ENERGY: &[&str] = &[
-    "ambient", "chill", "chillout", "lo-fi", "lofi", "acoustic", "sleep", "downtempo", "classical", "piano", "folk",
-    "soft", "calm", "meditation", "slow", "singer-songwriter",
+    "ambient",
+    "chill",
+    "chillout",
+    "lo-fi",
+    "lofi",
+    "acoustic",
+    "sleep",
+    "downtempo",
+    "classical",
+    "piano",
+    "folk",
+    "soft",
+    "calm",
+    "meditation",
+    "slow",
+    "singer-songwriter",
 ];
 const HIGH_ENERGY: &[&str] = &[
-    "metal", "hardcore", "punk", "techno", "dance", "edm", "drum and bass", "dnb", "thrash", "trap", "hardstyle",
-    "house", "rave", "industrial", "electro", "hard rock", "uptempo",
+    "metal",
+    "hardcore",
+    "punk",
+    "techno",
+    "dance",
+    "edm",
+    "drum and bass",
+    "dnb",
+    "thrash",
+    "trap",
+    "hardstyle",
+    "house",
+    "rave",
+    "industrial",
+    "electro",
+    "hard rock",
+    "uptempo",
 ];
 
 /// A rough energy from tags, 0 (calm) to 1 (intense). `None` when no tag says anything: the song
@@ -201,7 +255,10 @@ struct Run<'a> {
 
 impl Run<'_> {
     fn artist(&self, i: usize) -> String {
-        self.scored.get(i).map(|s| normalize_string(&s.cand.artist)).unwrap_or_default()
+        self.scored
+            .get(i)
+            .map(|s| normalize_string(&s.cand.artist))
+            .unwrap_or_default()
     }
 
     fn last_artist(&self) -> Option<String> {
@@ -231,7 +288,10 @@ impl Run<'_> {
     }
 
     fn unheard_so_far(&self) -> usize {
-        self.picks.iter().filter(|p| self.scored.get(p.index).is_some_and(|s| s.unheard)).count()
+        self.picks
+            .iter()
+            .filter(|p| self.scored.get(p.index).is_some_and(|s| s.unheard))
+            .count()
     }
 }
 
@@ -246,11 +306,19 @@ pub fn rerank(
     seed: u64,
 ) -> Vec<Pick> {
     // 1. drop what was just played
-    let mut order: Vec<usize> =
-        (0..scored.len()).filter(|&i| scored.get(i).is_some_and(|s| !is_suppressed(&s.cand, recent, now, cfg.suppress_secs))).collect();
+    let mut order: Vec<usize> = (0..scored.len())
+        .filter(|&i| {
+            scored
+                .get(i)
+                .is_some_and(|s| !is_suppressed(&s.cand, recent, now, cfg.suppress_secs))
+        })
+        .collect();
     order.sort_by(|&a, &b| {
         let (sa, sb) = (scored.get(a), scored.get(b));
-        let (xa, xb) = (sa.map_or(f64::MIN, |s| s.score), sb.map_or(f64::MIN, |s| s.score));
+        let (xa, xb) = (
+            sa.map_or(f64::MIN, |s| s.score),
+            sb.map_or(f64::MIN, |s| s.score),
+        );
         xb.partial_cmp(&xa)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| sa.map(|s| s.cand.key()).cmp(&sb.map(|s| s.cand.key())))
@@ -259,13 +327,24 @@ pub fn rerank(
         return Vec::new();
     }
     let window: Vec<usize> = order.iter().copied().take(cfg.window.max(cfg.n)).collect();
-    let (lo, hi) = window.iter().filter_map(|&i| scored.get(i)).fold((f64::MAX, f64::MIN), |(lo, hi), s| (lo.min(s.score), hi.max(s.score)));
+    let (lo, hi) = window
+        .iter()
+        .filter_map(|&i| scored.get(i))
+        .fold((f64::MAX, f64::MIN), |(lo, hi), s| {
+            (lo.min(s.score), hi.max(s.score))
+        });
     let span = if hi > lo { hi - lo } else { 1.0 };
 
     let explore_target = ((cfg.n as f64) * cfg.explore_share.clamp(0.0, 1.0)).round() as usize;
     let planned = explore_positions(cfg.n, explore_target);
     let mut rng = Rng::new(seed);
-    let mut run = Run { scored, cfg, picks: Vec::new(), used: HashSet::new(), per_artist: HashMap::new() };
+    let mut run = Run {
+        scored,
+        cfg,
+        picks: Vec::new(),
+        used: HashSet::new(),
+        per_artist: HashMap::new(),
+    };
 
     for pos in 0..cfg.n {
         let need = explore_target.saturating_sub(run.unheard_so_far());
@@ -275,11 +354,14 @@ pub fn rerank(
         if want_explore {
             chosen = pick_explore(&run, &order, shelf, bandit, &mut rng, true).map(|i| (i, true));
             if chosen.is_none() {
-                chosen = pick_explore(&run, &order, shelf, bandit, &mut rng, false).map(|i| (i, true));
+                chosen =
+                    pick_explore(&run, &order, shelf, bandit, &mut rng, false).map(|i| (i, true));
             }
         }
         if chosen.is_none() {
-            chosen = pick_exploit(&run, &window, lo, span, true).or_else(|| pick_exploit(&run, &window, lo, span, false)).map(|i| (i, false));
+            chosen = pick_exploit(&run, &window, lo, span, true)
+                .or_else(|| pick_exploit(&run, &window, lo, span, false))
+                .map(|i| (i, false));
         }
         match chosen {
             Some((i, ex)) => run.push(i, ex),
@@ -290,8 +372,18 @@ pub fn rerank(
 }
 
 /// MMR over the window.
-fn pick_exploit(run: &Run<'_>, window: &[usize], lo: f64, span: f64, strict: bool) -> Option<usize> {
-    let prev = run.picks.last().and_then(|p| run.scored.get(p.index)).map(|s| &s.cand);
+fn pick_exploit(
+    run: &Run<'_>,
+    window: &[usize],
+    lo: f64,
+    span: f64,
+    strict: bool,
+) -> Option<usize> {
+    let prev = run
+        .picks
+        .last()
+        .and_then(|p| run.scored.get(p.index))
+        .map(|s| &s.cand);
     let mut best: Option<(usize, f64)> = None;
     for &i in window {
         if !run.allowed(i, strict) {
@@ -305,7 +397,9 @@ fn pick_exploit(run: &Run<'_>, window: &[usize], lo: f64, span: f64, strict: boo
             .filter_map(|p| run.scored.get(p.index))
             .map(|chosen| similarity(&s.cand, &chosen.cand))
             .fold(0.0, f64::max);
-        let value = run.cfg.lambda * rel - (1.0 - run.cfg.lambda) * redundancy - flow_penalty(prev, &s.cand, run.cfg.flow_weight);
+        let value = run.cfg.lambda * rel
+            - (1.0 - run.cfg.lambda) * redundancy
+            - flow_penalty(prev, &s.cand, run.cfg.flow_weight);
         // Strictly greater: on a tie the earlier (better ranked) candidate stays.
         if best.is_none_or(|(_, b)| value > b + 1e-12) {
             best = Some((i, value));
@@ -315,7 +409,14 @@ fn pick_exploit(run: &Run<'_>, window: &[usize], lo: f64, span: f64, strict: boo
 }
 
 /// An exploration slot: Thompson-sample the source, then take the best unheard song of it.
-fn pick_explore(run: &Run<'_>, order: &[usize], shelf: &str, bandit: &Bandit, rng: &mut Rng, strict: bool) -> Option<usize> {
+fn pick_explore(
+    run: &Run<'_>,
+    order: &[usize],
+    shelf: &str,
+    bandit: &Bandit,
+    rng: &mut Rng,
+    strict: bool,
+) -> Option<usize> {
     // The best allowed unheard candidate of each source (order is best first).
     let mut best_of: Vec<(Source, usize)> = Vec::new();
     for &i in order {
@@ -323,7 +424,9 @@ fn pick_explore(run: &Run<'_>, order: &[usize], shelf: &str, bandit: &Bandit, rn
         if !s.unheard || !run.allowed(i, strict) {
             continue;
         }
-        let Some(src) = s.cand.primary_source() else { continue };
+        let Some(src) = s.cand.primary_source() else {
+            continue;
+        };
         if !best_of.iter().any(|(b, _)| *b == src) {
             best_of.push((src, i));
         }
@@ -351,19 +454,40 @@ mod tests {
     }
 
     fn sc(artist: &str, title: &str, score: f64, unheard: bool, source: Source) -> Scored {
-        Scored { cand: cand(artist, title, source), score, unheard }
+        Scored {
+            cand: cand(artist, title, source),
+            score,
+            unheard,
+        }
     }
 
     fn cfg(n: usize) -> RerankCfg {
-        RerankCfg { explore_share: 0.0, suppress_secs: 0, flow_weight: 0.0, ..RerankCfg::shelf(n) }
+        RerankCfg {
+            explore_share: 0.0,
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            ..RerankCfg::shelf(n)
+        }
     }
 
     fn run(scored: &[Scored], cfg: &RerankCfg) -> Vec<Pick> {
-        rerank(scored, &HashMap::new(), NOW, cfg, "home", &Bandit::default(), 1)
+        rerank(
+            scored,
+            &HashMap::new(),
+            NOW,
+            cfg,
+            "home",
+            &Bandit::default(),
+            1,
+        )
     }
 
     fn artists(scored: &[Scored], picks: &[Pick]) -> Vec<String> {
-        picks.iter().filter_map(|p| scored.get(p.index)).map(|s| s.cand.artist.clone()).collect()
+        picks
+            .iter()
+            .filter_map(|p| scored.get(p.index))
+            .map(|s| s.cand.artist.clone())
+            .collect()
     }
 
     #[test]
@@ -371,17 +495,38 @@ mod tests {
         let mut pool = Vec::new();
         // Ash dominates the scores; Birch and Cedar trail.
         for i in 0..8 {
-            pool.push(sc("Ash", &format!("a{i}"), 10.0 - i as f64 * 0.1, false, Source::History));
+            pool.push(sc(
+                "Ash",
+                &format!("a{i}"),
+                10.0 - i as f64 * 0.1,
+                false,
+                Source::History,
+            ));
         }
         for i in 0..4 {
-            pool.push(sc("Birch", &format!("b{i}"), 5.0 - i as f64 * 0.1, false, Source::History));
-            pool.push(sc("Cedar", &format!("c{i}"), 4.0 - i as f64 * 0.1, false, Source::History));
+            pool.push(sc(
+                "Birch",
+                &format!("b{i}"),
+                5.0 - i as f64 * 0.1,
+                false,
+                Source::History,
+            ));
+            pool.push(sc(
+                "Cedar",
+                &format!("c{i}"),
+                4.0 - i as f64 * 0.1,
+                false,
+                Source::History,
+            ));
         }
         let picks = run(&pool, &cfg(6));
         let names = artists(&pool, &picks);
         assert_eq!(names.len(), 6, "{names:?}");
         for a in ["Ash", "Birch", "Cedar"] {
-            assert!(names.iter().filter(|n| *n == a).count() <= 2, "{a} more than twice in {names:?}");
+            assert!(
+                names.iter().filter(|n| *n == a).count() <= 2,
+                "{a} more than twice in {names:?}"
+            );
         }
         for w in names.windows(2) {
             assert_ne!(w[0], w[1], "back to back in {names:?}");
@@ -390,16 +535,34 @@ mod tests {
 
     #[test]
     fn the_cap_is_a_hard_limit_the_list_is_shorter_rather_than_break_it() {
-        let pool: Vec<Scored> = (0..6).map(|i| sc("Ash", &format!("a{i}"), 5.0 - i as f64, false, Source::History)).collect();
+        let pool: Vec<Scored> = (0..6)
+            .map(|i| {
+                sc(
+                    "Ash",
+                    &format!("a{i}"),
+                    5.0 - i as f64,
+                    false,
+                    Source::History,
+                )
+            })
+            .collect();
         let picks = run(&pool, &cfg(5));
         assert_eq!(picks.len(), 2, "one artist, cap 2");
-        let mix = RerankCfg { explore_share: 0.0, suppress_secs: 0, flow_weight: 0.0, ..RerankCfg::prompt_mix(5) };
+        let mix = RerankCfg {
+            explore_share: 0.0,
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            ..RerankCfg::prompt_mix(5)
+        };
         assert_eq!(run(&pool, &mix).len(), 3, "prompt mixes allow 3");
     }
 
     #[test]
     fn back_to_back_is_only_relaxed_when_nothing_else_is_left() {
-        let pool = vec![sc("Ash", "a1", 3.0, false, Source::History), sc("Ash", "a2", 2.0, false, Source::History)];
+        let pool = vec![
+            sc("Ash", "a1", 3.0, false, Source::History),
+            sc("Ash", "a2", 2.0, false, Source::History),
+        ];
         let picks = run(&pool, &cfg(2));
         assert_eq!(picks.len(), 2, "better two in a row than a short list");
     }
@@ -411,7 +574,13 @@ mod tests {
             sc("B", "2", 3.0, false, Source::History),
             sc("C", "3", 2.0, false, Source::History),
         ];
-        let picks = run(&pool, &RerankCfg { lambda: 1.0, ..cfg(3) });
+        let picks = run(
+            &pool,
+            &RerankCfg {
+                lambda: 1.0,
+                ..cfg(3)
+            },
+        );
         assert_eq!(artists(&pool, &picks), vec!["B", "C", "A"]);
     }
 
@@ -427,33 +596,96 @@ mod tests {
         // best score (the relevance is scaled to the window's spread).
         let d1 = sc("Dune", "d1", 0.0, false, Source::History);
         let pool = vec![a1, b1, c1, d1];
-        let picks = run(&pool, &RerankCfg { lambda: 0.6, ..cfg(2) });
-        assert_eq!(artists(&pool, &picks), vec!["Ash", "Cedar"], "the second pick should not sound like the first");
+        let picks = run(
+            &pool,
+            &RerankCfg {
+                lambda: 0.6,
+                ..cfg(2)
+            },
+        );
+        assert_eq!(
+            artists(&pool, &picks),
+            vec!["Ash", "Cedar"],
+            "the second pick should not sound like the first"
+        );
     }
 
     #[test]
     fn songs_played_in_the_last_hours_are_dropped_unless_the_list_repeats() {
-        let mut pool = vec![sc("Ash", "fresh", 9.0, false, Source::History), sc("Birch", "old", 1.0, false, Source::History)];
+        let mut pool = vec![
+            sc("Ash", "fresh", 9.0, false, Source::History),
+            sc("Birch", "old", 1.0, false, Source::History),
+        ];
         pool[0].cand.track_id = Some("t-fresh".into());
         pool[1].cand.track_id = Some("t-old".into());
         let plays = vec![
-            PlayLogEntry { id: 1, track_id: "t-fresh".into(), title: "fresh".into(), artist: "Ash".into(), album: "A".into(), started_at: NOW - 3_600, ms_played: 200_000, completed: true },
-            PlayLogEntry { id: 2, track_id: "t-old".into(), title: "old".into(), artist: "Birch".into(), album: "A".into(), started_at: NOW - 3 * 86_400, ms_played: 200_000, completed: true },
+            PlayLogEntry {
+                id: 1,
+                track_id: "t-fresh".into(),
+                title: "fresh".into(),
+                artist: "Ash".into(),
+                album: "A".into(),
+                started_at: NOW - 3_600,
+                ms_played: 200_000,
+                completed: true,
+            },
+            PlayLogEntry {
+                id: 2,
+                track_id: "t-old".into(),
+                title: "old".into(),
+                artist: "Birch".into(),
+                album: "A".into(),
+                started_at: NOW - 3 * 86_400,
+                ms_played: 200_000,
+                completed: true,
+            },
         ];
         let recent = recent_map(&plays);
-        let shelf = RerankCfg { explore_share: 0.0, flow_weight: 0.0, ..RerankCfg::shelf(2) };
+        let shelf = RerankCfg {
+            explore_share: 0.0,
+            flow_weight: 0.0,
+            ..RerankCfg::shelf(2)
+        };
         let picks = rerank(&pool, &recent, NOW, &shelf, "home", &Bandit::default(), 1);
         assert_eq!(artists(&pool, &picks), vec!["Birch"]);
-        let repeat = RerankCfg { flow_weight: 0.0, ..RerankCfg::repeat_list(2) };
-        let picks = rerank(&pool, &recent, NOW, &repeat, "on-repeat", &Bandit::default(), 1);
+        let repeat = RerankCfg {
+            flow_weight: 0.0,
+            ..RerankCfg::repeat_list(2)
+        };
+        let picks = rerank(
+            &pool,
+            &recent,
+            NOW,
+            &repeat,
+            "on-repeat",
+            &Bandit::default(),
+            1,
+        );
         assert_eq!(picks.len(), 2, "On Repeat keeps recent songs");
     }
 
     #[test]
     fn a_song_without_an_id_is_matched_by_name() {
         let pool = vec![sc("Ash", "Same Song (Live)", 9.0, false, Source::Similar)];
-        let plays = vec![PlayLogEntry { id: 1, track_id: "x".into(), title: "Same Song".into(), artist: "ash".into(), album: "A".into(), started_at: NOW - 60, ms_played: 1, completed: true }];
-        let picks = rerank(&pool, &recent_map(&plays), NOW, &RerankCfg::shelf(1), "home", &Bandit::default(), 1);
+        let plays = vec![PlayLogEntry {
+            id: 1,
+            track_id: "x".into(),
+            title: "Same Song".into(),
+            artist: "ash".into(),
+            album: "A".into(),
+            started_at: NOW - 60,
+            ms_played: 1,
+            completed: true,
+        }];
+        let picks = rerank(
+            &pool,
+            &recent_map(&plays),
+            NOW,
+            &RerankCfg::shelf(1),
+            "home",
+            &Bandit::default(),
+            1,
+        );
         assert!(picks.is_empty());
     }
 
@@ -461,37 +693,99 @@ mod tests {
     fn about_a_fifth_of_a_list_is_unheard_artists_spread_out() {
         let mut pool = Vec::new();
         for i in 0..20 {
-            pool.push(sc(&format!("Known{}", i % 10), &format!("k{i}"), 10.0 - i as f64 * 0.05, false, Source::History));
+            pool.push(sc(
+                &format!("Known{}", i % 10),
+                &format!("k{i}"),
+                10.0 - i as f64 * 0.05,
+                false,
+                Source::History,
+            ));
         }
         for i in 0..10 {
-            pool.push(sc(&format!("New{i}"), &format!("n{i}"), -1.0 - i as f64 * 0.1, true, if i % 2 == 0 { Source::Similar } else { Source::Chart }));
+            pool.push(sc(
+                &format!("New{i}"),
+                &format!("n{i}"),
+                -1.0 - i as f64 * 0.1,
+                true,
+                if i % 2 == 0 {
+                    Source::Similar
+                } else {
+                    Source::Chart
+                },
+            ));
         }
-        let c = RerankCfg { suppress_secs: 0, flow_weight: 0.0, ..RerankCfg::shelf(10) };
-        let picks = rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 11);
+        let c = RerankCfg {
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            ..RerankCfg::shelf(10)
+        };
+        let picks = rerank(
+            &pool,
+            &HashMap::new(),
+            NOW,
+            &c,
+            "home",
+            &Bandit::default(),
+            11,
+        );
         assert_eq!(picks.len(), 10);
-        let explored: Vec<usize> = picks.iter().enumerate().filter(|(_, p)| p.explore).map(|(i, _)| i).collect();
+        let explored: Vec<usize> = picks
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.explore)
+            .map(|(i, _)| i)
+            .collect();
         assert_eq!(explored.len(), 2, "20% of 10");
-        assert!(explored.iter().all(|i| pool.get(picks[*i].index).is_some_and(|s| s.unheard)));
+        assert!(explored
+            .iter()
+            .all(|i| pool.get(picks[*i].index).is_some_and(|s| s.unheard)));
         assert!(explored[1] - explored[0] >= 3, "spread out: {explored:?}");
-        assert_eq!(picks.iter().filter(|p| pool[p.index].unheard).count(), 2, "no more unheard than planned here");
+        assert_eq!(
+            picks.iter().filter(|p| pool[p.index].unheard).count(),
+            2,
+            "no more unheard than planned here"
+        );
     }
 
     #[test]
     fn exploration_follows_the_source_that_has_worked() {
         let mut pool = Vec::new();
         for i in 0..12 {
-            pool.push(sc(&format!("Known{i}"), &format!("k{i}"), 5.0 - i as f64 * 0.1, false, Source::History));
+            pool.push(sc(
+                &format!("Known{i}"),
+                &format!("k{i}"),
+                5.0 - i as f64 * 0.1,
+                false,
+                Source::History,
+            ));
         }
         for i in 0..6 {
-            pool.push(sc(&format!("Sim{i}"), &format!("s{i}"), 0.0, true, Source::Similar));
-            pool.push(sc(&format!("Chart{i}"), &format!("c{i}"), 0.0, true, Source::Chart));
+            pool.push(sc(
+                &format!("Sim{i}"),
+                &format!("s{i}"),
+                0.0,
+                true,
+                Source::Similar,
+            ));
+            pool.push(sc(
+                &format!("Chart{i}"),
+                &format!("c{i}"),
+                0.0,
+                true,
+                Source::Chart,
+            ));
         }
         let mut bandit = Bandit::default();
         for _ in 0..25 {
             bandit.reward("home", "similar", true);
             bandit.reward("home", "chart", false);
         }
-        let c = RerankCfg { suppress_secs: 0, flow_weight: 0.0, explore_share: 0.3, ..RerankCfg::shelf(10) };
+        let c = RerankCfg {
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            explore_share: 0.3,
+            ..RerankCfg::shelf(10)
+        };
         let mut from_similar = 0;
         let mut total = 0;
         for seed in 0..40u64 {
@@ -504,31 +798,106 @@ mod tests {
             }
         }
         assert!(total >= 100, "{total} exploration slots");
-        assert!(from_similar as f64 > 0.8 * total as f64, "{from_similar} of {total} came from the source that works");
+        assert!(
+            from_similar as f64 > 0.8 * total as f64,
+            "{from_similar} of {total} came from the source that works"
+        );
     }
 
     #[test]
     fn the_list_is_stable_for_a_seed_and_can_change_with_another() {
         let mut pool = Vec::new();
         for i in 0..15 {
-            pool.push(sc(&format!("K{i}"), "t", 3.0 - i as f64 * 0.01, false, Source::History));
+            pool.push(sc(
+                &format!("K{i}"),
+                "t",
+                3.0 - i as f64 * 0.01,
+                false,
+                Source::History,
+            ));
         }
         for i in 0..8 {
-            pool.push(sc(&format!("U{i}"), "t", 0.0, true, if i % 2 == 0 { Source::Similar } else { Source::TagNeighbour }));
+            pool.push(sc(
+                &format!("U{i}"),
+                "t",
+                0.0,
+                true,
+                if i % 2 == 0 {
+                    Source::Similar
+                } else {
+                    Source::TagNeighbour
+                },
+            ));
         }
-        let c = RerankCfg { suppress_secs: 0, ..RerankCfg::shelf(10) };
-        let a = rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 5);
-        let b = rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 5);
+        let c = RerankCfg {
+            suppress_secs: 0,
+            ..RerankCfg::shelf(10)
+        };
+        let a = rerank(
+            &pool,
+            &HashMap::new(),
+            NOW,
+            &c,
+            "home",
+            &Bandit::default(),
+            5,
+        );
+        let b = rerank(
+            &pool,
+            &HashMap::new(),
+            NOW,
+            &c,
+            "home",
+            &Bandit::default(),
+            5,
+        );
         assert_eq!(a, b);
-        let others: Vec<Vec<Pick>> = (6..30).map(|s| rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), s)).collect();
-        assert!(others.iter().any(|o| *o != a), "no seed changes the exploration at all");
+        let others: Vec<Vec<Pick>> = (6..30)
+            .map(|s| {
+                rerank(
+                    &pool,
+                    &HashMap::new(),
+                    NOW,
+                    &c,
+                    "home",
+                    &Bandit::default(),
+                    s,
+                )
+            })
+            .collect();
+        assert!(
+            others.iter().any(|o| *o != a),
+            "no seed changes the exploration at all"
+        );
     }
 
     #[test]
     fn with_nothing_unheard_the_exploration_slots_go_to_the_best_songs() {
-        let pool: Vec<Scored> = (0..6).map(|i| sc(&format!("K{i}"), "t", 6.0 - i as f64, false, Source::History)).collect();
-        let c = RerankCfg { suppress_secs: 0, flow_weight: 0.0, ..RerankCfg::shelf(5) };
-        let picks = rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 1);
+        let pool: Vec<Scored> = (0..6)
+            .map(|i| {
+                sc(
+                    &format!("K{i}"),
+                    "t",
+                    6.0 - i as f64,
+                    false,
+                    Source::History,
+                )
+            })
+            .collect();
+        let c = RerankCfg {
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            ..RerankCfg::shelf(5)
+        };
+        let picks = rerank(
+            &pool,
+            &HashMap::new(),
+            NOW,
+            &c,
+            "home",
+            &Bandit::default(),
+            1,
+        );
         assert_eq!(picks.len(), 5);
         assert!(picks.iter().all(|p| !p.explore));
     }
@@ -543,10 +912,31 @@ mod tests {
         mellow.cand.tags = vec![("chillout".into(), 1.0)];
         let plain = sc("Plain", "4", 0.90, false, Source::History);
         let pool = vec![calm.clone(), loud.clone(), mellow.clone(), plain.clone()];
-        let c = RerankCfg { lambda: 0.95, flow_weight: 1.0, explore_share: 0.0, suppress_secs: 0, ..RerankCfg::shelf(3) };
-        let names = artists(&pool, &rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 1));
+        let c = RerankCfg {
+            lambda: 0.95,
+            flow_weight: 1.0,
+            explore_share: 0.0,
+            suppress_secs: 0,
+            ..RerankCfg::shelf(3)
+        };
+        let names = artists(
+            &pool,
+            &rerank(
+                &pool,
+                &HashMap::new(),
+                NOW,
+                &c,
+                "home",
+                &Bandit::default(),
+                1,
+            ),
+        );
         assert_eq!(names.first().map(String::as_str), Some("Calm"));
-        assert_eq!(names.get(1).map(String::as_str), Some("Mellow"), "calm to mellow, not calm to metal: {names:?}");
+        assert_eq!(
+            names.get(1).map(String::as_str),
+            Some("Mellow"),
+            "calm to mellow, not calm to metal: {names:?}"
+        );
         assert_eq!(energy_of(&[]), None);
         assert_eq!(energy_of(&[("indie".into(), 1.0)]), None);
         assert!(energy_of(&[("deep house".into(), 1.0)]).is_some_and(|e| e > 0.8));
@@ -554,7 +944,10 @@ mod tests {
 
     #[test]
     fn explore_positions_are_even_and_bounded() {
-        assert_eq!(explore_positions(10, 2), vec![false, false, true, false, false, false, false, true, false, false]);
+        assert_eq!(
+            explore_positions(10, 2),
+            vec![false, false, true, false, false, false, false, true, false, false]
+        );
         assert!(explore_positions(0, 3).is_empty());
         assert_eq!(explore_positions(4, 0), vec![false; 4]);
         assert_eq!(explore_positions(3, 9).iter().filter(|b| **b).count(), 3);
@@ -571,10 +964,32 @@ mod tests {
     fn a_prefix_of_the_list_obeys_the_same_rules() {
         let mut pool = Vec::new();
         for i in 0..30 {
-            pool.push(sc(&format!("A{}", i % 7), &format!("t{i}"), 5.0 - i as f64 * 0.05, i % 5 == 0, if i % 2 == 0 { Source::History } else { Source::Similar }));
+            pool.push(sc(
+                &format!("A{}", i % 7),
+                &format!("t{i}"),
+                5.0 - i as f64 * 0.05,
+                i % 5 == 0,
+                if i % 2 == 0 {
+                    Source::History
+                } else {
+                    Source::Similar
+                },
+            ));
         }
-        let c = RerankCfg { suppress_secs: 0, flow_weight: 0.0, ..RerankCfg::shelf(15) };
-        let long = rerank(&pool, &HashMap::new(), NOW, &c, "home", &Bandit::default(), 3);
+        let c = RerankCfg {
+            suppress_secs: 0,
+            flow_weight: 0.0,
+            ..RerankCfg::shelf(15)
+        };
+        let long = rerank(
+            &pool,
+            &HashMap::new(),
+            NOW,
+            &c,
+            "home",
+            &Bandit::default(),
+            3,
+        );
         let names = artists(&pool, &long);
         for take in 1..=names.len() {
             let head = &names[..take];

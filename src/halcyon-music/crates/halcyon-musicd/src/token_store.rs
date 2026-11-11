@@ -69,7 +69,12 @@ fn keyring_call<T: Send + 'static>(f: impl FnOnce() -> Option<T> + Send + 'stati
 }
 
 fn keyring_get(user: &'static str) -> Option<String> {
-    keyring_call(move || keyring::Entry::new(SERVICE_NAME, user).ok()?.get_password().ok())
+    keyring_call(move || {
+        keyring::Entry::new(SERVICE_NAME, user)
+            .ok()?
+            .get_password()
+            .ok()
+    })
 }
 
 /// True when the keyring took the value.
@@ -89,7 +94,9 @@ fn keyring_set(user: &'static str, value: String) -> bool {
 
 fn keyring_delete(user: &'static str) {
     let _ = keyring_call(move || {
-        let _ = keyring::Entry::new(SERVICE_NAME, user).ok()?.delete_credential();
+        let _ = keyring::Entry::new(SERVICE_NAME, user)
+            .ok()?
+            .delete_credential();
         Some(())
     });
 }
@@ -244,10 +251,7 @@ pub fn save_file_0600(target: &Path, data: &[u8]) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // Set 0600 permissions
-    let mut perms = file
-        .metadata()
-        .map_err(|e| e.to_string())?
-        .permissions();
+    let mut perms = file.metadata().map_err(|e| e.to_string())?.permissions();
     perms.set_mode(0o600);
     std::fs::set_permissions(&tmp_path, perms).map_err(|e| e.to_string())?;
 
@@ -472,7 +476,10 @@ pub fn save_librespot_token(token: &LibrespotToken) -> Result<(), String> {
         Ok(())
     } else {
         write_librespot_token_file(&path, token)?;
-        info!("streaming token saved to secure state file ({})", path.display());
+        info!(
+            "streaming token saved to secure state file ({})",
+            path.display()
+        );
         Ok(())
     }
 }
@@ -537,9 +544,16 @@ fn classify_refresh_error(text: &str) -> RefreshError {
     let lower = text.to_lowercase();
     if lower.contains("invalid_grant") {
         RefreshError::Rejected
-    } else if ["request failed", "error sending request", "connect", "timed out", "timeout", "dns"]
-        .iter()
-        .any(|needle| lower.contains(needle))
+    } else if [
+        "request failed",
+        "error sending request",
+        "connect",
+        "timed out",
+        "timeout",
+        "dns",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
     {
         RefreshError::Network
     } else {
@@ -711,7 +725,7 @@ mod tests {
         assert!(refresh_due(1_000, 1_000 + 720, 3600)); // window opens
         assert!(refresh_due(1_000, 1_000, 3600)); // expires now
         assert!(refresh_due(1_000, 900, 3600)); // already expired
-        // zero lifetime: due only once expired
+                                                // zero lifetime: due only once expired
         assert!(!refresh_due(1_000, 1_001, 0));
         assert!(refresh_due(1_000, 1_000, 0));
         // huge values do not overflow
@@ -793,13 +807,23 @@ mod tests {
             classify_refresh_error("operation timed out"),
             RefreshError::Network
         );
-        assert_eq!(classify_refresh_error("something else"), RefreshError::Other);
+        assert_eq!(
+            classify_refresh_error("something else"),
+            RefreshError::Other
+        );
     }
 
     #[test]
     fn merge_keeps_old_refresh_token_and_scopes_when_omitted() {
         let old = ls_token(3600, 1_000);
-        let merged = merge_refreshed(10_000, &old, "NEW-ACCESS".into(), String::new(), 3600, vec![]);
+        let merged = merge_refreshed(
+            10_000,
+            &old,
+            "NEW-ACCESS".into(),
+            String::new(),
+            3600,
+            vec![],
+        );
         assert_eq!(merged.access_token, "NEW-ACCESS");
         assert_eq!(merged.refresh_token, SECRET_REFRESH);
         assert_eq!(merged.scopes, old.scopes);
@@ -884,7 +908,10 @@ mod tests {
         // and with scopes
         let with_scopes = r#"{"client_id":"abc","access_token":"AT","refresh_token":"RT","expires_at":4102444800,"expires_in":3600,"token_type":"Bearer","scopes":["user-library-read"]}"#;
         std::fs::write(&path, with_scopes).expect("write");
-        assert!(matches!(read_json_file::<TokenData>(&path), FileRead::Found(_)));
+        assert!(matches!(
+            read_json_file::<TokenData>(&path),
+            FileRead::Found(_)
+        ));
 
         // the two slots never share a file or a keyring entry
         assert_ne!(token_file_path(), librespot_token_file_path());

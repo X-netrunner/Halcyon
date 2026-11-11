@@ -21,27 +21,28 @@
     )
 )]
 
-mod avatar;
-mod machine;
-mod mix_order;
-mod nav_history;
 mod animation;
 mod art;
+mod avatar;
 mod client;
 mod icons;
 mod layout;
+mod machine;
+mod mix_order;
+mod nav_history;
 mod shortcuts;
 mod theme;
 mod views;
-mod viz;
 mod visualizer;
+mod viz;
 
 use crate::icons::{icon, Icon};
 use animation::AnimationManager;
 use client::{ConnStatus, UiEvent};
 use halcyon_music_core::art::ArtSize;
 use halcyon_music_core::models::{
-    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, FullCapsule, HomeFeed, Lyrics, Playlist, Track,
+    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, FullCapsule,
+    HomeFeed, Lyrics, Playlist, Track,
 };
 use halcyon_music_core::protocol::{CommandBody, EventBody, MixFeedbackAction};
 use halcyon_music_core::state::{Bitrate, PlayerState};
@@ -53,7 +54,9 @@ use views::library::{LibraryTab, LikedSort};
 use views::search::SearchCategory;
 use views::sidebar::NavPage;
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text, text_input, Space};
+use iced::widget::{
+    button, column, container, mouse_area, row, scrollable, text, text_input, Space,
+};
 use iced::{Alignment, Element, Length, Task, Theme};
 use std::time::{Duration, Instant};
 
@@ -328,7 +331,10 @@ enum Message {
     PlaylistAddToQueue,
     PlaylistPlayNext,
     PlaylistRetry,
-    PlaylistTimeout { id: String, generation: u64 },
+    PlaylistTimeout {
+        id: String,
+        generation: u64,
+    },
     // Track context menu
     TrackMenuPlay,
     TrackMenuPlayNext,
@@ -659,7 +665,8 @@ impl HalcyonApp {
         }
         let reduce = self.animations.reduce_motion;
         let settling = !reduce && self.viz.is_settling();
-        let transport = self.show_fullscreen && views::fullscreen::controls_changing(self.fs_last_move.elapsed());
+        let transport = self.show_fullscreen
+            && views::fullscreen::controls_changing(self.fs_last_move.elapsed());
         if transport || settling {
             Some(if reduce { 250 } else { 33 })
         } else {
@@ -850,7 +857,11 @@ impl HalcyonApp {
         self.send(CommandBody::SetLlmSettings {
             enabled: self.llm_enabled,
             backend: self.llm_backend.clone(),
-            model: if self.llm_backend == "ollama" { self.llm_model.clone() } else { self.llm_local_model.clone() },
+            model: if self.llm_backend == "ollama" {
+                self.llm_model.clone()
+            } else {
+                self.llm_local_model.clone()
+            },
             endpoint: String::new(),
         });
     }
@@ -899,20 +910,22 @@ impl HalcyonApp {
             _ => None,
         });
 
-        let resize_sub = iced::window::resize_events().map(|(_, size)| Message::WindowResized(size));
+        let resize_sub =
+            iced::window::resize_events().map(|(_, size)| Message::WindowResized(size));
 
         // The cursor position is only followed on pages with right-clickable songs, and in full
         // screen (a move shows the transport; near the top edge it shows the window buttons).
-        let cursor_sub = if matches!(self.active_nav, NavPage::PlaylistDetail) || self.show_fullscreen {
-            iced::event::listen_with(|event, _status, _window| match event {
-                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                    Some(Message::CursorMoved(position))
-                }
-                _ => None,
-            })
-        } else {
-            iced::Subscription::none()
-        };
+        let cursor_sub =
+            if matches!(self.active_nav, NavPage::PlaylistDetail) || self.show_fullscreen {
+                iced::event::listen_with(|event, _status, _window| match event {
+                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                        Some(Message::CursorMoved(position))
+                    }
+                    _ => None,
+                })
+            } else {
+                iced::Subscription::none()
+            };
 
         // The full-screen glow breathes slowly: 30 frames a second, only while something that
         // moves is on screen (full screen, the queue drawer, the mini visualizer, Classic's rail
@@ -971,7 +984,16 @@ impl HalcyonApp {
         // A few `stat` calls every five seconds: the avatar file can be replaced while the app runs.
         let avatar_sub = iced::time::every(Duration::from_secs(5)).map(|_| Message::AvatarCheck);
 
-        iced::Subscription::batch([key_sub, touchpad_sub, resize_sub, cursor_sub, anim_sub, toast_sub, palette_sub, avatar_sub])
+        iced::Subscription::batch([
+            key_sub,
+            touchpad_sub,
+            resize_sub,
+            cursor_sub,
+            anim_sub,
+            toast_sub,
+            palette_sub,
+            avatar_sub,
+        ])
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -1065,7 +1087,11 @@ impl HalcyonApp {
     /// Ask for the covers of the playlist rows that are on screen (cheap; skips ones already asked).
     fn request_playlist_art(&self) {
         if let Some((_, tracks)) = &self.active_playlist {
-            let (a, b) = views::playlist::visible_range(self.scroll.y, self.scroll.viewport_h.max(700.0), tracks.len());
+            let (a, b) = views::playlist::visible_range(
+                self.scroll.y,
+                self.scroll.viewport_h.max(700.0),
+                tracks.len(),
+            );
             for cmd in art::commands_for(art::track_items(tracks.get(a..b).unwrap_or(&[]))) {
                 self.send(cmd);
             }
@@ -1074,7 +1100,9 @@ impl HalcyonApp {
 
     /// Ask for one page of the open playlist and start the clock that decides it failed.
     fn request_playlist_page(&mut self, offset: usize) -> Task<Message> {
-        let Some((pl, _)) = &self.active_playlist else { return Task::none() };
+        let Some((pl, _)) = &self.active_playlist else {
+            return Task::none();
+        };
         let id = pl.id.clone();
         self.playlist_page.generation += 1;
         let generation = self.playlist_page.generation;
@@ -1099,10 +1127,21 @@ impl HalcyonApp {
             None => return Task::none(),
         };
         let pp = &self.playlist_page;
-        if pp.loading || pp.loading_more || pp.failed || pp.more_failed || loaded == 0 || loaded >= pp.total {
+        if pp.loading
+            || pp.loading_more
+            || pp.failed
+            || pp.more_failed
+            || loaded == 0
+            || loaded >= pp.total
+        {
             return Task::none();
         }
-        if !views::playlist::near_end(self.scroll.y, self.scroll.viewport_h, self.scroll.content_h, 600.0) {
+        if !views::playlist::near_end(
+            self.scroll.y,
+            self.scroll.viewport_h,
+            self.scroll.content_h,
+            600.0,
+        ) {
             return Task::none();
         }
         self.playlist_page.loading_more = true;
@@ -1152,11 +1191,16 @@ impl HalcyonApp {
             let mut v: Vec<(Option<&str>, ArtSize)> = art::track_items(&r.tracks).collect();
             v.extend(art::artist_items(&r.artists));
             v.extend(art::album_items(&r.albums));
-            v.extend(r.playlists.iter().map(|p| (p.art_url.as_deref(), ArtSize::Medium)));
+            v.extend(
+                r.playlists
+                    .iter()
+                    .map(|p| (p.art_url.as_deref(), ArtSize::Medium)),
+            );
             v
         }
         fn library_items<'a>(app: &'a HalcyonApp) -> Vec<(Option<&'a str>, ArtSize)> {
-            let mut v: Vec<(Option<&'a str>, ArtSize)> = art::track_items(&app.liked_tracks).collect();
+            let mut v: Vec<(Option<&'a str>, ArtSize)> =
+                art::track_items(&app.liked_tracks).collect();
             v.extend(art::playlist_items(&app.playlists));
             v.extend(art::album_items(&app.saved_albums));
             v.extend(art::artist_items(&app.followed_artists));
@@ -1173,7 +1217,11 @@ impl HalcyonApp {
             }
             if let Some((playlist, tracks)) = &app.active_playlist {
                 v.push((playlist.art_url.as_deref(), ArtSize::Medium));
-                let (a, b) = views::playlist::visible_range(app.scroll.y, app.scroll.viewport_h.max(700.0), tracks.len());
+                let (a, b) = views::playlist::visible_range(
+                    app.scroll.y,
+                    app.scroll.viewport_h.max(700.0),
+                    tracks.len(),
+                );
                 v.extend(art::track_items(tracks.get(a..b).unwrap_or(&[])));
             }
             v
@@ -1250,7 +1298,10 @@ impl HalcyonApp {
                         // An older daemon answers this with "not supported by this daemon version".
                         self.send(CommandBody::GetStreamingAuth);
                         self.request_home_feed();
-                        self.send(CommandBody::GetLikedTracks { limit: Some(50), offset: Some(0) });
+                        self.send(CommandBody::GetLikedTracks {
+                            limit: Some(50),
+                            offset: Some(0),
+                        });
                     }
                     Task::none()
                 }
@@ -1261,7 +1312,8 @@ impl HalcyonApp {
                 }
                 UiEvent::Protocol(boxed_ev) => match boxed_ev.body {
                     EventBody::State { state } => {
-                        let track_changed = self.state.track.as_ref().map(|t| &t.id) != state.track.as_ref().map(|t| &t.id);
+                        let track_changed = self.state.track.as_ref().map(|t| &t.id)
+                            != state.track.as_ref().map(|t| &t.id);
                         self.state = state;
                         if track_changed {
                             self.retint();
@@ -1394,7 +1446,12 @@ impl HalcyonApp {
                         self.animations.animate_toast_show();
                         Task::none()
                     }
-                    EventBody::LlmModels { models, engine, active, .. } => {
+                    EventBody::LlmModels {
+                        models,
+                        engine,
+                        active,
+                        ..
+                    } => {
                         self.llm_models = models;
                         self.llm_engine = engine;
                         if !active.is_empty() {
@@ -1402,11 +1459,29 @@ impl HalcyonApp {
                         }
                         Task::none()
                     }
-                    EventBody::LlmDownload { id, state, done, total, error } => {
-                        self.llm_download = Some(views::llm_settings::Download { id, state, done, total, error });
+                    EventBody::LlmDownload {
+                        id,
+                        state,
+                        done,
+                        total,
+                        error,
+                    } => {
+                        self.llm_download = Some(views::llm_settings::Download {
+                            id,
+                            state,
+                            done,
+                            total,
+                            error,
+                        });
                         Task::none()
                     }
-                    EventBody::LlmStatus { enabled, backend, model, reachable, hint } => {
+                    EventBody::LlmStatus {
+                        enabled,
+                        backend,
+                        model,
+                        reachable,
+                        hint,
+                    } => {
                         self.llm_enabled = enabled;
                         if !self.llm_model_synced {
                             self.llm_backend = backend;
@@ -1469,11 +1544,22 @@ impl HalcyonApp {
                         Task::none()
                     }
                     EventBody::SmartShuffleStarted { name, suggested } => {
-                        self.notify(format!("Smart Shuffle on {} · {} suggestions added", views::ellipsize(&name, 30), suggested.len()), true);
+                        self.notify(
+                            format!(
+                                "Smart Shuffle on {} · {} suggestions added",
+                                views::ellipsize(&name, 30),
+                                suggested.len()
+                            ),
+                            true,
+                        );
                         self.smart_marks = suggested.into_iter().collect();
                         Task::none()
                     }
-                    EventBody::MixEnriched { mix_id, title, reason } => {
+                    EventBody::MixEnriched {
+                        mix_id,
+                        title,
+                        reason,
+                    } => {
                         self.mix_notes.insert(mix_id, (title, reason));
                         self.apply_mix_notes();
                         Task::none()
@@ -1490,7 +1576,10 @@ impl HalcyonApp {
                         // Mixes from outside sources (Deezer, ListenBrainz) need Spotify lookups, which
                         // Spotify may rate limit. While they are missing, try again now and then.
                         if self.home_outside_missing() {
-                            if self.active_nav == NavPage::Home && self.home_retries < 6 && !self.home_retry_pending {
+                            if self.active_nav == NavPage::Home
+                                && self.home_retries < 6
+                                && !self.home_retry_pending
+                            {
                                 self.home_retries += 1;
                                 self.home_retry_pending = true;
                                 return Task::perform(
@@ -1512,7 +1601,12 @@ impl HalcyonApp {
                         self.discover_feed = *feed;
                         Task::none()
                     }
-                    EventBody::LikedTracksResult { tracks, offset, is_cached, total } => {
+                    EventBody::LikedTracksResult {
+                        tracks,
+                        offset,
+                        is_cached,
+                        total,
+                    } => {
                         let page_len = tracks.len();
                         if !is_cached && page_len > 0 {
                             // Fetch the rest of the library in the background, 50 at a time, up to 1000 songs.
@@ -1543,10 +1637,18 @@ impl HalcyonApp {
                         self.followed_artists = artists;
                         Task::none()
                     }
-                    EventBody::Profile { display_name, image_url, username, plan } => {
+                    EventBody::Profile {
+                        display_name,
+                        image_url,
+                        username,
+                        plan,
+                    } => {
                         // Never let a late, empty answer wipe a name, picture, username or plan we
                         // already have.
-                        if display_name.as_deref().is_some_and(|n| !n.trim().is_empty()) {
+                        if display_name
+                            .as_deref()
+                            .is_some_and(|n| !n.trim().is_empty())
+                        {
                             self.profile_name = display_name;
                         }
                         if image_url.is_some() {
@@ -1560,29 +1662,48 @@ impl HalcyonApp {
                         }
                         Task::none()
                     }
-                    EventBody::PlaylistTracksResult { playlist_id, tracks, offset, total, is_cached } => {
+                    EventBody::PlaylistTracksResult {
+                        playlist_id,
+                        tracks,
+                        offset,
+                        total,
+                        is_cached,
+                    } => {
                         let mut task = self.note_answer(is_cached);
-                        if offset == 0 && self.pending_play_playlist.as_deref() == Some(playlist_id.as_str()) {
+                        if offset == 0
+                            && self.pending_play_playlist.as_deref() == Some(playlist_id.as_str())
+                        {
                             if !tracks.is_empty() {
                                 self.pending_play_playlist = None;
-                                self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: 0 });
+                                self.send(CommandBody::PlayContext {
+                                    tracks: tracks.clone(),
+                                    start_index: 0,
+                                });
                             } else if !is_cached {
                                 // A fresh answer with nothing in it: the playlist is empty.
                                 self.pending_play_playlist = None;
-                                self.notify("That playlist has no playable tracks".to_string(), false);
+                                self.notify(
+                                    "That playlist has no playable tracks".to_string(),
+                                    false,
+                                );
                                 self.animations.animate_toast_show();
                             }
                         }
                         // The Library list can carry a 0 count (Spotify's list call does not always
                         // give one); the real total is known as soon as the songs arrive.
                         if total > 0 {
-                            if let Some(pl) = self.playlists.iter_mut().find(|p| p.id == playlist_id) {
+                            if let Some(pl) =
+                                self.playlists.iter_mut().find(|p| p.id == playlist_id)
+                            {
                                 if (pl.total_tracks as usize) < total {
                                     pl.total_tracks = total as u32;
                                 }
                             }
                         }
-                        let is_open = self.active_playlist.as_ref().is_some_and(|(pl, _)| pl.id == playlist_id);
+                        let is_open = self
+                            .active_playlist
+                            .as_ref()
+                            .is_some_and(|(pl, _)| pl.id == playlist_id);
                         if is_open {
                             let got = tracks.len();
                             let mut gap = false;
@@ -1653,7 +1774,11 @@ impl HalcyonApp {
                         self.active_nav = NavPage::AlbumDetail;
                         Task::none()
                     }
-                    EventBody::ArtistDetailResult { artist, top_tracks, albums } => {
+                    EventBody::ArtistDetailResult {
+                        artist,
+                        top_tracks,
+                        albums,
+                    } => {
                         self.active_artist = Some((artist, top_tracks, albums));
                         self.active_nav = NavPage::ArtistDetail;
                         Task::none()
@@ -1685,7 +1810,8 @@ impl HalcyonApp {
                     Ok(decoded) => {
                         art::store_decoded(&url, size, *decoded);
                         let is_current = size == ArtSize::Small
-                            && self.state.track.as_ref().and_then(|t| t.art_url.as_deref()) == Some(url.as_str());
+                            && self.state.track.as_ref().and_then(|t| t.art_url.as_deref())
+                                == Some(url.as_str());
                         if is_current {
                             self.retint();
                         }
@@ -1820,24 +1946,36 @@ impl HalcyonApp {
             Message::PlaylistRowPlay(idx) => {
                 if let Some((_, tracks)) = &self.active_playlist {
                     if idx < tracks.len() {
-                        self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: idx });
+                        self.send(CommandBody::PlayContext {
+                            tracks: tracks.clone(),
+                            start_index: idx,
+                        });
                     }
                 }
                 Task::none()
             }
             Message::PlaylistRowMenu(idx) => {
-                let track = self.active_playlist.as_ref().and_then(|(_, t)| t.get(idx).cloned());
+                let track = self
+                    .active_playlist
+                    .as_ref()
+                    .and_then(|(_, t)| t.get(idx).cloned());
                 if let Some(track) = track {
                     self.account_menu_open = false;
                     self.playlist_page.selected = Some(idx);
-                    self.track_menu = Some(TrackMenu { track, at: self.cursor });
+                    self.track_menu = Some(TrackMenu {
+                        track,
+                        at: self.cursor,
+                    });
                 }
                 Task::none()
             }
             Message::PlaylistPlayAll => {
                 if let Some((_, tracks)) = &self.active_playlist {
                     if !tracks.is_empty() {
-                        self.send(CommandBody::PlayContext { tracks: tracks.clone(), start_index: 0 });
+                        self.send(CommandBody::PlayContext {
+                            tracks: tracks.clone(),
+                            start_index: 0,
+                        });
                     }
                 }
                 Task::none()
@@ -1848,7 +1986,10 @@ impl HalcyonApp {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_nanos() as u64)
                         .unwrap_or(1);
-                    self.send(CommandBody::PlayContext { tracks: shuffled(&self.liked_tracks, seed), start_index: 0 });
+                    self.send(CommandBody::PlayContext {
+                        tracks: shuffled(&self.liked_tracks, seed),
+                        start_index: 0,
+                    });
                 }
                 Task::none()
             }
@@ -1859,7 +2000,10 @@ impl HalcyonApp {
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.as_nanos() as u64)
                             .unwrap_or(1);
-                        self.send(CommandBody::PlayContext { tracks: shuffled(tracks, seed), start_index: 0 });
+                        self.send(CommandBody::PlayContext {
+                            tracks: shuffled(tracks, seed),
+                            start_index: 0,
+                        });
                     }
                 }
                 Task::none()
@@ -1906,7 +2050,10 @@ impl HalcyonApp {
                 }
             }
             Message::PlaylistTimeout { id, generation } => {
-                let current = self.active_playlist.as_ref().is_some_and(|(pl, _)| pl.id == id)
+                let current = self
+                    .active_playlist
+                    .as_ref()
+                    .is_some_and(|(pl, _)| pl.id == id)
                     && self.playlist_page.generation == generation;
                 if current {
                     let loaded = self.active_playlist.as_ref().map_or(0, |(_, l)| l.len());
@@ -1929,31 +2076,58 @@ impl HalcyonApp {
             }
             Message::TrackMenuPlayNext => {
                 if let Some(m) = self.track_menu.take() {
-                    self.notify(format!("\"{}\" plays next", views::ellipsize(&m.track.title, 40)), true);
+                    self.notify(
+                        format!("\"{}\" plays next", views::ellipsize(&m.track.title, 40)),
+                        true,
+                    );
                     self.send(CommandBody::PlayNext { track: m.track });
                 }
                 Task::none()
             }
             Message::TrackMenuEnqueue => {
                 if let Some(m) = self.track_menu.take() {
-                    self.notify(format!("Added \"{}\" to the queue", views::ellipsize(&m.track.title, 40)), true);
+                    self.notify(
+                        format!(
+                            "Added \"{}\" to the queue",
+                            views::ellipsize(&m.track.title, 40)
+                        ),
+                        true,
+                    );
                     self.send(CommandBody::Enqueue { track: m.track });
                 }
                 Task::none()
             }
             Message::TrackMenuRadio => {
                 if let Some(m) = self.track_menu.take() {
-                    self.notify(format!("Starting a radio from \"{}\"", views::ellipsize(&m.track.title, 40)), true);
+                    self.notify(
+                        format!(
+                            "Starting a radio from \"{}\"",
+                            views::ellipsize(&m.track.title, 40)
+                        ),
+                        true,
+                    );
                     self.send(CommandBody::StartRadio { track: m.track });
                 }
                 Task::none()
             }
             Message::TrackMenuLess | Message::TrackMenuNot => {
-                let action = if matches!(message, Message::TrackMenuNot) { MixFeedbackAction::NotMyTaste } else { MixFeedbackAction::LessLikeThis };
+                let action = if matches!(message, Message::TrackMenuNot) {
+                    MixFeedbackAction::NotMyTaste
+                } else {
+                    MixFeedbackAction::LessLikeThis
+                };
                 if let Some(m) = self.track_menu.take() {
-                    let note = if action == MixFeedbackAction::NotMyTaste { "Got it, that song will not come back" } else { "Got it, fewer songs like that" };
+                    let note = if action == MixFeedbackAction::NotMyTaste {
+                        "Got it, that song will not come back"
+                    } else {
+                        "Got it, fewer songs like that"
+                    };
                     self.notify(note.to_string(), true);
-                    self.send(CommandBody::MixFeedback { mix_id: String::new(), track_id: Some(m.track.id), action });
+                    self.send(CommandBody::MixFeedback {
+                        mix_id: String::new(),
+                        track_id: Some(m.track.id),
+                        action,
+                    });
                 }
                 Task::none()
             }
@@ -1965,18 +2139,30 @@ impl HalcyonApp {
                     }
                     views::home::MixAction::LessLikeThis => {
                         self.notify("Got it, fewer mixes like that".to_string(), true);
-                        self.send(CommandBody::MixFeedback { mix_id: id, track_id: None, action: MixFeedbackAction::LessLikeThis });
+                        self.send(CommandBody::MixFeedback {
+                            mix_id: id,
+                            track_id: None,
+                            action: MixFeedbackAction::LessLikeThis,
+                        });
                     }
                     views::home::MixAction::NotMyTaste => {
                         self.notify("Got it, rebuilding that mix".to_string(), true);
-                        self.send(CommandBody::MixFeedback { mix_id: id, track_id: None, action: MixFeedbackAction::NotMyTaste });
+                        self.send(CommandBody::MixFeedback {
+                            mix_id: id,
+                            track_id: None,
+                            action: MixFeedbackAction::NotMyTaste,
+                        });
                     }
                 }
                 Task::none()
             }
             Message::RejectSuggestion(id) => {
                 self.smart_marks.remove(&id);
-                self.send(CommandBody::MixFeedback { mix_id: "smart-shuffle".into(), track_id: Some(id), action: MixFeedbackAction::NotMyTaste });
+                self.send(CommandBody::MixFeedback {
+                    mix_id: "smart-shuffle".into(),
+                    track_id: Some(id),
+                    action: MixFeedbackAction::NotMyTaste,
+                });
                 Task::none()
             }
             Message::TrackMenuGoToAlbum => {
@@ -2012,7 +2198,10 @@ impl HalcyonApp {
                 if page == NavPage::Home || page == NavPage::Recent {
                     self.request_home_feed();
                     // The pinned Liked Songs card on Home needs the songs.
-                    self.send(CommandBody::GetLikedTracks { limit: Some(50), offset: Some(0) });
+                    self.send(CommandBody::GetLikedTracks {
+                        limit: Some(50),
+                        offset: Some(0),
+                    });
                 } else if page == NavPage::Discover {
                     self.request_discover();
                 } else if page == NavPage::Search {
@@ -2047,7 +2236,10 @@ impl HalcyonApp {
                     }
                 }
                 self.animations.animate_page_switch();
-                scrollable::snap_to(scrollable::Id::new(CONTENT_SCROLL_ID), scrollable::RelativeOffset::START)
+                scrollable::snap_to(
+                    scrollable::Id::new(CONTENT_SCROLL_ID),
+                    scrollable::RelativeOffset::START,
+                )
             }
             Message::SidebarHover(hovered) => {
                 if self.sidebar_hovered != hovered {
@@ -2182,7 +2374,11 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::ToastExpire => {
-                if self.toast.as_ref().is_some_and(|t| Instant::now() >= t.until) {
+                if self
+                    .toast
+                    .as_ref()
+                    .is_some_and(|t| Instant::now() >= t.until)
+                {
                     self.toast = None;
                 }
                 Task::none()
@@ -2257,7 +2453,10 @@ impl HalcyonApp {
                         self.connect_setting = Some((!enabled, available));
                         self.connect_device = None;
                         self.send(CommandBody::SetConnectEnabled { enabled: !enabled });
-                        self.notify("Restarting the music service to apply it…".to_string(), false);
+                        self.notify(
+                            "Restarting the music service to apply it…".to_string(),
+                            false,
+                        );
                     }
                 }
                 Task::none()
@@ -2436,10 +2635,18 @@ impl HalcyonApp {
             Message::SearchPick(pick) => {
                 self.search_dropdown_open = false;
                 match pick {
-                    views::search_dropdown::Pick::Track(track) => self.update_inner(Message::PlayTrack(track)),
-                    views::search_dropdown::Pick::Artist(id) => self.update_inner(Message::OpenArtist(id)),
-                    views::search_dropdown::Pick::Album(id) => self.update_inner(Message::OpenAlbum(id)),
-                    views::search_dropdown::Pick::Playlist(id) => self.update_inner(Message::OpenPlaylist(id)),
+                    views::search_dropdown::Pick::Track(track) => {
+                        self.update_inner(Message::PlayTrack(track))
+                    }
+                    views::search_dropdown::Pick::Artist(id) => {
+                        self.update_inner(Message::OpenArtist(id))
+                    }
+                    views::search_dropdown::Pick::Album(id) => {
+                        self.update_inner(Message::OpenAlbum(id))
+                    }
+                    views::search_dropdown::Pick::Playlist(id) => {
+                        self.update_inner(Message::OpenPlaylist(id))
+                    }
                 }
             }
             Message::CloseSearchDropdown => {
@@ -2624,19 +2831,29 @@ impl HalcyonApp {
                     .iter()
                     .find(|p| p.id == id)
                     .or_else(|| self.home_feed.playlists.iter().find(|p| p.id == id))
-                    .or_else(|| self.search_results.as_ref().and_then(|r| r.playlists.iter().find(|p| p.id == id)))
+                    .or_else(|| {
+                        self.search_results
+                            .as_ref()
+                            .and_then(|r| r.playlists.iter().find(|p| p.id == id))
+                    })
                     .cloned();
                 let Some(pl) = found else { return Task::none() };
                 self.close_menus();
                 self.active_playlist = Some((pl, vec![]));
-                self.playlist_page = PlaylistPage { loading: true, ..Default::default() };
+                self.playlist_page = PlaylistPage {
+                    loading: true,
+                    ..Default::default()
+                };
                 self.scroll = ScrollInfo::default();
                 self.active_nav = NavPage::PlaylistDetail;
                 self.animations.animate_page_switch();
                 let first_page = self.request_playlist_page(0);
                 Task::batch([
                     first_page,
-                    scrollable::snap_to(scrollable::Id::new(CONTENT_SCROLL_ID), scrollable::RelativeOffset::START),
+                    scrollable::snap_to(
+                        scrollable::Id::new(CONTENT_SCROLL_ID),
+                        scrollable::RelativeOffset::START,
+                    ),
                 ])
             }
             Message::OpenMix(id) => {
@@ -2666,12 +2883,19 @@ impl HalcyonApp {
                     total_tracks: mix.tracks.len() as u32,
                     uri: format!("halcyon:mix:{}", mix.id),
                 };
-                self.playlist_page = PlaylistPage { total: mix.tracks.len(), fresh: true, ..Default::default() };
+                self.playlist_page = PlaylistPage {
+                    total: mix.tracks.len(),
+                    fresh: true,
+                    ..Default::default()
+                };
                 self.active_playlist = Some((pl, mix.tracks));
                 self.scroll = ScrollInfo::default();
                 self.active_nav = NavPage::PlaylistDetail;
                 self.animations.animate_page_switch();
-                scrollable::snap_to(scrollable::Id::new(CONTENT_SCROLL_ID), scrollable::RelativeOffset::START)
+                scrollable::snap_to(
+                    scrollable::Id::new(CONTENT_SCROLL_ID),
+                    scrollable::RelativeOffset::START,
+                )
             }
             Message::BackFromDetail => {
                 // A mix came from Home, so Back goes home; real playlists go back to the library.
@@ -2679,10 +2903,15 @@ impl HalcyonApp {
                     .active_playlist
                     .as_ref()
                     .is_some_and(|(pl, _)| pl.id.starts_with("mix:"));
-                self.active_nav = if self.active_nav == NavPage::AlbumDetail && self.discover_return {
+                self.active_nav = if self.active_nav == NavPage::AlbumDetail && self.discover_return
+                {
                     NavPage::Discover
                 } else if self.active_nav == NavPage::PlaylistDetail && from_mix {
-                    if self.discover_return { NavPage::Discover } else { NavPage::Home }
+                    if self.discover_return {
+                        NavPage::Discover
+                    } else {
+                        NavPage::Home
+                    }
                 } else {
                     NavPage::Library
                 };
@@ -2713,7 +2942,9 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::UseSpotifySignInForBrowsing => {
-                self.send(CommandBody::SetAuthMode { mode: AuthMode::Librespot });
+                self.send(CommandBody::SetAuthMode {
+                    mode: AuthMode::Librespot,
+                });
                 Task::none()
             }
             Message::CancelLogin => {
@@ -2734,9 +2965,7 @@ impl HalcyonApp {
             }
             Message::OpenBrowserAuth(url) if url.is_empty() => Task::none(),
             Message::OpenBrowserAuth(url) => {
-                let _ = tokio::process::Command::new("xdg-open")
-                    .arg(&url)
-                    .spawn();
+                let _ = tokio::process::Command::new("xdg-open").arg(&url).spawn();
                 Task::none()
             }
             Message::RefreshLibrary => {
@@ -2753,7 +2982,10 @@ impl HalcyonApp {
                 Task::none()
             }
             Message::PlayContext(tracks, start_index) => {
-                self.send(CommandBody::PlayContext { tracks, start_index });
+                self.send(CommandBody::PlayContext {
+                    tracks,
+                    start_index,
+                });
                 Task::none()
             }
             Message::PlayPlaylist(id) => {
@@ -2907,7 +3139,10 @@ impl HalcyonApp {
         {
             return;
         }
-        self.send(CommandBody::GetPlaylists { limit: Some(50), offset: Some(0) });
+        self.send(CommandBody::GetPlaylists {
+            limit: Some(50),
+            offset: Some(0),
+        });
         self.send(CommandBody::GetSavedAlbums);
         self.send(CommandBody::GetFollowedArtists);
     }
@@ -2950,7 +3185,9 @@ impl HalcyonApp {
             _ => true,
         };
         let url = found.as_deref().map(avatar::local_url);
-        let evicted = url.as_deref().is_some_and(|u| !art::is_known(u, ArtSize::Small));
+        let evicted = url
+            .as_deref()
+            .is_some_and(|u| !art::is_known(u, ArtSize::Small));
         self.halcyon_avatar = found.clone().map(|p| (p, stamp));
         match (found, url) {
             (Some(path), Some(url)) if changed || evicted => art::local_decode_task(url, path),
@@ -2961,15 +3198,24 @@ impl HalcyonApp {
     /// The picture for the account circle: the chosen source first, then the other, and nothing
     /// (so the initial shows) when neither exists.
     fn avatar_url(&self) -> Option<String> {
-        let halcyon = self.halcyon_avatar.as_ref().map(|(p, _)| avatar::local_url(p));
-        let order = avatar::order(self.avatar_source, halcyon.as_deref(), self.profile_image.as_deref());
+        let halcyon = self
+            .halcyon_avatar
+            .as_ref()
+            .map(|(p, _)| avatar::local_url(p));
+        let order = avatar::order(
+            self.avatar_source,
+            halcyon.as_deref(),
+            self.profile_image.as_deref(),
+        );
         avatar::pick(&order, |u| art::is_ready(u, ArtSize::Small))
     }
 
     /// `@username` (or the user id the daemon reported at sign-in) for the account menu.
     fn account_handle(&self) -> Option<String> {
         let from_status = match &self.auth_status {
-            AuthStatus::LoggedIn { user_id: Some(id), .. } => Some(id.clone()),
+            AuthStatus::LoggedIn {
+                user_id: Some(id), ..
+            } => Some(id.clone()),
             _ => None,
         };
         self.profile_username
@@ -3001,11 +3247,18 @@ impl HalcyonApp {
 
     /// The name shown in the account menu: Spotify's, else what the daemon said at sign-in.
     fn account_name(&self) -> String {
-        if let Some(n) = self.profile_name.as_deref().filter(|n| !n.trim().is_empty()) {
+        if let Some(n) = self
+            .profile_name
+            .as_deref()
+            .filter(|n| !n.trim().is_empty())
+        {
             return n.to_string();
         }
         match &self.auth_status {
-            AuthStatus::LoggedIn { display_name: Some(n), .. } if !n.trim().is_empty() => n.clone(),
+            AuthStatus::LoggedIn {
+                display_name: Some(n),
+                ..
+            } if !n.trim().is_empty() => n.clone(),
             _ => "Spotify user".to_string(),
         }
     }
@@ -3034,7 +3287,9 @@ impl HalcyonApp {
                 views::fullscreen::Look {
                     visualizer: self.visualizer,
                     // Aurora lets go a little slower than Silk. Zeros when motion is reduced.
-                    bands: self.viz.bands(reduce, self.visualizer == VisualizerKind::Aurora),
+                    bands: self
+                        .viz
+                        .bands(reduce, self.visualizer == VisualizerKind::Aurora),
                     clock: self.animations.clock(),
                     controls_alpha: views::fullscreen::controls_alpha(since_move, reduce),
                     near_top: views::fullscreen::near_top(self.fs_cursor_y),
@@ -3123,7 +3378,8 @@ impl HalcyonApp {
                 Message::NewPlaylistNameChanged,
                 Message::CreateNewPlaylist,
             )
-        } else if views::frame::has_dock(self.layout) || views::frame::has_player_panel(self.layout) {
+        } else if views::frame::has_dock(self.layout) || views::frame::has_player_panel(self.layout)
+        {
             // Dock: the pages and the account circle are in the dock. Player panel: the pages are
             // tabs inside the page and the circle is in the panel. Either way this slot is empty.
             Space::with_width(0).into()
@@ -3138,37 +3394,42 @@ impl HalcyonApp {
                 Message::NavSelected,
             )
         } else {
-        views::sidebar::view(
-            self.active_nav,
-            self.animations.sidebar_progress(),
-            self.pill_slot.map(|_| self.animations.sidebar_pill.peek()),
-            self.palette,
-            self.density,
-            Message::NavSelected,
-            Message::SidebarHover,
-            self.show_queue,
-            Message::ToggleQueue,
-            self.animations.clock(),
-            self.state.playing,
-            self.state
-                .track
-                .as_ref()
-                .map(|t| t.id.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32)) as f32 % 97.0)
-                .unwrap_or(0.0),
-            account_header(),
-        )
+            views::sidebar::view(
+                self.active_nav,
+                self.animations.sidebar_progress(),
+                self.pill_slot.map(|_| self.animations.sidebar_pill.peek()),
+                self.palette,
+                self.density,
+                Message::NavSelected,
+                Message::SidebarHover,
+                self.show_queue,
+                Message::ToggleQueue,
+                self.animations.clock(),
+                self.state.playing,
+                self.state
+                    .track
+                    .as_ref()
+                    .map(|t| {
+                        t.id.bytes()
+                            .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32))
+                            as f32
+                            % 97.0
+                    })
+                    .unwrap_or(0.0),
+                account_header(),
+            )
         };
         // Width of the left column: the sidebar while it exists, nothing in Top tabs.
         let sidebar_w = views::frame::left_width(self.layout, self.animations.sidebar_progress());
 
         // 3. Center Content Page
         let content_area: Element<Message> = match self.auth_status {
-            AuthStatus::LoggedOut | AuthStatus::Error { .. } => {
-                container(self.view_first_run()).padding(theme::space::XL).into()
-            }
-            AuthStatus::LoggingIn { ref auth_url } => {
-                container(self.view_logging_in(auth_url)).padding(theme::space::XL).into()
-            }
+            AuthStatus::LoggedOut | AuthStatus::Error { .. } => container(self.view_first_run())
+                .padding(theme::space::XL)
+                .into(),
+            AuthStatus::LoggingIn { ref auth_url } => container(self.view_logging_in(auth_url))
+                .padding(theme::space::XL)
+                .into(),
             AuthStatus::LoggedIn { ref user_id, .. } => {
                 let mut body = column![].spacing(theme::space::MD);
                 if views::frame::has_player_panel(self.layout) {
@@ -3203,20 +3464,23 @@ impl HalcyonApp {
                     left: theme::space::XL,
                 }),
         )
-            .id(scrollable::Id::new(CONTENT_SCROLL_ID))
-            // The scrollbar is invisible (wheel and trackpad still scroll).
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new().width(0).scroller_width(0).margin(0),
-            ))
-            .on_scroll(|v| {
-                Message::ContentScrolled(ScrollInfo {
-                    y: v.absolute_offset().y,
-                    viewport_h: v.bounds().height,
-                    content_h: v.content_bounds().height,
-                })
+        .id(scrollable::Id::new(CONTENT_SCROLL_ID))
+        // The scrollbar is invisible (wheel and trackpad still scroll).
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(0)
+                .scroller_width(0)
+                .margin(0),
+        ))
+        .on_scroll(|v| {
+            Message::ContentScrolled(ScrollInfo {
+                y: v.absolute_offset().y,
+                viewport_h: v.bounds().height,
+                content_h: v.content_bounds().height,
             })
-            .height(Length::Fill)
-            .width(Length::Fill);
+        })
+        .height(Length::Fill)
+        .width(Length::Fill);
 
         // The search sits in a notch that hangs from the top edge of the page; the page scrolls
         // under it. No fades, no blur.
@@ -3224,9 +3488,10 @@ impl HalcyonApp {
         if let Some(banner) = banner {
             top_strip = top_strip.push(banner);
         }
-        let center_with_header = iced::widget::stack![page, container(top_strip).width(Length::Fill)]
-            .width(Length::Fill)
-            .height(Length::Fill);
+        let center_with_header =
+            iced::widget::stack![page, container(top_strip).width(Length::Fill)]
+                .width(Length::Fill)
+                .height(Length::Fill);
 
         // 4. The page is one rounded card. The queue drawer is *not* inside it: it sits on the
         // window frame beside it, like the sidebar and the player bar, and slides open.
@@ -3244,7 +3509,8 @@ impl HalcyonApp {
                 },
                 ..Default::default()
             });
-        let (page_margin_left, page_margin_right) = views::frame::page_margins(self.layout, PAGE_MARGIN);
+        let (page_margin_left, page_margin_right) =
+            views::frame::page_margins(self.layout, PAGE_MARGIN);
         let queue_open_amount = self.animations.queue_progress();
         let drawer: Element<Message> = if (queue_open_amount > 0.001 || self.show_queue)
             && views::frame::queue_overlays_page(self.layout)
@@ -3255,7 +3521,11 @@ impl HalcyonApp {
             let card = container(views::queue_drawer::view(
                 &self.state,
                 self.palette,
-                self.viz.frame(Instant::now(), self.state.playing, self.animations.reduce_motion),
+                self.viz.frame(
+                    Instant::now(),
+                    self.state.playing,
+                    self.animations.reduce_motion,
+                ),
                 Message::ToggleQueue,
                 Message::Dequeue,
                 &self.smart_marks,
@@ -3294,7 +3564,11 @@ impl HalcyonApp {
             container(views::queue_drawer::view(
                 &self.state,
                 self.palette,
-                self.viz.frame(Instant::now(), self.state.playing, self.animations.reduce_motion),
+                self.viz.frame(
+                    Instant::now(),
+                    self.state.playing,
+                    self.animations.reduce_motion,
+                ),
                 Message::ToggleQueue,
                 Message::Dequeue,
                 &self.smart_marks,
@@ -3384,32 +3658,32 @@ impl HalcyonApp {
                 Message::ToggleLike,
             )
         } else {
-        views::now_playing_bar::view_with(
-            views::now_playing_bar::BarOptions {
-                mini,
-                ..views::frame::bar_options(self.layout, self.window_size.width)
-            },
-            &self.state,
-            self.palette,
-            Message::TogglePlay,
-            Message::Next,
-            Message::Previous,
-            Message::Seek,
-            Message::Volume,
-            Message::ToggleMute,
-            Message::ToggleShuffle,
-            Message::CycleRepeat,
-            Message::ToggleQueue,
-            Message::ToggleLyrics,
-            Message::ToggleFullscreen,
-            Message::ToggleLike,
-            self.state
-                .track
-                .as_ref()
-                .is_some_and(|cur| self.liked_tracks.iter().any(|t| t.id == cur.id)),
-            self.active_nav == NavPage::Lyrics,
-            self.show_queue,
-        )
+            views::now_playing_bar::view_with(
+                views::now_playing_bar::BarOptions {
+                    mini,
+                    ..views::frame::bar_options(self.layout, self.window_size.width)
+                },
+                &self.state,
+                self.palette,
+                Message::TogglePlay,
+                Message::Next,
+                Message::Previous,
+                Message::Seek,
+                Message::Volume,
+                Message::ToggleMute,
+                Message::ToggleShuffle,
+                Message::CycleRepeat,
+                Message::ToggleQueue,
+                Message::ToggleLyrics,
+                Message::ToggleFullscreen,
+                Message::ToggleLike,
+                self.state
+                    .track
+                    .as_ref()
+                    .is_some_and(|cur| self.liked_tracks.iter().any(|t| t.id == cur.id)),
+                self.active_nav == NavPage::Lyrics,
+                self.show_queue,
+            )
         };
 
         // The layout only decides where the five slots sit (views/frame.rs). Pages are built once.
@@ -3426,7 +3700,11 @@ impl HalcyonApp {
 
         // One frame under the title bar, the sidebar and the player bar, so they are a single
         // surface (not separate islands). Its colours come from the wallpaper palette.
-        let window_radius = if self.window_maximized { 0.0 } else { WINDOW_RADIUS };
+        let window_radius = if self.window_maximized {
+            0.0
+        } else {
+            WINDOW_RADIUS
+        };
         let base = container(arranged)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -3477,14 +3755,16 @@ impl HalcyonApp {
                 Message::Logout,
             );
             // Under the account circle, wherever the layout puts it.
-            layers.push(match views::frame::account_menu_place(self.layout, self.window_size.width) {
-                views::frame::MenuPlace::Below { left, top } => {
-                    views::account::overlay(card, left, top, Message::CloseMenus)
-                }
-                views::frame::MenuPlace::Above { left, bottom } => {
-                    views::account::overlay_above(card, left, bottom, Message::CloseMenus)
-                }
-            });
+            layers.push(
+                match views::frame::account_menu_place(self.layout, self.window_size.width) {
+                    views::frame::MenuPlace::Below { left, top } => {
+                        views::account::overlay(card, left, top, Message::CloseMenus)
+                    }
+                    views::frame::MenuPlace::Above { left, bottom } => {
+                        views::account::overlay_above(card, left, bottom, Message::CloseMenus)
+                    }
+                },
+            );
         }
         if self.search_dropdown_open && logged_in && !self.search_query.trim().is_empty() {
             let side = sidebar_w;
@@ -3510,11 +3790,21 @@ impl HalcyonApp {
                     )
                     .width(Length::Fill)
                     .height(Length::Fill)
-                    .padding(iced::Padding { top: top - 4.0, left: side, right: 0.0, bottom: 0.0 }),
+                    .padding(iced::Padding {
+                        top: top - 4.0,
+                        left: side,
+                        right: 0.0,
+                        bottom: 0.0
+                    }),
                     container(card)
                         .width(Length::Fill)
                         .height(Length::Fill)
-                        .padding(iced::Padding { top, left, right: 0.0, bottom: 0.0 }),
+                        .padding(iced::Padding {
+                            top,
+                            left,
+                            right: 0.0,
+                            bottom: 0.0
+                        }),
                 ]
                 .into(),
             );
@@ -3526,7 +3816,10 @@ impl HalcyonApp {
                 Message::TrackMenuPlay,
                 Message::TrackMenuPlayNext,
                 Message::TrackMenuEnqueue,
-                menu.track.album_id.is_some().then_some(Message::TrackMenuGoToAlbum),
+                menu.track
+                    .album_id
+                    .is_some()
+                    .then_some(Message::TrackMenuGoToAlbum),
                 Message::TrackMenuRadio,
                 Message::TrackMenuLess,
                 Message::TrackMenuNot,
@@ -3538,16 +3831,26 @@ impl HalcyonApp {
             let tint = if toast.ok { pal.accent } else { pal.danger };
             let card = container(
                 row![
-                    icon(if toast.ok { Icon::Check } else { Icon::XCircle }, 15.0, tint),
+                    icon(
+                        if toast.ok { Icon::Check } else { Icon::XCircle },
+                        15.0,
+                        tint
+                    ),
                     Space::with_width(8),
-                    text(views::ellipsize(&toast.text, 80)).size(13).color(pal.text),
+                    text(views::ellipsize(&toast.text, 80))
+                        .size(13)
+                        .color(pal.text),
                 ]
                 .align_y(Alignment::Center),
             )
             .padding([12, 20])
             .style(move |_t| container::Style {
                 background: Some(pal.surface_variant.into()),
-                border: iced::Border { color: theme::alpha(tint, 0.6), width: 1.0, radius: theme::radius::PILL.into() },
+                border: iced::Border {
+                    color: theme::alpha(tint, 0.6),
+                    width: 1.0,
+                    radius: theme::radius::PILL.into(),
+                },
                 shadow: pal.glow_shadow(0.25, 24.0),
                 ..Default::default()
             });
@@ -3569,7 +3872,10 @@ impl HalcyonApp {
     fn view_banner(&self) -> Option<Element<'_, Message>> {
         let connected = matches!(self.status, ConnStatus::Connected { .. });
         let (msg, tint) = if !connected {
-            ("Can't reach the Halcyon daemon. Trying again…", self.palette.accent_secondary)
+            (
+                "Can't reach the Halcyon daemon. Trying again…",
+                self.palette.accent_secondary,
+            )
         } else if self.is_offline {
             (
                 "Spotify isn't answering right now (it may be rate limiting). Showing saved data; Ctrl+R tries again.",
@@ -3580,17 +3886,30 @@ impl HalcyonApp {
         };
         let pal = self.palette;
         Some(
-            container(text(msg).size(theme::type_size::SMALL + 1.0).color(pal.text))
-                .padding([theme::space::SM, theme::space::LG])
-                .width(Length::Fill)
-                .style(move |_t| container::Style {
-                    background: Some(iced::Color { a: 0.12, ..tint }.into()),
-                    border: iced::Border { color: iced::Color { a: 0.4, ..tint }, width: 1.0, radius: theme::radius::MD.into() },
-                    ..Default::default()
-                })
-                .into(),
+            container(
+                text(msg)
+                    .size(theme::type_size::SMALL + 1.0)
+                    .color(pal.text),
+            )
+            .padding([theme::space::SM, theme::space::LG])
+            .width(Length::Fill)
+            .style(move |_t| container::Style {
+                background: Some(iced::Color { a: 0.12, ..tint }.into()),
+                border: iced::Border {
+                    color: iced::Color { a: 0.4, ..tint },
+                    width: 1.0,
+                    radius: theme::radius::MD.into(),
+                },
+                ..Default::default()
+            })
+            .into(),
         )
-        .map(|b: Element<'_, Message>| container(b).padding([0.0, theme::space::XL]).width(Length::Fill).into())
+        .map(|b: Element<'_, Message>| {
+            container(b)
+                .padding([0.0, theme::space::XL])
+                .width(Length::Fill)
+                .into()
+        })
     }
 
     /// Ask the daemon for a fresh Home feed and remember that one is on its way.
@@ -3630,7 +3949,10 @@ impl HalcyonApp {
 
     /// True while no mix from an outside source (Deezer, ListenBrainz) is on Home.
     fn home_outside_missing(&self) -> bool {
-        self.home_feed.made_for_you.iter().all(|m| m.source == "Halcyon Local" || m.source == "Halcyon")
+        self.home_feed
+            .made_for_you
+            .iter()
+            .all(|m| m.source == "Halcyon Local" || m.source == "Halcyon")
     }
 
     /// Height reserved at the top of the page: tall where the header search shows, slim elsewhere.
@@ -3639,7 +3961,11 @@ impl HalcyonApp {
             return TOP_STRIP_H_BARE;
         }
         match self.active_nav {
-            NavPage::Home | NavPage::Search | NavPage::Library | NavPage::Liked | NavPage::Recent => TOP_STRIP_H,
+            NavPage::Home
+            | NavPage::Search
+            | NavPage::Library
+            | NavPage::Liked
+            | NavPage::Recent => TOP_STRIP_H,
             _ => TOP_STRIP_H_BARE,
         }
     }
@@ -3653,7 +3979,10 @@ impl HalcyonApp {
         let perf_element: Element<Message> = if self.perf_overlay {
             let ms = self.animations.last_frame_time.as_secs_f32() * 1000.0;
             let fps = if ms > 0.0 { 1000.0 / ms } else { 60.0 };
-            text(format!("{ms:.1}ms | {fps:.0} FPS")).size(11).color(pal.accent).into()
+            text(format!("{ms:.1}ms | {fps:.0} FPS"))
+                .size(11)
+                .color(pal.accent)
+                .into()
         } else {
             Space::with_width(0).into()
         };
@@ -3661,88 +3990,104 @@ impl HalcyonApp {
         // Which search the header carries: the global one on Home and Search, a filter on Library
         // and Recently played, none anywhere else.
         #[allow(clippy::type_complexity)]
-        let mode: Option<(&'static str, &str, fn(String) -> Message, Option<Message>)> = match self.active_nav {
-            NavPage::Home | NavPage::Search => Some((
-                "What do you want to play?",
-                self.search_query.as_str(),
-                Message::TopSearchChanged as fn(String) -> Message,
-                Some(Message::TopSearchSubmit),
-            )),
-            NavPage::Library => Some((
-                "Search playlists, albums and artists",
-                self.library_filter.as_str(),
-                Message::LibraryFilterChanged as fn(String) -> Message,
-                None,
-            )),
-            NavPage::Liked => Some((
-                "Search liked songs",
-                self.library_filter.as_str(),
-                Message::LibraryFilterChanged as fn(String) -> Message,
-                None,
-            )),
-            NavPage::Recent => Some((
-                "Search recently played",
-                self.recent_filter.as_str(),
-                Message::RecentFilterChanged as fn(String) -> Message,
-                None,
-            )),
-            _ => None,
-        };
+        let mode: Option<(&'static str, &str, fn(String) -> Message, Option<Message>)> =
+            match self.active_nav {
+                NavPage::Home | NavPage::Search => Some((
+                    "What do you want to play?",
+                    self.search_query.as_str(),
+                    Message::TopSearchChanged as fn(String) -> Message,
+                    Some(Message::TopSearchSubmit),
+                )),
+                NavPage::Library => Some((
+                    "Search playlists, albums and artists",
+                    self.library_filter.as_str(),
+                    Message::LibraryFilterChanged as fn(String) -> Message,
+                    None,
+                )),
+                NavPage::Liked => Some((
+                    "Search liked songs",
+                    self.library_filter.as_str(),
+                    Message::LibraryFilterChanged as fn(String) -> Message,
+                    None,
+                )),
+                NavPage::Recent => Some((
+                    "Search recently played",
+                    self.recent_filter.as_str(),
+                    Message::RecentFilterChanged as fn(String) -> Message,
+                    None,
+                )),
+                _ => None,
+            };
 
-        let search: Element<Message> = if let (true, Some((placeholder, value, on_input, on_submit))) = (logged_in, mode) {
-            let input = text_input(placeholder, value)
-                .id(text_input::Id::new(TOP_SEARCH_ID))
-                .on_input(on_input)
-                .on_submit_maybe(on_submit)
-                .size(theme::type_size::BODY + 1.0)
-                // Equal room left and right (the magnifier sits in the left one), so the
-                // placeholder and the typed text are centred in the pill.
-                .padding(iced::Padding { top: 11.0, bottom: 11.0, left: 46.0, right: 46.0 })
-                .align_x(iced::alignment::Horizontal::Center)
-                .width(Length::Fill);
-            // The notch is the window frame reaching down into the page: same colour as the
-            // title bar above it, joined to the page's top edge by curves, with the search box
-            // inside. It slides back up into the title bar while the page scrolls down.
-            let ear = views::notch::EAR;
-            let notch_w = views::search_dropdown::WIDTH + 44.0 + 2.0 * ear;
-            let notch_h = NOTCH_H;
-            let mid = (views::frame::top_height(self.layout) + notch_h / 2.0) / self.window_size.height.max(1.0);
-            let frame_colour = pal.chrome_at(mid);
-            let input = input.style(move |_t, status| text_input::Style {
-                background: theme::mix(frame_colour, pal.text, 0.07).into(),
-                border: iced::Border {
-                    radius: 999.0.into(),
-                    width: 1.0,
-                    color: if matches!(status, text_input::Status::Focused) {
-                        pal.accent
-                    } else {
-                        theme::alpha(pal.border, 0.30)
+        let search: Element<Message> =
+            if let (true, Some((placeholder, value, on_input, on_submit))) = (logged_in, mode) {
+                let input = text_input(placeholder, value)
+                    .id(text_input::Id::new(TOP_SEARCH_ID))
+                    .on_input(on_input)
+                    .on_submit_maybe(on_submit)
+                    .size(theme::type_size::BODY + 1.0)
+                    // Equal room left and right (the magnifier sits in the left one), so the
+                    // placeholder and the typed text are centred in the pill.
+                    .padding(iced::Padding {
+                        top: 11.0,
+                        bottom: 11.0,
+                        left: 46.0,
+                        right: 46.0,
+                    })
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .width(Length::Fill);
+                // The notch is the window frame reaching down into the page: same colour as the
+                // title bar above it, joined to the page's top edge by curves, with the search box
+                // inside. It slides back up into the title bar while the page scrolls down.
+                let ear = views::notch::EAR;
+                let notch_w = views::search_dropdown::WIDTH + 44.0 + 2.0 * ear;
+                let notch_h = NOTCH_H;
+                let mid = (views::frame::top_height(self.layout) + notch_h / 2.0)
+                    / self.window_size.height.max(1.0);
+                let frame_colour = pal.chrome_at(mid);
+                let input = input.style(move |_t, status| text_input::Style {
+                    background: theme::mix(frame_colour, pal.text, 0.07).into(),
+                    border: iced::Border {
+                        radius: 999.0.into(),
+                        width: 1.0,
+                        color: if matches!(status, text_input::Status::Focused) {
+                            pal.accent
+                        } else {
+                            theme::alpha(pal.border, 0.30)
+                        },
                     },
-                },
-                icon: pal.text_muted,
-                placeholder: pal.text_muted,
-                value: pal.text,
-                selection: iced::Color { a: 0.3, ..pal.accent },
-            });
-            let field = container(iced::widget::stack![
-                input,
-                container(icon(Icon::Search, 16.0, pal.text_muted))
-                    .height(Length::Fill)
-                    .padding([0.0, theme::space::LG])
-                    .align_y(iced::alignment::Vertical::Center),
-            ])
-            // As wide as the notch behind it (the padding is the notch's side walls and ears), so
-            // the box ends up exactly in the middle of the notch.
-            .width(notch_w)
-            .padding(iced::Padding { top: 10.0, right: 22.0 + ear, bottom: 14.0, left: 22.0 + ear });
-            let notch = iced::widget::stack![
-                views::notch::view(notch_w, notch_h, frame_colour, pal.soft_border()),
-                field,
-            ];
-            views::slide::Slide::new(notch, self.animations.search_progress()).into()
-        } else {
-            Space::with_width(0).into()
-        };
+                    icon: pal.text_muted,
+                    placeholder: pal.text_muted,
+                    value: pal.text,
+                    selection: iced::Color {
+                        a: 0.3,
+                        ..pal.accent
+                    },
+                });
+                let field = container(iced::widget::stack![
+                    input,
+                    container(icon(Icon::Search, 16.0, pal.text_muted))
+                        .height(Length::Fill)
+                        .padding([0.0, theme::space::LG])
+                        .align_y(iced::alignment::Vertical::Center),
+                ])
+                // As wide as the notch behind it (the padding is the notch's side walls and ears), so
+                // the box ends up exactly in the middle of the notch.
+                .width(notch_w)
+                .padding(iced::Padding {
+                    top: 10.0,
+                    right: 22.0 + ear,
+                    bottom: 14.0,
+                    left: 22.0 + ear,
+                });
+                let notch = iced::widget::stack![
+                    views::notch::view(notch_w, notch_h, frame_colour, pal.soft_border()),
+                    field,
+                ];
+                views::slide::Slide::new(notch, self.animations.search_progress()).into()
+            } else {
+                Space::with_width(0).into()
+            };
 
         // The page card does not start at the window's left edge (the sidebar is there) or end
         // at its right edge (queue drawer, margin). Centring inside the card would put the
@@ -3788,7 +4133,10 @@ impl HalcyonApp {
     fn view_page_content(&self, _user_id: Option<&str>) -> Element<'_, Message> {
         // The account name when Spotify told us, otherwise a plain "Signed in".
         let account_label = match &self.auth_status {
-            AuthStatus::LoggedIn { display_name: Some(name), .. } if !name.trim().is_empty() => name.clone(),
+            AuthStatus::LoggedIn {
+                display_name: Some(name),
+                ..
+            } if !name.trim().is_empty() => name.clone(),
             AuthStatus::LoggedIn { .. } => "Signed in".to_string(),
             _ => "Not signed in".to_string(),
         };
@@ -3822,67 +4170,71 @@ impl HalcyonApp {
                     Message::NavSelected(NavPage::Settings),
                 ),
             ),
-            NavPage::Home if views::frame::has_player_panel(self.layout) => views::home::view_panel(
-                &self.home_feed,
-                self.palette,
-                self.density,
-                &self.liked_tracks,
-                &self.state,
-                Message::PlayTrack,
-                Message::PlayContext,
-                Message::PlayPlaylist,
-                Message::OpenPlaylist,
-                Message::NavSelected,
-                Message::ShuffleLiked,
-                Message::RefreshHome,
-                self.home_loading_since.is_some(),
-                self.animations.shimmer_phase,
-                views::prompt_card::view(
-                    self.llm_enabled,
-                    &self.prompt_text,
-                    &self.prompt_phase,
-                    self.prompt_mix.as_ref(),
+            NavPage::Home if views::frame::has_player_panel(self.layout) => {
+                views::home::view_panel(
+                    &self.home_feed,
                     self.palette,
-                    Message::PromptTextChanged,
-                    Message::PromptSubmit,
-                    Message::PlayMix,
-                    Message::SaveMix,
-                    Message::OpenMix,
-                    Message::PromptClear,
-                    Message::NavSelected(NavPage::Settings),
-                ),
-            ),
+                    self.density,
+                    &self.liked_tracks,
+                    &self.state,
+                    Message::PlayTrack,
+                    Message::PlayContext,
+                    Message::PlayPlaylist,
+                    Message::OpenPlaylist,
+                    Message::NavSelected,
+                    Message::ShuffleLiked,
+                    Message::RefreshHome,
+                    self.home_loading_since.is_some(),
+                    self.animations.shimmer_phase,
+                    views::prompt_card::view(
+                        self.llm_enabled,
+                        &self.prompt_text,
+                        &self.prompt_phase,
+                        self.prompt_mix.as_ref(),
+                        self.palette,
+                        Message::PromptTextChanged,
+                        Message::PromptSubmit,
+                        Message::PlayMix,
+                        Message::SaveMix,
+                        Message::OpenMix,
+                        Message::PromptClear,
+                        Message::NavSelected(NavPage::Settings),
+                    ),
+                )
+            }
             // Top tabs (with the Liked Songs hero) and Library list (greeting and one shelf).
-            NavPage::Home if views::frame::shelf_home(self.layout).is_some() => views::home::view_shelf(
-                views::frame::shelf_home(self.layout) == Some(true),
-                &self.home_feed,
-                self.palette,
-                self.density,
-                &self.liked_tracks,
-                Message::PlayTrack,
-                Message::PlayContext,
-                Message::PlayPlaylist,
-                Message::OpenPlaylist,
-                Message::NavSelected,
-                Message::ShuffleLiked,
-                Message::RefreshHome,
-                self.home_loading_since.is_some(),
-                self.animations.shimmer_phase,
-                views::prompt_card::view(
-                    self.llm_enabled,
-                    &self.prompt_text,
-                    &self.prompt_phase,
-                    self.prompt_mix.as_ref(),
+            NavPage::Home if views::frame::shelf_home(self.layout).is_some() => {
+                views::home::view_shelf(
+                    views::frame::shelf_home(self.layout) == Some(true),
+                    &self.home_feed,
                     self.palette,
-                    Message::PromptTextChanged,
-                    Message::PromptSubmit,
-                    Message::PlayMix,
-                    Message::SaveMix,
-                    Message::OpenMix,
-                    Message::PromptClear,
-                    Message::NavSelected(NavPage::Settings),
-                ),
-            ),
+                    self.density,
+                    &self.liked_tracks,
+                    Message::PlayTrack,
+                    Message::PlayContext,
+                    Message::PlayPlaylist,
+                    Message::OpenPlaylist,
+                    Message::NavSelected,
+                    Message::ShuffleLiked,
+                    Message::RefreshHome,
+                    self.home_loading_since.is_some(),
+                    self.animations.shimmer_phase,
+                    views::prompt_card::view(
+                        self.llm_enabled,
+                        &self.prompt_text,
+                        &self.prompt_phase,
+                        self.prompt_mix.as_ref(),
+                        self.palette,
+                        Message::PromptTextChanged,
+                        Message::PromptSubmit,
+                        Message::PlayMix,
+                        Message::SaveMix,
+                        Message::OpenMix,
+                        Message::PromptClear,
+                        Message::NavSelected(NavPage::Settings),
+                    ),
+                )
+            }
             NavPage::Home => views::home::view(
                 &self.home_feed,
                 self.palette,
@@ -4024,9 +4376,14 @@ impl HalcyonApp {
                     )
                 } else {
                     column![
-                        text("No album selected.").size(14).color(self.palette.text_muted),
+                        text("No album selected.")
+                            .size(14)
+                            .color(self.palette.text_muted),
                         Space::with_height(10),
-                        button(text("Go to Library").size(13)).padding([8, 16]).style(views::solid(self.palette)).on_press(Message::BackFromDetail),
+                        button(text("Go to Library").size(13))
+                            .padding([8, 16])
+                            .style(views::solid(self.palette))
+                            .on_press(Message::BackFromDetail),
                     ]
                     .padding(20)
                     .into()
@@ -4047,9 +4404,14 @@ impl HalcyonApp {
                     )
                 } else {
                     column![
-                        text("No artist selected.").size(14).color(self.palette.text_muted),
+                        text("No artist selected.")
+                            .size(14)
+                            .color(self.palette.text_muted),
                         Space::with_height(10),
-                        button(text("Go to Library").size(13)).padding([8, 16]).style(views::solid(self.palette)).on_press(Message::BackFromDetail),
+                        button(text("Go to Library").size(13))
+                            .padding([8, 16])
+                            .style(views::solid(self.palette))
+                            .on_press(Message::BackFromDetail),
                     ]
                     .padding(20)
                     .into()
@@ -4088,9 +4450,13 @@ impl HalcyonApp {
                             add_to_queue: Message::PlaylistAddToQueue,
                             play_next: Message::PlaylistPlayNext,
                             retry: Message::PlaylistRetry,
-                            delete: (!pl.id.starts_with("mix:")).then(|| Message::DeletePlaylist(pl.id.clone())),
+                            delete: (!pl.id.starts_with("mix:"))
+                                .then(|| Message::DeletePlaylist(pl.id.clone())),
                             save: pl.id.starts_with("mix:").then(|| {
-                                Message::SaveMix(pl.name.clone(), tracks.iter().map(|t| t.uri.clone()).collect())
+                                Message::SaveMix(
+                                    pl.name.clone(),
+                                    tracks.iter().map(|t| t.uri.clone()).collect(),
+                                )
                             }),
                             row_click: Message::PlaylistRowClick,
                             row_play: Message::PlaylistRowPlay,
@@ -4099,9 +4465,14 @@ impl HalcyonApp {
                     )
                 } else {
                     column![
-                        text("No playlist selected.").size(14).color(self.palette.text_muted),
+                        text("No playlist selected.")
+                            .size(14)
+                            .color(self.palette.text_muted),
                         Space::with_height(10),
-                        button(text("Go to Library").size(13)).padding([8, 16]).style(views::solid(self.palette)).on_press(Message::BackFromDetail),
+                        button(text("Go to Library").size(13))
+                            .padding([8, 16])
+                            .style(views::solid(self.palette))
+                            .on_press(Message::BackFromDetail),
                     ]
                     .padding(20)
                     .into()
@@ -4155,7 +4526,8 @@ impl HalcyonApp {
                 Message::SetMiniVisualizer,
                 {
                     let advice = machine::advise(&self.machine, self.llm_engine);
-                    let (connect_on, connect_available) = self.connect_setting.unwrap_or((false, false));
+                    let (connect_on, connect_available) =
+                        self.connect_setting.unwrap_or((false, false));
                     let connect_card = views::connect_settings::view(
                         views::connect_settings::Props {
                             known: self.connect_setting.is_some(),
@@ -4167,34 +4539,39 @@ impl HalcyonApp {
                         Message::ToggleConnect,
                     );
                     let llm_card = views::llm_settings::view(
-                    views::llm_settings::Props {
-                        enabled: self.llm_enabled,
-                        backend: &self.llm_backend,
-                        ollama_model: &self.llm_model,
-                        local_model: &self.llm_local_model,
-                        models: &self.llm_models,
-                        engine: self.llm_engine,
-                        download: self.llm_download.as_ref(),
-                        reach: self.llm_reach,
-                        hint: self.llm_hint.as_deref(),
-                        machine: self.machine.describe(),
-                        advice: advice.clone(),
-                        palette: self.palette,
-                    },
-                    views::llm_settings::Msgs {
-                        toggle: Message::ToggleLlm,
-                        backend: Box::new(Message::LlmBackend),
-                        ollama_model: Box::new(Message::LlmModelChanged),
-                        ollama_submit: Message::LlmModelSubmit,
-                        test: Message::TestLlm,
-                        pick: Box::new(Message::LlmPickModel),
-                        download: Box::new(Message::LlmDownload),
-                        cancel: Message::LlmCancelDownload,
-                        delete: Box::new(Message::LlmDeleteModel),
-                        apply_advice: Message::LlmApplyAdvice,
-                    },
+                        views::llm_settings::Props {
+                            enabled: self.llm_enabled,
+                            backend: &self.llm_backend,
+                            ollama_model: &self.llm_model,
+                            local_model: &self.llm_local_model,
+                            models: &self.llm_models,
+                            engine: self.llm_engine,
+                            download: self.llm_download.as_ref(),
+                            reach: self.llm_reach,
+                            hint: self.llm_hint.as_deref(),
+                            machine: self.machine.describe(),
+                            advice: advice.clone(),
+                            palette: self.palette,
+                        },
+                        views::llm_settings::Msgs {
+                            toggle: Message::ToggleLlm,
+                            backend: Box::new(Message::LlmBackend),
+                            ollama_model: Box::new(Message::LlmModelChanged),
+                            ollama_submit: Message::LlmModelSubmit,
+                            test: Message::TestLlm,
+                            pick: Box::new(Message::LlmPickModel),
+                            download: Box::new(Message::LlmDownload),
+                            cancel: Message::LlmCancelDownload,
+                            delete: Box::new(Message::LlmDeleteModel),
+                            apply_advice: Message::LlmApplyAdvice,
+                        },
                     );
-                    iced::widget::column![connect_card, iced::widget::Space::with_height(crate::theme::space::LG), llm_card].into()
+                    iced::widget::column![
+                        connect_card,
+                        iced::widget::Space::with_height(crate::theme::space::LG),
+                        llm_card
+                    ]
+                    .into()
                 },
             ),
             NavPage::Lyrics => views::lyrics::view(
@@ -4221,9 +4598,13 @@ impl HalcyonApp {
 
         // Why we are here: an expired sign-in, or a failed attempt.
         let notice: Element<Message> = if let AuthStatus::Error { message } = &self.auth_status {
-            container(text(message.clone()).size(13).color(pal.danger)).padding(10).into()
+            container(text(message.clone()).size(13).color(pal.danger))
+                .padding(10)
+                .into()
         } else if let Some(reason) = &self.auth_reason {
-            container(text(reason.clone()).size(13).color(pal.danger)).padding(10).into()
+            container(text(reason.clone()).size(13).color(pal.danger))
+                .padding(10)
+                .into()
         } else {
             Space::with_height(0).into()
         };
@@ -4244,9 +4625,13 @@ impl HalcyonApp {
             .on_press(Message::SignInSpotify);
 
         let advanced_toggle = button(
-            text(if self.show_advanced_login { "Advanced  ▾" } else { "Advanced  ▸" })
-                .size(13)
-                .color(pal.text_muted),
+            text(if self.show_advanced_login {
+                "Advanced  ▾"
+            } else {
+                "Advanced  ▸"
+            })
+            .size(13)
+            .color(pal.text_muted),
         )
         .padding([4, 0])
         .style(button::text)
@@ -4295,7 +4680,9 @@ impl HalcyonApp {
         let cached_fallback: Element<Message> = if !self.playlists.is_empty() {
             column![
                 Space::with_height(14),
-                text("Offline Cache available:").size(14).color(pal.accent_secondary),
+                text("Offline Cache available:")
+                    .size(14)
+                    .color(pal.accent_secondary),
                 self.view_playlists_list(),
             ]
             .spacing(6)
@@ -4391,7 +4778,9 @@ impl HalcyonApp {
 
         column![
             text("Connecting to Spotify...").size(20).color(pal.accent),
-            text("A browser window should have opened for you to approve access.").size(14).color(pal.text),
+            text("A browser window should have opened for you to approve access.")
+                .size(14)
+                .color(pal.text),
             hint,
             buttons,
         ]
@@ -4403,7 +4792,9 @@ impl HalcyonApp {
     fn view_player_and_library(&self, user_id: Option<&str>) -> Element<'_, Message> {
         let user_label = user_id.unwrap_or("Spotify User");
         let user_bar = row![
-            text(format!("Connected as: {user_label}")).size(13).color(self.palette.text_muted),
+            text(format!("Connected as: {user_label}"))
+                .size(13)
+                .color(self.palette.text_muted),
             Space::with_width(Length::Fill),
             button("Refresh").on_press(Message::RefreshLibrary),
         ]
@@ -4480,9 +4871,10 @@ fn place_for(message: &Message) -> Option<Place> {
 fn needs_art_sync(message: &Message) -> bool {
     match message {
         Message::UiEvent(ev) => match &**ev {
-            UiEvent::Protocol(body) => {
-                !matches!(body.body, EventBody::Progress { .. } | EventBody::Pong | EventBody::AudioLevels { .. })
-            }
+            UiEvent::Protocol(body) => !matches!(
+                body.body,
+                EventBody::Progress { .. } | EventBody::Pong | EventBody::AudioLevels { .. }
+            ),
             UiEvent::Status(_) => true,
             UiEvent::DaemonError(_) => false,
         },
@@ -4502,11 +4894,26 @@ mod tests {
 
     #[test]
     fn only_real_moves_are_places_for_the_back_arrow() {
-        assert_eq!(place_for(&Message::NavSelected(NavPage::Library)), Some(Place::Page(NavPage::Library)));
-        assert_eq!(place_for(&Message::OpenSettings), Some(Place::Page(NavPage::Settings)));
-        assert_eq!(place_for(&Message::OpenAlbum("a".into())), Some(Place::Album("a".into())));
-        assert_eq!(place_for(&Message::OpenPlaylist("p".into())), Some(Place::Playlist("p".into())));
-        assert_eq!(place_for(&Message::OpenMix("m".into())), Some(Place::Mix("m".into())));
+        assert_eq!(
+            place_for(&Message::NavSelected(NavPage::Library)),
+            Some(Place::Page(NavPage::Library))
+        );
+        assert_eq!(
+            place_for(&Message::OpenSettings),
+            Some(Place::Page(NavPage::Settings))
+        );
+        assert_eq!(
+            place_for(&Message::OpenAlbum("a".into())),
+            Some(Place::Album("a".into()))
+        );
+        assert_eq!(
+            place_for(&Message::OpenPlaylist("p".into())),
+            Some(Place::Playlist("p".into()))
+        );
+        assert_eq!(
+            place_for(&Message::OpenMix("m".into())),
+            Some(Place::Mix("m".into()))
+        );
         // Lyrics is closed with Esc, not with Back; the queue and the layout are not places.
         assert_eq!(place_for(&Message::NavSelected(NavPage::Lyrics)), None);
         assert_eq!(place_for(&Message::ToggleQueue), None);
@@ -4515,7 +4922,10 @@ mod tests {
 
     #[test]
     fn the_device_line_names_the_connect_device_when_there_is_one() {
-        assert_eq!(device_line_text(Some("Halcyon (arch)")), "Connected as Halcyon (arch)");
+        assert_eq!(
+            device_line_text(Some("Halcyon (arch)")),
+            "Connected as Halcyon (arch)"
+        );
         assert_eq!(device_line_text(Some("  ")), "Connected as This computer");
         assert_eq!(device_line_text(None), "Connected as This computer");
     }
@@ -4532,14 +4942,28 @@ mod tests {
     fn a_double_click_needs_the_same_row() {
         let t0 = Instant::now();
         let prev = Some(("pl:3".to_string(), t0));
-        assert!(is_double_click(&prev, "pl:3", t0 + Duration::from_millis(200)));
-        assert!(!is_double_click(&prev, "pl:4", t0 + Duration::from_millis(200)));
+        assert!(is_double_click(
+            &prev,
+            "pl:3",
+            t0 + Duration::from_millis(200)
+        ));
+        assert!(!is_double_click(
+            &prev,
+            "pl:4",
+            t0 + Duration::from_millis(200)
+        ));
         assert!(!is_double_click(&prev, "pl:3", t0 + Duration::from_secs(2)));
         assert!(!is_double_click(&None, "pl:3", t0));
     }
 
     fn track(i: usize) -> Track {
-        Track::simple(format!("id{i}"), format!("t{i}"), "a".into(), "b".into(), 1000)
+        Track::simple(
+            format!("id{i}"),
+            format!("t{i}"),
+            "a".into(),
+            "b".into(),
+            1000,
+        )
     }
 
     #[test]
@@ -4560,7 +4984,10 @@ mod tests {
 
     #[test]
     fn window_sizes_match_the_spec() {
-        assert_eq!((WINDOW_DEFAULT.width, WINDOW_DEFAULT.height), (1440.0, 900.0));
+        assert_eq!(
+            (WINDOW_DEFAULT.width, WINDOW_DEFAULT.height),
+            (1440.0, 900.0)
+        );
         assert_eq!((WINDOW_MIN.width, WINDOW_MIN.height), (960.0, 600.0));
     }
 

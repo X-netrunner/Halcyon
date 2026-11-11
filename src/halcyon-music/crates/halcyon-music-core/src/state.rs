@@ -275,8 +275,8 @@ mod tests {
             track: Some(track(30_000)),
             position_ms: 99_000, // past the end
             queue: vec![track(30_000)],
-            queue_pos: 17,       // out of range
-            volume: 250,         // out of range
+            queue_pos: 17, // out of range
+            volume: 250,   // out of range
             shuffle: false,
             repeat: RepeatMode::Off,
             playing: true,
@@ -290,7 +290,11 @@ mod tests {
 
     #[test]
     fn sanitize_stops_playback_without_track() {
-        let mut s = PlayerState { playing: true, position_ms: 5000, ..Default::default() };
+        let mut s = PlayerState {
+            playing: true,
+            position_ms: 5000,
+            ..Default::default()
+        };
         s.sanitize();
         assert!(!s.playing);
         assert_eq!(s.position_ms, 0);

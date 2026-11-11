@@ -3,8 +3,8 @@
 
 use crate::icons::{icon, Icon};
 use crate::theme::{format_duration, HalcyonPalette};
-use crate::viz::BANDS;
 use crate::visualizer::MiniPlacement;
+use crate::viz::BANDS;
 use halcyon_music_core::state::{PlayerState, RepeatMode};
 use iced::widget::{button, container, row, slider, text, tooltip, Space};
 use iced::{Alignment, Element, Length};
@@ -26,7 +26,12 @@ pub struct BarOptions {
 }
 
 impl BarOptions {
-    pub const CLASSIC: BarOptions = BarOptions { times_below: false, show_volume: true, mini: None, calm: false };
+    pub const CLASSIC: BarOptions = BarOptions {
+        times_below: false,
+        show_volume: true,
+        mini: None,
+        calm: false,
+    };
 }
 
 /// The colour of a toggle that can be lit. Classic lights it with the accent; the calm layouts
@@ -112,23 +117,23 @@ pub fn view_with<'a, Message: Clone + 'static>(
     queue_open: bool,
 ) -> Element<'a, Message> {
     let track = state.track.as_ref();
-    let title = track.map(|t| t.title.as_str()).unwrap_or("No track playing");
+    let title = track
+        .map(|t| t.title.as_str())
+        .unwrap_or("No track playing");
     let artist = track.map(|t| t.artist.as_str()).unwrap_or("Halcyon");
     let duration_ms = track.map(|t| t.duration_ms).unwrap_or(0);
     let position_ms = state.position_ms.min(duration_ms);
 
     // --- Left Section: Cover, Title, Artist, Like ---
-    let cover_btn = button(
-        crate::art::cover(
-            track.and_then(|t| t.art_url.as_deref()),
-            halcyon_music_core::art::ArtSize::Small,
-            52.0,
-            18.0,
-            Icon::Music,
-            title,
-            palette,
-        ),
-    )
+    let cover_btn = button(crate::art::cover(
+        track.and_then(|t| t.art_url.as_deref()),
+        halcyon_music_core::art::ArtSize::Small,
+        52.0,
+        18.0,
+        Icon::Music,
+        title,
+        palette,
+    ))
     .on_press(on_toggle_fullscreen.clone())
     .padding(0)
     .style(move |_theme, status| {
@@ -142,46 +147,72 @@ pub fn view_with<'a, Message: Clone + 'static>(
                 width: if ring { 1.5 } else { 0.0 },
                 color: crate::theme::alpha(palette.accent, 0.6),
             },
-            shadow: if ring { palette.glow_shadow(0.35, 18.0) } else { iced::Shadow::default() },
+            shadow: if ring {
+                palette.glow_shadow(0.35, 18.0)
+            } else {
+                iced::Shadow::default()
+            },
             ..Default::default()
         }
     });
 
-    let title_chars = if options.mini.is_some() { TITLE_CHARS_WITH_MINI } else { TITLE_CHARS };
+    let title_chars = if options.mini.is_some() {
+        TITLE_CHARS_WITH_MINI
+    } else {
+        TITLE_CHARS
+    };
     let meta = iced::widget::column![
-        text(crate::views::ellipsize(title, title_chars)).size(15).color(palette.text),
-        text(crate::views::ellipsize(artist, title_chars)).size(12).color(palette.text_muted),
+        text(crate::views::ellipsize(title, title_chars))
+            .size(15)
+            .color(palette.text),
+        text(crate::views::ellipsize(artist, title_chars))
+            .size(12)
+            .color(palette.text_muted),
     ]
     .spacing(2);
 
     let like_btn = button(if liked {
-        icon(Icon::HeartFilled, 16.0, lit_colour(palette, options.calm, true))
+        icon(
+            Icon::HeartFilled,
+            16.0,
+            lit_colour(palette, options.calm, true),
+        )
     } else {
         icon(Icon::Heart, 16.0, palette.text_muted)
     })
-        .on_press(on_toggle_like)
-        .padding(4)
-        .style(crate::views::ghost(palette));
+    .on_press(on_toggle_like)
+    .padding(4)
+    .style(crate::views::ghost(palette));
 
     // The mini visualizer sits right after the song, before the like button (no label).
     let mut left = row![cover_btn, Space::with_width(12), meta].align_y(Alignment::Center);
     if let Some(bands) = options.mini {
-        left = left.push(Space::with_width(12)).push(crate::views::viz_canvas::mini(
-            MiniPlacement::Bar,
-            bands,
-            palette.accent,
-        ));
+        left = left
+            .push(Space::with_width(12))
+            .push(crate::views::viz_canvas::mini(
+                MiniPlacement::Bar,
+                bands,
+                palette.accent,
+            ));
     }
     // With the strip beside the song, the song gets a little more of the bar and the middle a
     // little less (the transport and progress bar still have plenty).
-    let (left_portion, centre_portion) = if options.mini.is_some() { (4, 5) } else { (3, 6) };
+    let (left_portion, centre_portion) = if options.mini.is_some() {
+        (4, 5)
+    } else {
+        (3, 6)
+    };
     let left = left
         .push(Space::with_width(8))
         .push(like_btn)
         .width(Length::FillPortion(left_portion));
 
     // --- Center Section: Transport + Seek Bar ---
-    let play_pause_icon = if state.playing { Icon::Pause } else { Icon::Play };
+    let play_pause_icon = if state.playing {
+        Icon::Pause
+    } else {
+        Icon::Play
+    };
     let state_playing = state.playing;
 
     let shuffle_color = lit_colour(palette, options.calm, state.shuffle);
@@ -273,9 +304,15 @@ pub fn view_with<'a, Message: Clone + 'static>(
             .align_x(Alignment::Center)
             .width(Length::FillPortion(centre_portion))
     } else {
-        let progress_row = row![elapsed_txt, Space::with_width(8), seek_slider, Space::with_width(8), total_txt]
-            .align_y(Alignment::Center)
-            .width(Length::Fill);
+        let progress_row = row![
+            elapsed_txt,
+            Space::with_width(8),
+            seek_slider,
+            Space::with_width(8),
+            total_txt
+        ]
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
         iced::widget::column![transport_row, Space::with_height(4), progress_row]
             .align_x(Alignment::Center)
             .width(Length::FillPortion(centre_portion))
@@ -299,10 +336,14 @@ pub fn view_with<'a, Message: Clone + 'static>(
         .style(crate::views::slider_style(palette));
 
     let queue_btn = tooltip(
-        button(icon(Icon::Queue, 16.0, lit_colour(palette, options.calm, queue_open)))
-            .on_press(on_toggle_queue)
-            .padding(6)
-            .style(crate::views::ghost(palette)),
+        button(icon(
+            Icon::Queue,
+            16.0,
+            lit_colour(palette, options.calm, queue_open),
+        ))
+        .on_press(on_toggle_queue)
+        .padding(6)
+        .style(crate::views::ghost(palette)),
         text("Queue").size(12),
         tooltip::Position::Top,
     );
@@ -314,7 +355,10 @@ pub fn view_with<'a, Message: Clone + 'static>(
 
     let mut right = row![Space::with_width(Length::Fill)];
     if options.show_volume {
-        right = right.push(mute_btn).push(vol_slider).push(Space::with_width(12));
+        right = right
+            .push(mute_btn)
+            .push(vol_slider)
+            .push(Space::with_width(12));
     }
     let right = right
         .push(queue_btn)
@@ -330,12 +374,20 @@ pub fn view_with<'a, Message: Clone + 'static>(
             .padding(iced::Padding {
                 top: crate::theme::space::SM,
                 right: crate::theme::space::XL,
-                bottom: if options.times_below { crate::theme::space::SM } else { crate::theme::space::MD },
+                bottom: if options.times_below {
+                    crate::theme::space::SM
+                } else {
+                    crate::theme::space::MD
+                },
                 left: 12.0,
             }),
     )
     .width(Length::Fill)
-    .height(if options.times_below { HEIGHT_TIMES_BELOW } else { 88.0 })
+    .height(if options.times_below {
+        HEIGHT_TIMES_BELOW
+    } else {
+        88.0
+    })
     .into()
 }
 
@@ -347,8 +399,14 @@ mod tests {
     fn classic_options_are_the_bar_as_it_was() {
         assert!(!BarOptions::CLASSIC.times_below);
         assert!(BarOptions::CLASSIC.show_volume);
-        assert!(BarOptions::CLASSIC.mini.is_none(), "Classic never gets the mini visualizer");
-        assert!(!BarOptions::CLASSIC.calm, "Classic keeps its accent-lit toggles");
+        assert!(
+            BarOptions::CLASSIC.mini.is_none(),
+            "Classic never gets the mini visualizer"
+        );
+        assert!(
+            !BarOptions::CLASSIC.calm,
+            "Classic keeps its accent-lit toggles"
+        );
     }
 
     #[test]
@@ -373,28 +431,33 @@ mod tests {
         for times_below in [false, true] {
             for show_volume in [false, true] {
                 for mini in minis {
-                  for calm in [false, true] {
-                    let _v: Element<'_, ()> = view_with(
-                        BarOptions { times_below, show_volume, mini, calm },
-                        &state,
-                        palette,
-                        (),
-                        (),
-                        (),
-                        |_| (),
-                        |_| (),
-                        (),
-                        (),
-                        (),
-                        (),
-                        (),
-                        (),
-                        (),
-                        false,
-                        false,
-                        false,
-                    );
-                  }
+                    for calm in [false, true] {
+                        let _v: Element<'_, ()> = view_with(
+                            BarOptions {
+                                times_below,
+                                show_volume,
+                                mini,
+                                calm,
+                            },
+                            &state,
+                            palette,
+                            (),
+                            (),
+                            (),
+                            |_| (),
+                            |_| (),
+                            (),
+                            (),
+                            (),
+                            (),
+                            (),
+                            (),
+                            (),
+                            false,
+                            false,
+                            false,
+                        );
+                    }
                 }
             }
         }

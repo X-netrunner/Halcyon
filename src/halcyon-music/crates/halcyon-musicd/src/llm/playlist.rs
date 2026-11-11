@@ -15,10 +15,15 @@
 //! is reported in plain language with something to try.
 
 use super::backend::{BoxFuture, LlmError, TasteLlm};
-use super::taste::TasteSummary;
-use super::validate::{self, clean_meta, clean_output, filter_ids, QuerySpec, MAX_REASON_CHARS, MAX_TITLE_CHARS};
-use super::{answer_key, call_with_retry, load_settings, make_backend, sha_hex, taste_from_cache, LlmSettings, CALL_TIMEOUT};
 use super::prompts;
+use super::taste::TasteSummary;
+use super::validate::{
+    self, clean_meta, clean_output, filter_ids, QuerySpec, MAX_REASON_CHARS, MAX_TITLE_CHARS,
+};
+use super::{
+    answer_key, call_with_retry, load_settings, make_backend, sha_hex, taste_from_cache,
+    LlmSettings, CALL_TIMEOUT,
+};
 use crate::api::SpotifyClient;
 use crate::cache::Cache;
 use crate::daemon::DaemonContext;
@@ -148,7 +153,13 @@ pub enum SearchKind {
 pub fn plan_searches(spec: &QuerySpec) -> Vec<SearchKind> {
     let tag_slots = spec.genres.len().min(2);
     let artist_slots = MAX_SEARCHES.saturating_sub(tag_slots);
-    let mut out: Vec<SearchKind> = spec.seed_artists.iter().take(artist_slots).cloned().map(SearchKind::Artist).collect();
+    let mut out: Vec<SearchKind> = spec
+        .seed_artists
+        .iter()
+        .take(artist_slots)
+        .cloned()
+        .map(SearchKind::Artist)
+        .collect();
     let room = MAX_SEARCHES.saturating_sub(out.len());
     out.extend(spec.genres.iter().take(room).cloned().map(SearchKind::Tag));
     out
@@ -180,16 +191,21 @@ pub fn artist_matches(track: &Track, wanted: &str) -> bool {
     if want.is_empty() {
         return false;
     }
-    std::iter::once(track.artist.as_str()).chain(track.artists.iter().map(String::as_str)).any(|name| {
-        let name_norm = normalize_string(name);
-        let have = without_the(&name_norm);
-        have == want || token_similarity(have, want) >= 0.6
-    })
+    std::iter::once(track.artist.as_str())
+        .chain(track.artists.iter().map(String::as_str))
+        .any(|name| {
+            let name_norm = normalize_string(name);
+            let have = without_the(&name_norm);
+            have == want || token_similarity(have, want) >= 0.6
+        })
 }
 
 /// The lower-case words of `s`, split on anything that is not a letter or a digit.
 fn words_of(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect()
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect()
 }
 
 /// A catalogue text search for a genre word also returns songs that merely have the word in their
@@ -200,7 +216,9 @@ pub fn title_only_matches_tag(track: &Track, tag: &str) -> bool {
     if want.is_empty() {
         return false;
     }
-    words_of(&track.title).windows(want.len()).any(|w| w == want.as_slice())
+    words_of(&track.title)
+        .windows(want.len())
+        .any(|w| w == want.as_slice())
 }
 
 /// Take one song from each list in turn, skipping songs already taken, until every list is empty.
@@ -267,15 +285,27 @@ pub async fn gather_candidates(catalogue: &dyn Catalogue, spec: &QuerySpec) -> G
         };
         out.answered += 1;
         let kept: Vec<Track> = match kind {
-            SearchKind::Artist(name) => found.into_iter().filter(|t| artist_matches(t, name)).collect(),
-            SearchKind::Tag(tag) => found.into_iter().filter(|t| !title_only_matches_tag(t, tag)).collect(),
+            SearchKind::Artist(name) => found
+                .into_iter()
+                .filter(|t| artist_matches(t, name))
+                .collect(),
+            SearchKind::Tag(tag) => found
+                .into_iter()
+                .filter(|t| !title_only_matches_tag(t, tag))
+                .collect(),
         };
         lists.push(kept);
     }
     let merged = merge_round_robin(lists);
     let mut seen_ids: HashSet<String> = HashSet::new();
-    out.tracks =
-        filter_mix_tracks(merged, PER_ARTIST, &mut seen_ids, &HashSet::new(), true, prompts::MAX_CANDIDATES_PER_CALL);
+    out.tracks = filter_mix_tracks(
+        merged,
+        PER_ARTIST,
+        &mut seen_ids,
+        &HashSet::new(),
+        true,
+        prompts::MAX_CANDIDATES_PER_CALL,
+    );
     out
 }
 
@@ -305,7 +335,10 @@ pub fn fallback_title(spec: &QuerySpec, request: &str) -> String {
 }
 
 fn fallback_reason(request: &str) -> String {
-    clean_output(&format!("Made from your words: {request}"), MAX_REASON_CHARS)
+    clean_output(
+        &format!("Made from your words: {request}"),
+        MAX_REASON_CHARS,
+    )
 }
 
 // ---------------------------------------------------------------- the whole request
@@ -368,7 +401,12 @@ pub async fn build_prompt_playlist(
 
     let plan_hash = sha_hex(&[words.as_str(), fingerprint.as_str(), query_version.as_str()]);
     let plan_key = answer_key(FEATURE_QUERY, &plan_hash, &model);
-    let mix_hash = sha_hex(&[words.as_str(), fingerprint.as_str(), query_version.as_str(), pick_version.as_str()]);
+    let mix_hash = sha_hex(&[
+        words.as_str(),
+        fingerprint.as_str(),
+        query_version.as_str(),
+        pick_version.as_str(),
+    ]);
     let mix_key = answer_key(FEATURE_PLAYLIST, &mix_hash, &model);
 
     // Warm cache: no model, no search.
@@ -376,7 +414,12 @@ pub async fn build_prompt_playlist(
         let candidates = mix.tracks.len();
         return Ok(PromptOutcome {
             mix,
-            report: PromptReport { from_cache: true, ordered_by_model: true, degraded: false, candidates },
+            report: PromptReport {
+                from_cache: true,
+                ordered_by_model: true,
+                degraded: false,
+                candidates,
+            },
         });
     }
 
@@ -407,7 +450,10 @@ pub async fn build_prompt_playlist(
     let candidate_ids: Vec<String> = candidates.iter().map(|t| t.id.clone()).collect();
 
     // 3. Choose and order. Any failure here falls back to the engine's order.
-    let mut report = PromptReport { candidates: candidates.len(), ..PromptReport::default() };
+    let mut report = PromptReport {
+        candidates: candidates.len(),
+        ..PromptReport::default()
+    };
     let mut answer: Option<validate::PickAnswer> = None;
     let ids: Vec<String> = if candidates.len() > PICK_ONLY_ABOVE {
         progress(STEP_CHOOSING);
@@ -415,7 +461,9 @@ pub async fn build_prompt_playlist(
         let parsed = match call_with_retry(llm, &prompt.request, timeout).await {
             Ok(raw) => validate::parse_pick(&raw, &prompt.aliases),
             Err(e) => {
-                debug!("choosing songs for a prompt playlist failed, using the engine's order: {e}");
+                debug!(
+                    "choosing songs for a prompt playlist failed, using the engine's order: {e}"
+                );
                 None
             }
         };
@@ -439,7 +487,10 @@ pub async fn build_prompt_playlist(
 
     // Only songs the catalogue returned can get in: look each id up in the candidate list.
     let by_id: HashMap<&str, &Track> = candidates.iter().map(|t| (t.id.as_str(), t)).collect();
-    let tracks: Vec<Track> = ids.iter().filter_map(|id| by_id.get(id.as_str()).map(|t| (*t).clone())).collect();
+    let tracks: Vec<Track> = ids
+        .iter()
+        .filter_map(|id| by_id.get(id.as_str()).map(|t| (*t).clone()))
+        .collect();
     if tracks.len() < MIN_CANDIDATES.min(candidates.len()) || tracks.is_empty() {
         return Err(PromptError::TooFewSongs);
     }
@@ -488,13 +539,20 @@ impl Drop for RunGuard {
 }
 
 fn send_failed(ctx: &DaemonContext, request: &str, error: &PromptError) {
-    let _ = ctx.events_tx.send(protocol::event(EventBody::PromptPlaylistFailed {
-        request: request.to_string(),
-        reason: error.to_string(),
-    }));
+    let _ = ctx
+        .events_tx
+        .send(protocol::event(EventBody::PromptPlaylistFailed {
+            request: request.to_string(),
+            reason: error.to_string(),
+        }));
 }
 
-async fn run_request(ctx: Arc<DaemonContext>, settings: LlmSettings, text: String, finished: Arc<AtomicBool>) {
+async fn run_request(
+    ctx: Arc<DaemonContext>,
+    settings: LlmSettings,
+    text: String,
+    finished: Arc<AtomicBool>,
+) {
     let llm = make_backend(&settings, &ctx.http);
     let catalogue = SpotifyCatalogue::new(ctx.spotify.clone());
     let taste = taste_from_cache(&ctx.cache);
@@ -511,7 +569,15 @@ async fn run_request(ctx: Arc<DaemonContext>, settings: LlmSettings, text: Strin
     };
     let result = tokio::time::timeout(
         DEADLINE,
-        build_prompt_playlist(&ctx.cache, llm.as_ref(), &catalogue, &taste, &text, CALL_TIMEOUT, &progress),
+        build_prompt_playlist(
+            &ctx.cache,
+            llm.as_ref(),
+            &catalogue,
+            &taste,
+            &text,
+            CALL_TIMEOUT,
+            &progress,
+        ),
     )
     .await;
     match result {
@@ -524,7 +590,10 @@ async fn run_request(ctx: Arc<DaemonContext>, settings: LlmSettings, text: Strin
                 candidates = outcome.report.candidates,
                 "prompt playlist done"
             );
-            let _ = tx.send(protocol::event(EventBody::PromptPlaylistResult { request: text, mix: outcome.mix }));
+            let _ = tx.send(protocol::event(EventBody::PromptPlaylistResult {
+                request: text,
+                mix: outcome.mix,
+            }));
         }
         Ok(Err(e)) => {
             info!("Smart suggestions could not make that playlist: {e}");
@@ -553,7 +622,10 @@ pub fn spawn_prompt_playlist(ctx: Arc<DaemonContext>, text: String) {
         return;
     }
     let finished = Arc::new(AtomicBool::new(false));
-    let job = crate::supervisor::run_guarded("llm-prompt-playlist", run_request(ctx.clone(), settings, text.clone(), finished.clone()));
+    let job = crate::supervisor::run_guarded(
+        "llm-prompt-playlist",
+        run_request(ctx.clone(), settings, text.clone(), finished.clone()),
+    );
     tokio::spawn(async move {
         let _guard = RunGuard;
         let _ = job.await;
@@ -569,7 +641,13 @@ mod tests {
     use super::*;
 
     fn track(id: &str, artist: &str, title: &str) -> Track {
-        Track::simple(id.to_string(), title.to_string(), artist.to_string(), "Album".to_string(), 200_000)
+        Track::simple(
+            id.to_string(),
+            title.to_string(),
+            artist.to_string(),
+            "Album".to_string(),
+            200_000,
+        )
     }
 
     fn spec(artists: &[&str], genres: &[&str]) -> QuerySpec {
@@ -606,23 +684,50 @@ mod tests {
 
     #[test]
     fn a_song_that_only_has_the_genre_word_in_its_title_is_not_a_match() {
-        assert!(title_only_matches_tag(&track("1", "D", "Downtempo"), "downtempo"));
-        assert!(title_only_matches_tag(&track("2", "Alximo", "Paparazzi (Dubstep)"), "dubstep"));
-        assert!(title_only_matches_tag(&track("3", "X", "Sad Songs for Rainy Days"), "sad"));
-        assert!(!title_only_matches_tag(&track("4", "RudyWade", "Trapped in a Dream"), "trap"), "a different word");
-        assert!(!title_only_matches_tag(&track("5", "Massive Attack", "Angel"), "downtempo"));
-        assert!(!title_only_matches_tag(&track("6", "X", "Anything"), ""), "an empty tag matches nothing");
+        assert!(title_only_matches_tag(
+            &track("1", "D", "Downtempo"),
+            "downtempo"
+        ));
+        assert!(title_only_matches_tag(
+            &track("2", "Alximo", "Paparazzi (Dubstep)"),
+            "dubstep"
+        ));
+        assert!(title_only_matches_tag(
+            &track("3", "X", "Sad Songs for Rainy Days"),
+            "sad"
+        ));
+        assert!(
+            !title_only_matches_tag(&track("4", "RudyWade", "Trapped in a Dream"), "trap"),
+            "a different word"
+        );
+        assert!(!title_only_matches_tag(
+            &track("5", "Massive Attack", "Angel"),
+            "downtempo"
+        ));
+        assert!(
+            !title_only_matches_tag(&track("6", "X", "Anything"), ""),
+            "an empty tag matches nothing"
+        );
     }
 
     #[test]
     fn instrumental_requests_add_the_word_to_tag_searches_only() {
         let mut s = spec(&["Nova"], &["ambient", "instrumental rock"]);
         s.instrumental = Some(true);
-        assert_eq!(query_text(&SearchKind::Tag("ambient".into()), &s), "ambient instrumental");
-        assert_eq!(query_text(&SearchKind::Tag("instrumental rock".into()), &s), "instrumental rock");
+        assert_eq!(
+            query_text(&SearchKind::Tag("ambient".into()), &s),
+            "ambient instrumental"
+        );
+        assert_eq!(
+            query_text(&SearchKind::Tag("instrumental rock".into()), &s),
+            "instrumental rock"
+        );
         assert_eq!(query_text(&SearchKind::Artist("Nova".into()), &s), "Nova");
         s.instrumental = None;
-        assert_eq!(query_text(&SearchKind::Tag("ambient".into()), &s), "ambient");
+        assert_eq!(
+            query_text(&SearchKind::Tag("ambient".into()), &s),
+            "ambient"
+        );
     }
 
     #[test]
@@ -633,17 +738,34 @@ mod tests {
         let mut collab = track("3", "Someone", "x");
         collab.artists = vec!["Someone".into(), "Nova".into()];
         assert!(artist_matches(&collab, "Nova"));
-        assert!(!artist_matches(&track("4", "Nova Twins", "x"), "Nova"), "a different artist sharing one word");
-        assert!(!artist_matches(&track("5", "Completely Different", "x"), "Nova"));
+        assert!(
+            !artist_matches(&track("4", "Nova Twins", "x"), "Nova"),
+            "a different artist sharing one word"
+        );
+        assert!(!artist_matches(
+            &track("5", "Completely Different", "x"),
+            "Nova"
+        ));
         assert!(!artist_matches(&track("6", "Nova", "x"), ""));
     }
 
     #[test]
     fn round_robin_mixes_lists_and_skips_repeats_and_blank_songs() {
-        let a = vec![track("a1", "A", "1"), track("a2", "A", "2"), track("a3", "A", "3")];
+        let a = vec![
+            track("a1", "A", "1"),
+            track("a2", "A", "2"),
+            track("a3", "A", "3"),
+        ];
         let b = vec![track("b1", "B", "1"), track("a2", "A", "2")];
-        let c = vec![track("", "C", "x"), track("c1", "C", "1"), track("c2", "C", " ")];
-        let ids: Vec<String> = merge_round_robin(vec![a, b, c]).into_iter().map(|t| t.id).collect();
+        let c = vec![
+            track("", "C", "x"),
+            track("c1", "C", "1"),
+            track("c2", "C", " "),
+        ];
+        let ids: Vec<String> = merge_round_robin(vec![a, b, c])
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
         assert_eq!(ids, vec!["a1", "b1", "c1", "a2", "a3"]);
         assert!(merge_round_robin(Vec::new()).is_empty());
         assert!(merge_round_robin(vec![Vec::new(), Vec::new()]).is_empty());
@@ -655,7 +777,10 @@ mod tests {
         s.title = "Rainy Night Code".into();
         assert_eq!(fallback_title(&s, "whatever"), "Rainy Night Code");
         s.title = String::new();
-        assert_eq!(fallback_title(&s, "rainy night coding with no lyrics please"), "Rainy night coding with");
+        assert_eq!(
+            fallback_title(&s, "rainy night coding with no lyrics please"),
+            "Rainy night coding with"
+        );
         assert_eq!(fallback_title(&s, "ab"), "Your Mix");
         assert_eq!(fallback_title(&s, ""), "Your Mix");
     }

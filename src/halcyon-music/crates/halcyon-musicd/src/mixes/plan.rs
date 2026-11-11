@@ -27,8 +27,21 @@ pub const REWIND_AFTER_DAYS: u64 = 60;
 pub const MIN_POOL: usize = 12;
 /// Tags that say nothing about the music.
 pub const GENERIC_TAGS: &[&str] = &[
-    "seen live", "favorites", "favourites", "favorite", "favourite", "awesome", "love", "good", "best", "amazing", "my music", "cool", "male vocalists",
-    "female vocalists", "under 2000 listeners",
+    "seen live",
+    "favorites",
+    "favourites",
+    "favorite",
+    "favourite",
+    "awesome",
+    "love",
+    "good",
+    "best",
+    "amazing",
+    "my music",
+    "cool",
+    "male vocalists",
+    "female vocalists",
+    "under 2000 listeners",
 ];
 
 /// Which of the retrieved candidates a mix may use.
@@ -78,14 +91,17 @@ pub struct PlanCtx<'a> {
 }
 
 fn is_own(c: &Candidate) -> bool {
-    c.sources.iter().any(|s| matches!(s, Source::History | Source::Liked))
+    c.sources
+        .iter()
+        .any(|s| matches!(s, Source::History | Source::Liked))
 }
 
 fn in_cluster(c: &Candidate, id: u32, p: &TasteProfile) -> bool {
     if p.artist_cluster.get(&artist_key(&c.artist)) == Some(&id) {
         return true;
     }
-    !c.tags.is_empty() && matches!(p.cluster_fit(&c.tags), Some((cid, sim)) if cid == id && sim >= NEIGHBOUR_MIN_SIM)
+    !c.tags.is_empty()
+        && matches!(p.cluster_fit(&c.tags), Some((cid, sim)) if cid == id && sim >= NEIGHBOUR_MIN_SIM)
 }
 
 /// Keep only what `plan` allows. Order is kept.
@@ -95,18 +111,41 @@ pub fn filter_pool(plan: &PoolPlan, pool: Vec<Candidate>, ctx: &PlanCtx<'_>) -> 
             PoolPlan::All => true,
             PoolPlan::Cluster(id) => in_cluster(c, *id, ctx.profile),
             PoolPlan::Unheard => is_unheard(c, ctx.profile) && !is_own(c),
-            PoolPlan::NewReleases => c.sources.contains(&Source::NewRelease) && !is_unheard(c, ctx.profile),
+            PoolPlan::NewReleases => {
+                c.sources.contains(&Source::NewRelease) && !is_unheard(c, ctx.profile)
+            }
             PoolPlan::OnRepeat { min_plays } => {
-                is_own(c) && c.track_id.as_ref().and_then(|id| ctx.stats.get(id)).is_some_and(|s| s.plays_30d >= *min_plays)
+                is_own(c)
+                    && c.track_id
+                        .as_ref()
+                        .and_then(|id| ctx.stats.get(id))
+                        .is_some_and(|s| s.plays_30d >= *min_plays)
             }
             PoolPlan::Rewind => {
-                let old = c
-                    .track_id
-                    .as_ref()
-                    .is_none_or(|id| ctx.stats.get(id).is_none_or(|s| s.last_played < ctx.now.saturating_sub(REWIND_AFTER_DAYS * DAY)));
-                is_own(c) && old && ctx.profile.artist_view(&c.artist, &AffinityCtx { now: ctx.now, bucket: None }).slow > 0.0
+                let old = c.track_id.as_ref().is_none_or(|id| {
+                    ctx.stats.get(id).is_none_or(|s| {
+                        s.last_played < ctx.now.saturating_sub(REWIND_AFTER_DAYS * DAY)
+                    })
+                });
+                is_own(c)
+                    && old
+                    && ctx
+                        .profile
+                        .artist_view(
+                            &c.artist,
+                            &AffinityCtx {
+                                now: ctx.now,
+                                bucket: None,
+                            },
+                        )
+                        .slow
+                        > 0.0
             }
-            PoolPlan::Tag(t) => c.tags.iter().take(4).any(|(name, _)| name.eq_ignore_ascii_case(t)),
+            PoolPlan::Tag(t) => c
+                .tags
+                .iter()
+                .take(4)
+                .any(|(name, _)| name.eq_ignore_ascii_case(t)),
         }
     };
     pool.into_iter().filter(|c| keep(c)).collect()
@@ -114,7 +153,12 @@ pub fn filter_pool(plan: &PoolPlan, pool: Vec<Candidate>, ctx: &PlanCtx<'_>) -> 
 
 /// The first plan whose filtered pool is big enough (`min`), else the last plan's pool, else
 /// nothing. Returns the index of the plan used with the pool.
-pub fn first_big_enough(plans: &[PoolPlan], pool: &[Candidate], ctx: &PlanCtx<'_>, min: usize) -> Option<(usize, Vec<Candidate>)> {
+pub fn first_big_enough(
+    plans: &[PoolPlan],
+    pool: &[Candidate],
+    ctx: &PlanCtx<'_>,
+    min: usize,
+) -> Option<(usize, Vec<Candidate>)> {
     let mut last: Option<(usize, Vec<Candidate>)> = None;
     for (i, plan) in plans.iter().enumerate() {
         let filtered = filter_pool(plan, pool.to_vec(), ctx);
@@ -131,18 +175,31 @@ pub fn apply_feedback(pool: Vec<Candidate>, fb: &Feedback) -> Vec<Candidate> {
     if fb.is_empty() {
         return pool;
     }
-    pool.into_iter().filter(|c| !fb.is_track_blocked(c.track_id.as_deref(), &c.artist, &c.title) && !fb.is_artist_blocked(&c.artist)).collect()
+    pool.into_iter()
+        .filter(|c| {
+            !fb.is_track_blocked(c.track_id.as_deref(), &c.artist, &c.title)
+                && !fb.is_artist_blocked(&c.artist)
+        })
+        .collect()
 }
 
 /// Which mixes to build for a profile: `(kind, slot, cluster id, cluster label)`. Cold start (fewer
 /// than 50 plays) has no clusters and no history to repeat, so only Discover Weekly (from charts
 /// and editorial picks) and the Daylist are made.
-pub fn wanted_mixes(profile: &TasteProfile, slots: &[(usize, u32)]) -> Vec<(MixKind, usize, Option<u32>, String)> {
+pub fn wanted_mixes(
+    profile: &TasteProfile,
+    slots: &[(usize, u32)],
+) -> Vec<(MixKind, usize, Option<u32>, String)> {
     let mut out = Vec::new();
     let personal = phase_for(profile.plays_seen) == Phase::Personal;
     if personal {
         for (slot, cid) in slots.iter().take(MAX_DAILY_MIXES) {
-            let label = profile.clusters.iter().find(|c| c.id == *cid).map(|c| c.label.clone()).unwrap_or_default();
+            let label = profile
+                .clusters
+                .iter()
+                .find(|c| c.id == *cid)
+                .map(|c| c.label.clone())
+                .unwrap_or_default();
             out.push((MixKind::DailyMix, *slot, Some(*cid), label));
         }
     }
@@ -166,12 +223,20 @@ pub fn daylist_tag(profile: &TasteProfile, tags: &TagTable, bucket: usize) -> Op
             continue;
         }
         let Some(ts) = tags.get(artist) else { continue };
-        for (tag, tw) in ts.iter().filter(|(t, _)| !GENERIC_TAGS.contains(&t.as_str())).take(3) {
+        for (tag, tw) in ts
+            .iter()
+            .filter(|(t, _)| !GENERIC_TAGS.contains(&t.as_str()))
+            .take(3)
+        {
             *acc.entry(tag.clone()).or_insert(0.0) += w * tw;
         }
     }
     let mut ranked: Vec<(String, f64)> = acc.into_iter().collect();
-    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     ranked.into_iter().next().map(|(t, _)| t)
 }
 
@@ -233,7 +298,10 @@ pub fn separate_neighbours(r: &mut ShelfResult) {
     let mut order: Vec<usize> = Vec::with_capacity(keys.len());
     while !remaining.is_empty() {
         let prev = order.last().and_then(|&k| keys.get(k));
-        let pos = remaining.iter().position(|&k| keys.get(k) != prev).unwrap_or(0);
+        let pos = remaining
+            .iter()
+            .position(|&k| keys.get(k) != prev)
+            .unwrap_or(0);
         order.push(remaining.remove(pos));
     }
     fn permute<T: Clone>(v: &mut Vec<T>, order: &[usize]) {
@@ -286,15 +354,36 @@ pub fn smart_shuffle(own: &[Track], suggestions: &[Track], seed: u64, every: usi
     for i in 1..mine.len() {
         let same = matches!((mine.get(i - 1), mine.get(i)), (Some(a), Some(b)) if artist_key(&a.artist) == artist_key(&b.artist));
         if same {
-            if let Some(j) = (i + 1..mine.len()).find(|&j| mine.get(j).is_some_and(|c| mine.get(i - 1).is_some_and(|p| artist_key(&c.artist) != artist_key(&p.artist)))) {
+            if let Some(j) = (i + 1..mine.len()).find(|&j| {
+                mine.get(j).is_some_and(|c| {
+                    mine.get(i - 1)
+                        .is_some_and(|p| artist_key(&c.artist) != artist_key(&p.artist))
+                })
+            }) {
                 mine.swap(i, j);
             }
         }
     }
-    let own_names: HashSet<String> = mine.iter().map(|t| format!("{}|{}", normalize_string(&t.artist), normalize_string(&t.title))).collect();
+    let own_names: HashSet<String> = mine
+        .iter()
+        .map(|t| {
+            format!(
+                "{}|{}",
+                normalize_string(&t.artist),
+                normalize_string(&t.title)
+            )
+        })
+        .collect();
     let mut pool: Vec<&Track> = suggestions
         .iter()
-        .filter(|s| !seen.contains(&s.id) && !own_names.contains(&format!("{}|{}", normalize_string(&s.artist), normalize_string(&s.title))))
+        .filter(|s| {
+            !seen.contains(&s.id)
+                && !own_names.contains(&format!(
+                    "{}|{}",
+                    normalize_string(&s.artist),
+                    normalize_string(&s.title)
+                ))
+        })
         .collect();
     let mut out = Shuffled::default();
     let mut used: HashSet<String> = HashSet::new();
@@ -305,7 +394,11 @@ pub fn smart_shuffle(own: &[Track], suggestions: &[Track], seed: u64, every: usi
         }
         let prev = artist_key(&t.artist);
         let next = mine.get(i + 1).map(|n| artist_key(&n.artist));
-        let pick = pool.iter().position(|s| !used.contains(&s.id) && artist_key(&s.artist) != prev && Some(artist_key(&s.artist)) != next);
+        let pick = pool.iter().position(|s| {
+            !used.contains(&s.id)
+                && artist_key(&s.artist) != prev
+                && Some(artist_key(&s.artist)) != next
+        });
         if let Some(p) = pick {
             let s = pool.remove(p);
             used.insert(s.id.clone());
@@ -321,7 +414,9 @@ pub fn smart_shuffle(own: &[Track], suggestions: &[Track], seed: u64, every: usi
 /// Radio: keep what is close to the seed song (the same artist, or sharing tags with it) and
 /// everything in `keep` (candidates gathered around the seed on purpose).
 pub fn near_seed(pool: Vec<Candidate>, seed: &Candidate, keep: &HashSet<String>) -> Vec<Candidate> {
-    pool.into_iter().filter(|c| keep.contains(&c.key()) || similarity(c, seed) > 0.0).collect()
+    pool.into_iter()
+        .filter(|c| keep.contains(&c.key()) || similarity(c, seed) > 0.0)
+        .collect()
 }
 
 /// How far a refresh may move a score. The ranker is deterministic and the seed only steers the
@@ -364,7 +459,16 @@ mod tests {
     }
 
     fn play(id: &str, artist: &str, at: u64, completed: bool) -> PlayLogEntry {
-        PlayLogEntry { id: 0, track_id: id.into(), title: "t".into(), artist: artist.into(), album: String::new(), started_at: at, ms_played: 1000, completed }
+        PlayLogEntry {
+            id: 0,
+            track_id: id.into(),
+            title: "t".into(),
+            artist: artist.into(),
+            album: String::new(),
+            started_at: at,
+            ms_played: 1000,
+            completed,
+        }
     }
 
     fn profile_with(plays: &[PlayLogEntry], now: u64, tags: &TagTable) -> TasteProfile {
@@ -377,7 +481,13 @@ mod tests {
 
     fn result(tracks: Vec<Track>) -> ShelfResult {
         let n = tracks.len();
-        ShelfResult { reasons: (0..n).map(|i| format!("r{i}")).collect(), explore: vec![false; n], origins: (0..n).collect(), tracks, ..Default::default() }
+        ShelfResult {
+            reasons: (0..n).map(|i| format!("r{i}")).collect(),
+            explore: vec![false; n],
+            origins: (0..n).collect(),
+            tracks,
+            ..Default::default()
+        }
     }
 
     const NOW: u64 = 1_794_182_400;
@@ -392,24 +502,51 @@ mod tests {
             play("b", "B", NOW - 90 * DAY, true),
         ];
         let m = play_stats(&plays, NOW);
-        assert_eq!(m.get("a"), Some(&PlayStats { plays_30d: 2, last_played: NOW - DAY }));
-        assert_eq!(m.get("b"), Some(&PlayStats { plays_30d: 0, last_played: NOW - 90 * DAY }));
+        assert_eq!(
+            m.get("a"),
+            Some(&PlayStats {
+                plays_30d: 2,
+                last_played: NOW - DAY
+            })
+        );
+        assert_eq!(
+            m.get("b"),
+            Some(&PlayStats {
+                plays_30d: 0,
+                last_played: NOW - 90 * DAY
+            })
+        );
     }
 
     #[test]
     fn on_repeat_wants_songs_finished_often_lately_and_can_relax() {
-        let plays = vec![play("id-A-x", "A", NOW - DAY, true), play("id-A-x", "A", NOW - 2 * DAY, true), play("id-B-y", "B", NOW - 3 * DAY, true)];
+        let plays = vec![
+            play("id-A-x", "A", NOW - DAY, true),
+            play("id-A-x", "A", NOW - 2 * DAY, true),
+            play("id-B-y", "B", NOW - 3 * DAY, true),
+        ];
         let stats = play_stats(&plays, NOW);
         let profile = profile_with(&plays, NOW, &TagTable::default());
-        let ctx = PlanCtx { profile: &profile, now: NOW, stats: &stats };
-        let pool = vec![cand("A", "x", Source::History), cand("B", "y", Source::History), cand("C", "z", Source::Chart)];
+        let ctx = PlanCtx {
+            profile: &profile,
+            now: NOW,
+            stats: &stats,
+        };
+        let pool = vec![
+            cand("A", "x", Source::History),
+            cand("B", "y", Source::History),
+            cand("C", "z", Source::Chart),
+        ];
         let twice = filter_pool(&PoolPlan::OnRepeat { min_plays: 2 }, pool.clone(), &ctx);
         assert_eq!(twice.len(), 1);
         assert_eq!(twice.first().map(|c| c.artist.as_str()), Some("A"));
         let once = filter_pool(&PoolPlan::OnRepeat { min_plays: 1 }, pool.clone(), &ctx);
         assert_eq!(once.len(), 2, "a chart song is never on repeat");
         // The wider plan is tried when the first is too small.
-        let plans = [PoolPlan::OnRepeat { min_plays: 2 }, PoolPlan::OnRepeat { min_plays: 1 }];
+        let plans = [
+            PoolPlan::OnRepeat { min_plays: 2 },
+            PoolPlan::OnRepeat { min_plays: 1 },
+        ];
         let (i, got) = first_big_enough(&plans, &pool, &ctx, 2).expect("a plan");
         assert_eq!((i, got.len()), (1, 2));
         let (i, got) = first_big_enough(&plans, &pool, &ctx, 1).expect("a plan");
@@ -421,8 +558,17 @@ mod tests {
         let plays = vec![play("id-A-x", "A", NOW - DAY, true)];
         let profile = profile_with(&plays, NOW, &TagTable::default());
         let stats = play_stats(&plays, NOW);
-        let ctx = PlanCtx { profile: &profile, now: NOW, stats: &stats };
-        let pool = vec![cand("A", "x", Source::History), cand("A", "other", Source::Similar), cand("New", "n", Source::Similar), cand("Fresh", "f", Source::TagNeighbour)];
+        let ctx = PlanCtx {
+            profile: &profile,
+            now: NOW,
+            stats: &stats,
+        };
+        let pool = vec![
+            cand("A", "x", Source::History),
+            cand("A", "other", Source::Similar),
+            cand("New", "n", Source::Similar),
+            cand("Fresh", "f", Source::TagNeighbour),
+        ];
         let got = filter_pool(&PoolPlan::Unheard, pool, &ctx);
         let names: Vec<&str> = got.iter().map(|c| c.artist.as_str()).collect();
         assert_eq!(names, vec!["New", "Fresh"]);
@@ -433,8 +579,16 @@ mod tests {
         let plays = vec![play("id-A-x", "A", NOW - DAY, true)];
         let profile = profile_with(&plays, NOW, &TagTable::default());
         let stats = play_stats(&plays, NOW);
-        let ctx = PlanCtx { profile: &profile, now: NOW, stats: &stats };
-        let pool = vec![cand("A", "New Album", Source::NewRelease), cand("Stranger", "Album", Source::NewRelease), cand("A", "x", Source::History)];
+        let ctx = PlanCtx {
+            profile: &profile,
+            now: NOW,
+            stats: &stats,
+        };
+        let pool = vec![
+            cand("A", "New Album", Source::NewRelease),
+            cand("Stranger", "Album", Source::NewRelease),
+            cand("A", "x", Source::History),
+        ];
         let got = filter_pool(&PoolPlan::NewReleases, pool, &ctx);
         assert_eq!(got.len(), 1);
         assert_eq!(got.first().map(|c| c.title.as_str()), Some("New Album"));
@@ -449,8 +603,16 @@ mod tests {
         }
         let profile = profile_with(&plays, NOW, &TagTable::default());
         let stats = play_stats(&plays, NOW);
-        let ctx = PlanCtx { profile: &profile, now: NOW, stats: &stats };
-        let pool = vec![cand("Old", "song", Source::History), cand("Now", "song", Source::History), cand("Nobody", "song", Source::Chart)];
+        let ctx = PlanCtx {
+            profile: &profile,
+            now: NOW,
+            stats: &stats,
+        };
+        let pool = vec![
+            cand("Old", "song", Source::History),
+            cand("Now", "song", Source::History),
+            cand("Nobody", "song", Source::Chart),
+        ];
         let got = filter_pool(&PoolPlan::Rewind, pool, &ctx);
         let names: Vec<&str> = got.iter().map(|c| c.artist.as_str()).collect();
         assert_eq!(names, vec!["Old"]);
@@ -460,28 +622,59 @@ mod tests {
     fn a_daily_mix_is_its_own_cluster_and_close_neighbours() {
         let mut tags = TagTable::default();
         let mut plays = Vec::new();
-        for (i, a) in ["lofi1", "lofi2", "lofi3", "lofi4", "lofi5"].iter().enumerate() {
+        for (i, a) in ["lofi1", "lofi2", "lofi3", "lofi4", "lofi5"]
+            .iter()
+            .enumerate()
+        {
             tags.insert(a, &[("lo-fi", 1.0), ("chillhop", 0.7)]);
             for k in 0..4 {
-                plays.push(play(&format!("id-{a}-s"), a, NOW - ((i as u64) * 2 + k + 1) * DAY, true));
+                plays.push(play(
+                    &format!("id-{a}-s"),
+                    a,
+                    NOW - ((i as u64) * 2 + k + 1) * DAY,
+                    true,
+                ));
             }
         }
-        for (i, a) in ["metal1", "metal2", "metal3", "metal4", "metal5"].iter().enumerate() {
+        for (i, a) in ["metal1", "metal2", "metal3", "metal4", "metal5"]
+            .iter()
+            .enumerate()
+        {
             tags.insert(a, &[("metal", 1.0), ("thrash", 0.7)]);
             for k in 0..4 {
-                plays.push(play(&format!("id-{a}-s"), a, NOW - ((i as u64) * 2 + k + 1) * DAY, true));
+                plays.push(play(
+                    &format!("id-{a}-s"),
+                    a,
+                    NOW - ((i as u64) * 2 + k + 1) * DAY,
+                    true,
+                ));
             }
         }
         let profile = profile_with(&plays, NOW, &tags);
-        let lofi_cluster = profile.artist_cluster.get("lofi1").copied().expect("lofi1 is in a cluster");
-        let metal_cluster = profile.artist_cluster.get("metal1").copied().expect("metal1 is in a cluster");
+        let lofi_cluster = profile
+            .artist_cluster
+            .get("lofi1")
+            .copied()
+            .expect("lofi1 is in a cluster");
+        let metal_cluster = profile
+            .artist_cluster
+            .get("metal1")
+            .copied()
+            .expect("metal1 is in a cluster");
         assert_ne!(lofi_cluster, metal_cluster);
         let stats = play_stats(&plays, NOW);
-        let ctx = PlanCtx { profile: &profile, now: NOW, stats: &stats };
+        let ctx = PlanCtx {
+            profile: &profile,
+            now: NOW,
+            stats: &stats,
+        };
         let pool = vec![
             cand("lofi1", "s", Source::History),
             cand("metal1", "s", Source::History),
-            with_tags(cand("Newcomer", "n", Source::Similar), &[("lo-fi", 1.0), ("chillhop", 0.5)]),
+            with_tags(
+                cand("Newcomer", "n", Source::Similar),
+                &[("lo-fi", 1.0), ("chillhop", 0.5)],
+            ),
             with_tags(cand("Elsewhere", "n", Source::Similar), &[("polka", 1.0)]),
             cand("Untagged", "n", Source::Similar),
         ];
@@ -502,9 +695,17 @@ mod tests {
             plays.push(play("e", "early bird", NOW + k * DAY + 8 * 3600, true));
         }
         let profile = profile_with(&plays, NOW + 10 * DAY, &tags);
-        assert_eq!(daylist_tag(&profile, &tags, 0).as_deref(), Some("synthwave"), "generic tags are ignored");
+        assert_eq!(
+            daylist_tag(&profile, &tags, 0).as_deref(),
+            Some("synthwave"),
+            "generic tags are ignored"
+        );
         assert_eq!(daylist_tag(&profile, &tags, 1).as_deref(), Some("acoustic"));
-        assert_eq!(daylist_tag(&profile, &tags, 3), None, "nothing played on weekday evenings");
+        assert_eq!(
+            daylist_tag(&profile, &tags, 3),
+            None,
+            "nothing played on weekday evenings"
+        );
     }
 
     #[test]
@@ -512,15 +713,26 @@ mod tests {
         let mut fb = Feedback::default();
         fb.block_track("id-A-x", "A", "x");
         fb.block_artist("Bad");
-        let pool = vec![cand("A", "x", Source::History), cand("A", "y", Source::History), cand("Bad", "z", Source::Similar), cand("a", "X (Remastered)", Source::Chart)];
+        let pool = vec![
+            cand("A", "x", Source::History),
+            cand("A", "y", Source::History),
+            cand("Bad", "z", Source::Similar),
+            cand("a", "X (Remastered)", Source::Chart),
+        ];
         let got = apply_feedback(pool, &fb);
-        assert_eq!(got.iter().map(|c| c.title.as_str()).collect::<Vec<_>>(), vec!["y"]);
+        assert_eq!(
+            got.iter().map(|c| c.title.as_str()).collect::<Vec<_>>(),
+            vec!["y"]
+        );
     }
 
     #[test]
     fn cold_start_makes_only_discover_and_daylist() {
         let cold = TasteProfile::default();
-        let kinds: Vec<MixKind> = wanted_mixes(&cold, &[(1, 5)]).into_iter().map(|m| m.0).collect();
+        let kinds: Vec<MixKind> = wanted_mixes(&cold, &[(1, 5)])
+            .into_iter()
+            .map(|m| m.0)
+            .collect();
         assert_eq!(kinds, vec![MixKind::DiscoverWeekly, MixKind::Daylist]);
     }
 
@@ -532,18 +744,37 @@ mod tests {
         let kinds: Vec<MixKind> = all.iter().map(|m| m.0).collect();
         assert_eq!(
             kinds,
-            vec![MixKind::DailyMix, MixKind::DailyMix, MixKind::DiscoverWeekly, MixKind::ReleaseRadar, MixKind::OnRepeat, MixKind::RepeatRewind, MixKind::Daylist]
+            vec![
+                MixKind::DailyMix,
+                MixKind::DailyMix,
+                MixKind::DiscoverWeekly,
+                MixKind::ReleaseRadar,
+                MixKind::OnRepeat,
+                MixKind::RepeatRewind,
+                MixKind::Daylist
+            ]
         );
         assert_eq!(all.first().map(|m| (m.1, m.2)), Some((1, Some(10))));
     }
 
     #[test]
     fn caps_never_let_an_artist_past_the_limit() {
-        let mut r = result(vec![track("1", "A", "a"), track("2", "B", "b"), track("3", "A", "c"), track("4", "A", "d"), track("5", "B", "e"), track("6", "B", "f")]);
+        let mut r = result(vec![
+            track("1", "A", "a"),
+            track("2", "B", "b"),
+            track("3", "A", "c"),
+            track("4", "A", "d"),
+            track("5", "B", "e"),
+            track("6", "B", "f"),
+        ]);
         enforce_caps(&mut r, 2, &Feedback::default());
         let ids: Vec<&str> = r.tracks.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, vec!["1", "2", "3", "5"]);
-        assert_eq!(r.reasons, vec!["r0", "r1", "r2", "r4"], "the parallel vectors stay in step");
+        assert_eq!(
+            r.reasons,
+            vec!["r0", "r1", "r2", "r4"],
+            "the parallel vectors stay in step"
+        );
         assert_eq!(r.origins, vec![0, 1, 2, 4]);
     }
 
@@ -553,7 +784,14 @@ mod tests {
         fb.less_like("A");
         fb.block_artist("C");
         fb.block_track("5", "B", "e");
-        let mut r = result(vec![track("1", "A", "a"), track("2", "B", "b"), track("3", "A", "c"), track("4", "C", "d"), track("5", "B", "e"), track("6", "B", "f")]);
+        let mut r = result(vec![
+            track("1", "A", "a"),
+            track("2", "B", "b"),
+            track("3", "A", "c"),
+            track("4", "C", "d"),
+            track("5", "B", "e"),
+            track("6", "B", "f"),
+        ]);
         enforce_caps(&mut r, 2, &fb);
         let ids: Vec<&str> = r.tracks.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, vec!["1", "2", "6"]);
@@ -561,10 +799,21 @@ mod tests {
 
     #[test]
     fn neighbours_by_the_same_artist_are_pulled_apart() {
-        let mut r = result(vec![track("1", "A", "a"), track("2", "B", "b"), track("3", "B", "c"), track("4", "C", "d"), track("5", "A", "e")]);
+        let mut r = result(vec![
+            track("1", "A", "a"),
+            track("2", "B", "b"),
+            track("3", "B", "c"),
+            track("4", "C", "d"),
+            track("5", "A", "e"),
+        ]);
         separate_neighbours(&mut r);
         for w in r.tracks.windows(2) {
-            assert_ne!(artist_key(&w[0].artist), artist_key(&w[1].artist), "{:?}", r.tracks.iter().map(|t| &t.id).collect::<Vec<_>>());
+            assert_ne!(
+                artist_key(&w[0].artist),
+                artist_key(&w[1].artist),
+                "{:?}",
+                r.tracks.iter().map(|t| &t.id).collect::<Vec<_>>()
+            );
         }
         assert_eq!(r.tracks.len(), 5);
         assert_eq!(r.reasons.len(), 5);
@@ -581,11 +830,21 @@ mod tests {
     }
 
     fn own(n: usize) -> Vec<Track> {
-        (0..n).map(|i| track(&format!("own{i}"), &format!("Artist{}", i % 7), &format!("Song{i}"))).collect()
+        (0..n)
+            .map(|i| {
+                track(
+                    &format!("own{i}"),
+                    &format!("Artist{}", i % 7),
+                    &format!("Song{i}"),
+                )
+            })
+            .collect()
     }
 
     fn sugg(n: usize) -> Vec<Track> {
-        (0..n).map(|i| track(&format!("sg{i}"), &format!("New{i}"), &format!("Fresh{i}"))).collect()
+        (0..n)
+            .map(|i| track(&format!("sg{i}"), &format!("New{i}"), &format!("Fresh{i}")))
+            .collect()
     }
 
     #[test]
@@ -595,9 +854,18 @@ mod tests {
         assert_eq!(out.suggested.len(), 3);
         for (i, t) in out.tracks.iter().enumerate() {
             let is_sugg = out.suggested.contains(&t.id);
-            assert_eq!(is_sugg, i % 4 == 3, "position {i}: every fourth entry is a suggestion");
+            assert_eq!(
+                is_sugg,
+                i % 4 == 3,
+                "position {i}: every fourth entry is a suggestion"
+            );
         }
-        let mine: HashSet<&str> = out.tracks.iter().filter(|t| !out.suggested.contains(&t.id)).map(|t| t.id.as_str()).collect();
+        let mine: HashSet<&str> = out
+            .tracks
+            .iter()
+            .filter(|t| !out.suggested.contains(&t.id))
+            .map(|t| t.id.as_str())
+            .collect();
         assert_eq!(mine.len(), 9, "all of your songs are there, once");
     }
 
@@ -616,9 +884,16 @@ mod tests {
         s.insert(0, track("copy", "Artist0", "Song0"));
         s.insert(0, track("own1", "Whoever", "Else"));
         let out = smart_shuffle(&own(9), &s, 3, 3);
-        assert!(!out.suggested.contains(&"copy".to_string()), "same song by name");
+        assert!(
+            !out.suggested.contains(&"copy".to_string()),
+            "same song by name"
+        );
         assert!(!out.suggested.contains(&"own1".to_string()), "same id");
-        assert_eq!(out.suggested.len(), 2, "only two usable suggestions for three slots");
+        assert_eq!(
+            out.suggested.len(),
+            2,
+            "only two usable suggestions for three slots"
+        );
         assert_eq!(smart_shuffle(&[], &sugg(3), 1, 3), Shuffled::default());
         let none = smart_shuffle(&own(6), &[], 1, 3);
         assert_eq!(none.tracks.len(), 6);
@@ -627,8 +902,16 @@ mod tests {
 
     #[test]
     fn a_suggestion_never_follows_a_song_by_its_own_artist() {
-        let mine = vec![track("a1", "X", "1"), track("a2", "Y", "2"), track("a3", "Z", "3"), track("a4", "W", "4")];
-        let s = vec![track("s1", "Z", "same artist as the third"), track("s2", "Q", "fine")];
+        let mine = vec![
+            track("a1", "X", "1"),
+            track("a2", "Y", "2"),
+            track("a3", "Z", "3"),
+            track("a4", "W", "4"),
+        ];
+        let s = vec![
+            track("s1", "Z", "same artist as the third"),
+            track("s2", "Q", "fine"),
+        ];
         for seed in 0..20 {
             let out = smart_shuffle(&mine, &s, seed, 3);
             for w in out.tracks.windows(2) {
@@ -654,7 +937,11 @@ mod tests {
         let mut v = Vec::new();
         for a in 0..n_artists {
             for k in 0..per {
-                v.push(cand(&format!("Artist{a}"), &format!("Song{k}"), Source::Similar));
+                v.push(cand(
+                    &format!("Artist{a}"),
+                    &format!("Song{k}"),
+                    Source::Similar,
+                ));
             }
         }
         v
@@ -664,22 +951,48 @@ mod tests {
         use crate::reco::bandit::shelf_seed;
         use crate::reco::rerank::{rerank, RerankCfg, Scored};
         let seed = shelf_seed("daily-mix-1", NOW, epoch);
-        let scored: Vec<Scored> = pool.iter().enumerate().map(|(i, c)| Scored { cand: c.clone(), score: 5.0 - i as f64 * 0.01 + refresh_jitter(epoch, seed, &c.key()), unheard: true }).collect();
+        let scored: Vec<Scored> = pool
+            .iter()
+            .enumerate()
+            .map(|(i, c)| Scored {
+                cand: c.clone(),
+                score: 5.0 - i as f64 * 0.01 + refresh_jitter(epoch, seed, &c.key()),
+                unheard: true,
+            })
+            .collect();
         let cfg = RerankCfg::shelf(20);
-        let picks = rerank(&scored, &HashMap::new(), NOW, &cfg, "daily-mix-1", &Default::default(), shelf_seed("daily-mix-1", NOW, epoch));
-        picks.iter().filter_map(|p| scored.get(p.index)).map(|s| s.cand.artist.clone()).collect()
+        let picks = rerank(
+            &scored,
+            &HashMap::new(),
+            NOW,
+            &cfg,
+            "daily-mix-1",
+            &Default::default(),
+            shelf_seed("daily-mix-1", NOW, epoch),
+        );
+        picks
+            .iter()
+            .filter_map(|p| scored.get(p.index))
+            .map(|s| s.cand.artist.clone())
+            .collect()
     }
 
     #[test]
     fn not_my_taste_changes_the_next_rebuild() {
         let pool = scored_pool(12, 3);
         let before = pick_artists(pool.clone(), 0);
-        assert!(before.iter().any(|a| a == "Artist0"), "the top artist is on the list at first");
+        assert!(
+            before.iter().any(|a| a == "Artist0"),
+            "the top artist is on the list at first"
+        );
         let mut fb = Feedback::default();
         fb.block_artist("Artist0");
         fb.block_track("none", "Artist1", "Song0");
         let after = pick_artists(apply_feedback(pool, &fb), 0);
-        assert!(!after.iter().any(|a| a == "Artist0"), "a blocked artist is gone");
+        assert!(
+            !after.iter().any(|a| a == "Artist0"),
+            "a blocked artist is gone"
+        );
         assert_ne!(before, after);
     }
 
@@ -692,8 +1005,14 @@ mod tests {
             for a in &artists {
                 *counts.entry(a.as_str()).or_insert(0) += 1;
             }
-            assert!(counts.values().all(|n| *n <= 2), "epoch {epoch}: {counts:?}");
-            assert!(artists.windows(2).all(|w| w[0] != w[1]), "epoch {epoch}: back to back");
+            assert!(
+                counts.values().all(|n| *n <= 2),
+                "epoch {epoch}: {counts:?}"
+            );
+            assert!(
+                artists.windows(2).all(|w| w[0] != w[1]),
+                "epoch {epoch}: back to back"
+            );
         }
     }
 

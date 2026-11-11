@@ -140,7 +140,11 @@ pub enum VisualizerKind {
 }
 
 impl VisualizerKind {
-    pub const ALL: [VisualizerKind; 3] = [VisualizerKind::Aurora, VisualizerKind::Silk, VisualizerKind::None];
+    pub const ALL: [VisualizerKind; 3] = [
+        VisualizerKind::Aurora,
+        VisualizerKind::Silk,
+        VisualizerKind::None,
+    ];
 
     pub fn key(&self) -> &'static str {
         match self {
@@ -255,7 +259,10 @@ mod tests {
 
     /// A fresh empty folder under the system temp dir, never the real home.
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("halcyon-music-layout-test-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "halcyon-music-layout-test-{}-{tag}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -328,7 +335,10 @@ mod tests {
         assert_eq!(MiniVisualizer::load_from(&dir), MINI_VISUALIZER_DEFAULT);
 
         // Reading did not overwrite what was there.
-        assert_eq!(std::fs::read_to_string(dir.join(VISUALIZER_FILE)).unwrap(), "sparkles");
+        assert_eq!(
+            std::fs::read_to_string(dir.join(VISUALIZER_FILE)).unwrap(),
+            "sparkles"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -356,7 +366,10 @@ mod tests {
         }
         // The files hold the plain keys the plan names.
         LayoutKind::PlayerPanel.save_to(&dir);
-        assert_eq!(std::fs::read_to_string(dir.join("layout")).unwrap(), "player-panel");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("layout")).unwrap(),
+            "player-panel"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

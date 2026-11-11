@@ -17,7 +17,12 @@ const NOW: u64 = 1_800_000_000;
 
 fn cache() -> (tempfile::TempDir, Cache) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let c = Cache::open(&dir.path().join("cache.db"), &dir.path().join("images"), 1 << 20).expect("cache");
+    let c = Cache::open(
+        &dir.path().join("cache.db"),
+        &dir.path().join("images"),
+        1 << 20,
+    )
+    .expect("cache");
     (dir, c)
 }
 
@@ -57,14 +62,25 @@ fn mix(id: &str, title: &str, n: usize) -> MusicMix {
         description: "d".to_string(),
         source: "Halcyon Local".to_string(),
         tracks: (0..n)
-            .map(|i| Track::simple(format!("{id}-{i}"), format!("Song {i}"), "Artist".into(), "Album".into(), 1000))
+            .map(|i| {
+                Track::simple(
+                    format!("{id}-{i}"),
+                    format!("Song {i}"),
+                    "Artist".into(),
+                    "Album".into(),
+                    1000,
+                )
+            })
             .collect(),
         art_url: None,
     }
 }
 
 fn two_mixes() -> Vec<MusicMix> {
-    vec![mix("on-repeat", "On Repeat", 5), mix("rediscover", "Rediscover", 5)]
+    vec![
+        mix("on-repeat", "On Repeat", 5),
+        mix("rediscover", "Rediscover", 5),
+    ]
 }
 
 const GOOD: &str = r#"{"mixes":[
@@ -89,7 +105,9 @@ async fn happy_path_emits_words_and_remembers_them() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!((r.generated, r.from_cache), (2, 0));
     assert_eq!(llm.calls(), 1);
     let blurbs = got(&out);
@@ -103,12 +121,32 @@ async fn a_warm_cache_makes_no_call_at_all() {
     let (_d, c) = cache();
     let first = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o1, emit1) = sink();
-    enrich_mixes(&c, &first, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit1).await.expect("ok");
+    enrich_mixes(
+        &c,
+        &first,
+        &taste(),
+        &two_mixes(),
+        true,
+        CALL_TIMEOUT,
+        &emit1,
+    )
+    .await
+    .expect("ok");
 
     // Same mixes, same taste, same model: nothing to ask. Not even a failing model matters.
     let second = ScriptedLlm::down();
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &second, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(
+        &c,
+        &second,
+        &taste(),
+        &two_mixes(),
+        true,
+        CALL_TIMEOUT,
+        &emit,
+    )
+    .await
+    .expect("ok");
     assert_eq!(second.calls(), 0);
     assert_eq!((r.from_cache, r.generated, r.asked_model), (2, 0, false));
     assert_eq!(got(&out).len(), 2);
@@ -119,14 +157,18 @@ async fn cached_words_survive_a_reshuffle_but_not_a_changed_mix_or_model() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o, emit) = sink();
-    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
 
     // Same songs, different order: still cached.
     let mut shuffled = two_mixes();
     shuffled[0].tracks.reverse();
     let silent = ScriptedLlm::new(vec![]);
     let (out, emit2) = sink();
-    enrich_mixes(&c, &silent, &taste(), &shuffled, true, CALL_TIMEOUT, &emit2).await.expect("ok");
+    enrich_mixes(&c, &silent, &taste(), &shuffled, true, CALL_TIMEOUT, &emit2)
+        .await
+        .expect("ok");
     assert_eq!(silent.calls(), 0);
     assert_eq!(got(&out).len(), 2);
 
@@ -137,7 +179,9 @@ async fn cached_words_survive_a_reshuffle_but_not_a_changed_mix_or_model() {
         r#"{"mixes":[{"id":"m1","title":"Fresh Find","reason":"Old favourites with something new."}]}"#.to_string(),
     )]);
     let (out, emit3) = sink();
-    let r = enrich_mixes(&c, &asks, &taste(), &changed, true, CALL_TIMEOUT, &emit3).await.expect("ok");
+    let r = enrich_mixes(&c, &asks, &taste(), &changed, true, CALL_TIMEOUT, &emit3)
+        .await
+        .expect("ok");
     assert_eq!((r.from_cache, r.generated), (1, 1));
     assert_eq!(asks.calls(), 1);
     assert_eq!(got(&out).len(), 2);
@@ -145,7 +189,17 @@ async fn cached_words_survive_a_reshuffle_but_not_a_changed_mix_or_model() {
     // Another model: nothing is shared.
     let other = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]).with_model("llama3");
     let (_o, emit4) = sink();
-    enrich_mixes(&c, &other, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit4).await.expect("ok");
+    enrich_mixes(
+        &c,
+        &other,
+        &taste(),
+        &two_mixes(),
+        true,
+        CALL_TIMEOUT,
+        &emit4,
+    )
+    .await
+    .expect("ok");
     assert_eq!(other.calls(), 1);
 }
 
@@ -154,20 +208,34 @@ async fn a_material_change_in_taste_invalidates_the_cache() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o, emit) = sink();
-    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
 
     // More plays of the same artists: same fingerprint, still cached.
     let busier = taste_of(&[("Nova", 20), ("Echo", 15)]);
     let silent = ScriptedLlm::new(vec![]);
     let (_o, emit2) = sink();
-    enrich_mixes(&c, &silent, &busier, &two_mixes(), true, CALL_TIMEOUT, &emit2).await.expect("ok");
+    enrich_mixes(
+        &c,
+        &silent,
+        &busier,
+        &two_mixes(),
+        true,
+        CALL_TIMEOUT,
+        &emit2,
+    )
+    .await
+    .expect("ok");
     assert_eq!(silent.calls(), 0);
 
     // A new favourite takes over: ask again.
     let moved = taste_of(&[("Brand New Band", 30), ("Nova", 12), ("Echo", 8)]);
     let asks = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o, emit3) = sink();
-    enrich_mixes(&c, &asks, &moved, &two_mixes(), true, CALL_TIMEOUT, &emit3).await.expect("ok");
+    enrich_mixes(&c, &asks, &moved, &two_mixes(), true, CALL_TIMEOUT, &emit3)
+        .await
+        .expect("ok");
     assert_eq!(asks.calls(), 1);
 }
 
@@ -176,16 +244,37 @@ async fn a_hung_model_times_out_retries_once_then_the_layer_rests() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Hang, Step::Hang, Step::Hang]);
     let (out, emit) = sink();
-    let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, Duration::from_secs(20), &emit)
-        .await
-        .expect_err("should fail");
+    let err = enrich_mixes(
+        &c,
+        &llm,
+        &taste(),
+        &two_mixes(),
+        true,
+        Duration::from_secs(20),
+        &emit,
+    )
+    .await
+    .expect_err("should fail");
     assert_eq!(err, LlmError::Timeout);
     assert_eq!(llm.calls(), 2, "one try and a single retry");
-    assert!(got(&out).is_empty(), "failure is silent: no words, no crash");
+    assert!(
+        got(&out).is_empty(),
+        "failure is silent: no words, no crash"
+    );
 
     // The next visit does not hammer a model that just failed.
     let (_o, emit2) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, Duration::from_secs(20), &emit2).await.expect("ok");
+    let r = enrich_mixes(
+        &c,
+        &llm,
+        &taste(),
+        &two_mixes(),
+        true,
+        Duration::from_secs(20),
+        &emit2,
+    )
+    .await
+    .expect("ok");
     assert!(r.paused);
     assert_eq!(llm.calls(), 2);
 }
@@ -195,7 +284,17 @@ async fn a_slow_first_try_can_be_rescued_by_the_retry() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Hang, Step::Reply(GOOD.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, Duration::from_secs(20), &emit).await.expect("ok");
+    let r = enrich_mixes(
+        &c,
+        &llm,
+        &taste(),
+        &two_mixes(),
+        true,
+        Duration::from_secs(20),
+        &emit,
+    )
+    .await
+    .expect("ok");
     assert_eq!(r.generated, 2);
     assert_eq!(llm.calls(), 2);
     assert_eq!(got(&out).len(), 2);
@@ -213,7 +312,9 @@ async fn malformed_json_changes_nothing() {
         let (_d, c) = cache();
         let llm = ScriptedLlm::new(vec![Step::Reply(junk.to_string())]);
         let (out, emit) = sink();
-        let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect_err(junk);
+        let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+            .await
+            .expect_err(junk);
         assert!(matches!(err, LlmError::BadResponse(_)), "{junk}");
         assert!(got(&out).is_empty(), "{junk}");
     }
@@ -229,7 +330,9 @@ async fn hallucinated_ids_are_dropped_and_real_ones_kept() {
     ]}"#;
     let llm = ScriptedLlm::new(vec![Step::Reply(reply.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(r.generated, 1);
     let blurbs = got(&out);
     assert_eq!(blurbs.len(), 1);
@@ -241,10 +344,14 @@ async fn empty_or_tiny_candidate_lists_never_reach_the_model() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &[], true, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(&c, &llm, &taste(), &[], true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(r, Default::default());
     let tiny = vec![mix("a", "A", 0), mix("b", "B", 2)];
-    enrich_mixes(&c, &llm, &taste(), &tiny, true, CALL_TIMEOUT, &emit).await.expect("ok");
+    enrich_mixes(&c, &llm, &taste(), &tiny, true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(llm.calls(), 0);
     assert!(got(&out).is_empty());
 }
@@ -255,7 +362,9 @@ async fn too_little_listening_means_nothing_personal_to_say() {
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o, emit) = sink();
     let thin = taste_of(&[("Nova", 2)]);
-    enrich_mixes(&c, &llm, &thin, &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    enrich_mixes(&c, &llm, &thin, &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(llm.calls(), 0);
 }
 
@@ -264,9 +373,14 @@ async fn a_backend_that_is_down_fails_quietly_and_explains_itself() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::down();
     let (out, emit) = sink();
-    let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect_err("down");
+    let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect_err("down");
     assert!(matches!(err, LlmError::Unreachable(_)));
-    assert!(err.to_string().contains("ollama serve"), "the message carries a fix");
+    assert!(
+        err.to_string().contains("ollama serve"),
+        "the message carries a fix"
+    );
     assert!(got(&out).is_empty());
 
     let (reachable, hint) = check_connection(&llm).await;
@@ -282,7 +396,9 @@ async fn a_missing_model_is_not_retried() {
         Step::Reply(GOOD.to_string()),
     ]);
     let (_o, emit) = sink();
-    let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect_err("missing");
+    let err = enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect_err("missing");
     assert!(err.to_string().contains("ollama pull"));
     assert_eq!(llm.calls(), 1);
 }
@@ -292,7 +408,9 @@ async fn a_second_request_while_busy_only_serves_the_cache() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), false, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(&c, &llm, &taste(), &two_mixes(), false, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(llm.calls(), 0);
     assert!(!r.asked_model);
     assert!(got(&out).is_empty());
@@ -314,7 +432,9 @@ async fn prompt_injection_in_metadata_cannot_break_the_prompt_or_the_output() {
     ]}"#;
     let llm = ScriptedLlm::new(vec![Step::Reply(reply.to_string())]);
     let (out, emit) = sink();
-    let r = enrich_mixes(&c, &llm, &taste(), &mixes, true, CALL_TIMEOUT, &emit).await.expect("ok");
+    let r = enrich_mixes(&c, &llm, &taste(), &mixes, true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     assert_eq!(r.generated, 2);
 
     // What the model was shown is one valid JSON document, with our mix ids, and an untouched system prompt.
@@ -328,7 +448,10 @@ async fn prompt_injection_in_metadata_cannot_break_the_prompt_or_the_output() {
     // What came back is clean.
     for b in got(&out) {
         for field in [&b.title, &b.reason] {
-            assert!(!field.contains('<') && !field.contains('{') && !field.contains("http"), "{field}");
+            assert!(
+                !field.contains('<') && !field.contains('{') && !field.contains("http"),
+                "{field}"
+            );
             assert!(!field.contains('\n'));
         }
     }
@@ -339,7 +462,9 @@ async fn the_model_sees_aggregates_not_the_play_log() {
     let (_d, c) = cache();
     let llm = ScriptedLlm::new(vec![Step::Reply(GOOD.to_string())]);
     let (_o, emit) = sink();
-    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit).await.expect("ok");
+    enrich_mixes(&c, &llm, &taste(), &two_mixes(), true, CALL_TIMEOUT, &emit)
+        .await
+        .expect("ok");
     let sent = llm.last_request().expect("request");
     // The fixture's play titles ("Song 7") and timestamps are in the log, never in the prompt's taste block.
     let doc: serde_json::Value = serde_json::from_str(&sent.user).expect("json");

@@ -40,7 +40,12 @@ pub fn ok(cmd: &str, args: &[&str]) -> bool {
 
 /// What a command prints on stdout; "" when it could not be started. Its stderr is thrown away.
 pub fn out(cmd: &str, args: &[&str]) -> String {
-    match Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output() {
+    match Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+    {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
         Err(_) => String::new(),
     }
@@ -162,7 +167,11 @@ pub fn conf_value(text: &str, key: &str) -> Option<String> {
     let mut found = None;
     for line in text.lines() {
         if let Some(rest) = line.trim().strip_prefix(prefix.as_str()) {
-            found = Some(rest.trim().trim_matches(|c: char| c == '"' || c == '\'').to_string());
+            found = Some(
+                rest.trim()
+                    .trim_matches(|c: char| c == '"' || c == '\'')
+                    .to_string(),
+            );
         }
     }
     found

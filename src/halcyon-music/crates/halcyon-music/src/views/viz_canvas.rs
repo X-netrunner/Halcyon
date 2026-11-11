@@ -8,11 +8,11 @@
 
 use crate::layout::VisualizerKind;
 use crate::theme;
-use crate::viz::BANDS;
 use crate::visualizer::{
-    aurora_points, mini_bars, silk_bars, smooth_segments, MiniPlacement, Seg, AURORA_FILL_ALPHA, AURORA_LAYERS,
-    AURORA_STROKE_ALPHA, AURORA_STROKE_WIDTH, MINI_BAR_WIDTH, SILK_BAR_WIDTH,
+    aurora_points, mini_bars, silk_bars, smooth_segments, MiniPlacement, Seg, AURORA_FILL_ALPHA,
+    AURORA_LAYERS, AURORA_STROKE_ALPHA, AURORA_STROKE_WIDTH, MINI_BAR_WIDTH, SILK_BAR_WIDTH,
 };
+use crate::viz::BANDS;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, LineCap, LineJoin, Path, Stroke};
 use iced::{mouse, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
 
@@ -67,7 +67,9 @@ impl<M> canvas::Program<M> for Visualizer {
                 // Back to front, so the front wave is drawn on top.
                 for layer in 0..AURORA_LAYERS {
                     let pts = aurora_points(&look.bands, layer, w, h, look.clock);
-                    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { continue };
+                    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else {
+                        continue;
+                    };
                     let segs = smooth_segments(&pts);
                     let top = Path::new(|b| add_segments(b, &segs));
                     let body = Path::new(|b| {
@@ -112,7 +114,10 @@ impl<M> canvas::Program<M> for Visualizer {
 /// The visualizer, filling whatever area it is given. `VisualizerKind::None` draws nothing, but
 /// callers should not build it at all then.
 pub fn view<'a, M: 'a>(look: Look) -> Element<'a, M> {
-    Canvas::new(Visualizer { look }).width(Length::Fill).height(Length::Fill).into()
+    Canvas::new(Visualizer { look })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 /// The small row of capsules in the player. `bands` is the smoothed spectrum (all zeros draws
@@ -152,7 +157,14 @@ impl<M> canvas::Program<M> for Mini {
 }
 
 /// The mini visualizer at the size of `placement`.
-pub fn mini<'a, M: 'a>(placement: MiniPlacement, bands: [f32; BANDS], accent: Color) -> Element<'a, M> {
+pub fn mini<'a, M: 'a>(
+    placement: MiniPlacement,
+    bands: [f32; BANDS],
+    accent: Color,
+) -> Element<'a, M> {
     let (w, h) = placement.size();
-    Canvas::new(Mini { bands, accent }).width(Length::Fixed(w)).height(Length::Fixed(h)).into()
+    Canvas::new(Mini { bands, accent })
+        .width(Length::Fixed(w))
+        .height(Length::Fixed(h))
+        .into()
 }

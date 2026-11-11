@@ -45,7 +45,10 @@ pub struct Machine {
 /// How strong a GPU is, from its name: 5 = top end, 0 = old integrated. None = a name this table does not know.
 pub fn score_name(name: &str) -> Option<f32> {
     let n = name.to_ascii_lowercase();
-    let mobile = n.contains("laptop") || n.contains("mobile") || n.contains("max-q") || n.ends_with('m') && n.contains("rtx");
+    let mobile = n.contains("laptop")
+        || n.contains("mobile")
+        || n.contains("max-q")
+        || n.ends_with('m') && n.contains("rtx");
     let mob = if mobile { 0.5 } else { 0.0 };
     // NVIDIA RTX 2050 ... 5090: the first two digits are the generation, the last two the tier
     if let Some(d) = digits_after(&n, "rtx") {
@@ -100,7 +103,11 @@ pub fn score_name(name: &str) -> Option<f32> {
     }
     // Intel Arc A380 ... A770, B570 / B580, and the Arc iGPUs of Core Ultra
     if n.contains("arc") {
-        if let Some(d) = n.split(|c: char| !c.is_ascii_alphanumeric()).find(|w| w.len() == 4 && (w.starts_with('a') || w.starts_with('b')) && w[1..].chars().all(|c| c.is_ascii_digit())) {
+        if let Some(d) = n.split(|c: char| !c.is_ascii_alphanumeric()).find(|w| {
+            w.len() == 4
+                && (w.starts_with('a') || w.starts_with('b'))
+                && w[1..].chars().all(|c| c.is_ascii_digit())
+        }) {
             return Some(match &d[..2] {
                 "a7" | "b5" => 3.0,
                 "a5" => 2.0,
@@ -110,12 +117,23 @@ pub fn score_name(name: &str) -> Option<f32> {
         return Some(1.0);
     }
     // AMD iGPUs that can game: 680M / 760M / 780M / 880M / 890M
-    for (m, s) in [("890m", 1.5), ("880m", 1.0), ("780m", 1.0), ("760m", 0.8), ("680m", 0.8)] {
+    for (m, s) in [
+        ("890m", 1.5),
+        ("880m", 1.0),
+        ("780m", 1.0),
+        ("760m", 0.8),
+        ("680m", 0.8),
+    ] {
         if n.contains(m) {
             return Some(s);
         }
     }
-    if n.contains("uhd") || n.contains("iris") || n.contains("hd graphics") || n.contains("vega") || n.contains("radeon graphics") {
+    if n.contains("uhd")
+        || n.contains("iris")
+        || n.contains("hd graphics")
+        || n.contains("vega")
+        || n.contains("radeon graphics")
+    {
         return Some(0.3);
     }
     None
@@ -124,7 +142,11 @@ pub fn score_name(name: &str) -> Option<f32> {
 /// "geforce rtx 4050 laptop" after "rtx" -> "4050"
 fn digits_after(n: &str, word: &str) -> Option<String> {
     let i = n.find(word)? + word.len();
-    let d: String = n[i..].trim_start().chars().take_while(|c| c.is_ascii_digit()).collect();
+    let d: String = n[i..]
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     if d.is_empty() {
         None
     } else {
@@ -148,7 +170,15 @@ pub fn classify(gpu: Option<&Gpu>, threads: usize, ram_mb: u64) -> (char, Vec<St
     let mut why = Vec::new();
     let mut s = match gpu {
         Some(g) => {
-            why.push(format!("{} ({})", g.name, if g.vram_mb > 0 { format!("{} GB video memory", (g.vram_mb + 512) / 1024) } else { "shared memory".into() }));
+            why.push(format!(
+                "{} ({})",
+                g.name,
+                if g.vram_mb > 0 {
+                    format!("{} GB video memory", (g.vram_mb + 512) / 1024)
+                } else {
+                    "shared memory".into()
+                }
+            ));
             g.score
         }
         None => {
@@ -164,20 +194,50 @@ pub fn classify(gpu: Option<&Gpu>, threads: usize, ram_mb: u64) -> (char, Vec<St
     };
     if let Some(g) = gpu {
         if g.discrete && g.vram_mb > 0 && g.vram_mb < 3_500 {
-            cap(&mut s, 1.0, &mut why, "held back: under 4 GB of video memory".into());
+            cap(
+                &mut s,
+                1.0,
+                &mut why,
+                "held back: under 4 GB of video memory".into(),
+            );
         } else if g.discrete && g.vram_mb > 0 && g.vram_mb < 7_500 {
-            cap(&mut s, 3.0, &mut why, "held back: under 8 GB of video memory (textures above High do not fit)".into());
+            cap(
+                &mut s,
+                3.0,
+                &mut why,
+                "held back: under 8 GB of video memory (textures above High do not fit)".into(),
+            );
         }
     }
     if threads > 0 && threads < 6 {
-        cap(&mut s, 1.0, &mut why, format!("held back: the CPU has {threads} threads"));
+        cap(
+            &mut s,
+            1.0,
+            &mut why,
+            format!("held back: the CPU has {threads} threads"),
+        );
     } else if threads > 0 && threads < 8 {
-        cap(&mut s, 2.0, &mut why, format!("held back: the CPU has {threads} threads"));
+        cap(
+            &mut s,
+            2.0,
+            &mut why,
+            format!("held back: the CPU has {threads} threads"),
+        );
     }
     if ram_mb > 0 && ram_mb < 7_000 {
-        cap(&mut s, 0.5, &mut why, "held back: under 8 GB of memory".into());
+        cap(
+            &mut s,
+            0.5,
+            &mut why,
+            "held back: under 8 GB of memory".into(),
+        );
     } else if ram_mb > 0 && ram_mb < 14_000 {
-        cap(&mut s, 2.0, &mut why, "held back: under 16 GB of memory".into());
+        cap(
+            &mut s,
+            2.0,
+            &mut why,
+            "held back: under 16 GB of memory".into(),
+        );
     }
     let class = if s >= 4.0 {
         'A'
@@ -204,32 +264,81 @@ pub fn class_label(c: char) -> &'static str {
 pub fn detect() -> Machine {
     let mut gpus = read_gpus();
     for g in gpus.iter_mut() {
-        g.score = score_name(&g.name).unwrap_or_else(|| if g.discrete { score_vram(g.vram_mb) } else { 0.3 });
+        g.score = score_name(&g.name).unwrap_or_else(|| {
+            if g.discrete {
+                score_vram(g.vram_mb)
+            } else {
+                0.3
+            }
+        });
     }
     let best = (0..gpus.len()).max_by(|&a, &b| gpus[a].score.total_cmp(&gpus[b].score));
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0);
     let ram_mb = fs::read_to_string("/proc/meminfo")
         .ok()
-        .and_then(|t| t.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok()))
+        .and_then(|t| {
+            t.lines()
+                .find(|l| l.starts_with("MemTotal:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|k| k.parse::<u64>().ok())
+        })
         .map(|kb| kb / 1024)
         .unwrap_or(0);
-    let hybrid_nvidia = gpus.iter().any(|g| g.vendor == "nvidia") && gpus.iter().any(|g| g.vendor != "nvidia" && !g.discrete);
+    let hybrid_nvidia = gpus.iter().any(|g| g.vendor == "nvidia")
+        && gpus.iter().any(|g| g.vendor != "nvidia" && !g.discrete);
     let (class, why) = classify(best.map(|i| &gpus[i]), threads, ram_mb);
-    Machine { gpus, best, threads, ram_mb, hybrid_nvidia, class, why }
+    Machine {
+        gpus,
+        best,
+        threads,
+        ram_mb,
+        hybrid_nvidia,
+        class,
+        why,
+    }
 }
 
 /// GPUs from /sys/class/drm (vendor, AMD's video memory), named by `lspci` and, for NVIDIA, `nvidia-smi` (name and memory).
 fn read_gpus() -> Vec<Gpu> {
     let lspci = out("lspci", &["-nn"]).unwrap_or_default();
-    let smi = out("nvidia-smi", &["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"]).unwrap_or_default();
-    let mut smi_rows = smi.lines().filter_map(|l| l.rsplit_once(',')).map(|(n, m)| (n.trim().to_string(), m.trim().parse::<u64>().unwrap_or(0)));
+    let smi = out(
+        "nvidia-smi",
+        &[
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ],
+    )
+    .unwrap_or_default();
+    let mut smi_rows = smi
+        .lines()
+        .filter_map(|l| l.rsplit_once(','))
+        .map(|(n, m)| (n.trim().to_string(), m.trim().parse::<u64>().unwrap_or(0)));
     let mut v = Vec::new();
-    let Ok(rd) = fs::read_dir("/sys/class/drm") else { return v };
-    let mut cards: Vec<_> = rd.flatten().map(|e| e.path()).filter(|p| p.file_name().map(|n| { let n = n.to_string_lossy(); n.starts_with("card") && !n.contains('-') }).unwrap_or(false)).collect();
+    let Ok(rd) = fs::read_dir("/sys/class/drm") else {
+        return v;
+    };
+    let mut cards: Vec<_> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .map(|n| {
+                    let n = n.to_string_lossy();
+                    n.starts_with("card") && !n.contains('-')
+                })
+                .unwrap_or(false)
+        })
+        .collect();
     cards.sort();
     for c in cards {
         let dev = c.join("device");
-        let rd = |f: &str| fs::read_to_string(dev.join(f)).map(|s| s.trim().to_ascii_lowercase()).unwrap_or_default();
+        let rd = |f: &str| {
+            fs::read_to_string(dev.join(f))
+                .map(|s| s.trim().to_ascii_lowercase())
+                .unwrap_or_default()
+        };
         let (vid, did) = (rd("vendor"), rd("device"));
         let vendor = match vid.as_str() {
             "0x10de" => "nvidia",
@@ -238,8 +347,16 @@ fn read_gpus() -> Vec<Gpu> {
             _ => "other",
         };
         // lspci -nn names the device: "... [10de:28a1] (rev a1)" -> the text in the last [...] before the ids
-        let ids = format!("[{}:{}]", vid.trim_start_matches("0x"), did.trim_start_matches("0x"));
-        let mut name = lspci.lines().find(|l| l.contains(&ids)).map(lspci_name).unwrap_or_default();
+        let ids = format!(
+            "[{}:{}]",
+            vid.trim_start_matches("0x"),
+            did.trim_start_matches("0x")
+        );
+        let mut name = lspci
+            .lines()
+            .find(|l| l.contains(&ids))
+            .map(lspci_name)
+            .unwrap_or_default();
         let mut vram_mb = rd("mem_info_vram_total").parse::<u64>().unwrap_or(0) / 1_048_576;
         if vendor == "nvidia" {
             if let Some((n, m)) = smi_rows.next() {
@@ -251,13 +368,22 @@ fn read_gpus() -> Vec<Gpu> {
         let discrete = match vendor {
             "nvidia" => true,
             "amd" => vram_mb >= 2_048 || name.to_ascii_lowercase().contains("rx "),
-            "intel" => name.to_ascii_lowercase().contains("arc a") || name.to_ascii_lowercase().contains("arc b"),
+            "intel" => {
+                name.to_ascii_lowercase().contains("arc a")
+                    || name.to_ascii_lowercase().contains("arc b")
+            }
             _ => false,
         };
         if name.is_empty() {
             name = format!("{vendor} GPU");
         }
-        v.push(Gpu { vendor: vendor.into(), name, vram_mb, discrete, score: 0.0 });
+        v.push(Gpu {
+            vendor: vendor.into(),
+            name,
+            vram_mb,
+            discrete,
+            score: 0.0,
+        });
     }
     v
 }
@@ -266,7 +392,11 @@ fn read_gpus() -> Vec<Gpu> {
 /// -> "GeForce RTX 4050 Max-Q / Mobile";  "... Intel Corporation Raptor Lake-P [Intel Graphics] [8086:a7a0]" -> "Intel Graphics"
 fn lspci_name(line: &str) -> String {
     let after = line.split_once("]: ").map(|x| x.1).unwrap_or(line);
-    let brackets: Vec<&str> = after.split('[').skip(1).filter_map(|s| s.split_once(']').map(|x| x.0)).collect();
+    let brackets: Vec<&str> = after
+        .split('[')
+        .skip(1)
+        .filter_map(|s| s.split_once(']').map(|x| x.0))
+        .collect();
     // the last bracket is the vendor:device id; the one before it (if any) is the marketing name
     if brackets.len() >= 2 {
         return brackets[brackets.len() - 2].to_string();
@@ -321,15 +451,24 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     let mut v = Vec::new();
     let mut want = |key: &str, value: &str, cur: &str, why: &str| {
         if cur != value {
-            v.push(Change { key: key.into(), value: value.into(), why: why.into() });
+            v.push(Change {
+                key: key.into(),
+                value: value.into(),
+                why: why.into(),
+            });
         }
     };
     // Lean island: every class gains from Halcyon resting, the weaker ones most
-    want("lean", "on", if g.lean { "on" } else { "off" }, "Halcyon pauses its feeds, widgets and animations while you play");
+    want(
+        "lean",
+        "on",
+        if g.lean { "on" } else { "off" },
+        "Halcyon pauses its feeds, widgets and animations while you play",
+    );
     if g.source == "steam" {
         return v; // Steam starts its games: Proton, wrappers, gamescope and the environment are set in Steam
     }
-    let flat = g.source == "flatpak";     // its own sandbox: no wrappers or gamescope, the environment still applies
+    let flat = g.source == "flatpak"; // its own sandbox: no wrappers or gamescope, the environment still applies
     let mut wr = g.wrappers.clone();
     if !wr.iter().any(|w| w == "gamemode") {
         wr.insert(0, "gamemode".into());
@@ -339,7 +478,12 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
         wr.retain(|w| w != "mangohud");
     }
     if !flat {
-        want("wrappers", &wr.join(","), &g.wrappers.join(","), "gamemode asks the CPU and GPU for their performance mode");
+        want(
+            "wrappers",
+            &wr.join(","),
+            &g.wrappers.join(","),
+            "gamemode asks the CPU and GPU for their performance mode",
+        );
     }
     // gamescope: render at 720p and upscale with FSR only where the GPU needs it; elsewhere it only adds latency
     let scope = if m.class == 'D' { "fsr1080" } else { "" };
@@ -348,21 +492,57 @@ pub fn suggest(g: &Game, m: &Machine) -> Vec<Change> {
     } else {
         "the GPU is fast enough to render at full resolution; gamescope would only add a little latency"
     };
-    if !flat && !(scope.is_empty() && !["", "native", "1080p", "1440p", "fsr1080", "fsr1440"].contains(&g.gamescope.as_str())) {
+    if !flat
+        && !(scope.is_empty()
+            && !["", "native", "1080p", "1440p", "fsr1080", "fsr1440"]
+                .contains(&g.gamescope.as_str()))
+    {
         // custom gamescope options are yours: left alone
         want("gamescope", scope, &g.gamescope, scope_why);
     }
-    let env = |k: &str| g.env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).unwrap_or("");
+    let env = |k: &str| {
+        g.env
+            .iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("")
+    };
     let best = m.best.map(|i| &m.gpus[i]);
     let nvidia = best.map(|b| b.vendor == "nvidia").unwrap_or(false);
     if m.hybrid_nvidia && nvidia {
-        let why = "this laptop also has integrated graphics: these make the game run on the NVIDIA card";
-        want("env.__NV_PRIME_RENDER_OFFLOAD", "1", env("__NV_PRIME_RENDER_OFFLOAD"), why);
-        want("env.__VK_LAYER_NV_optimus", "NVIDIA_only", env("__VK_LAYER_NV_optimus"), why);
-        want("env.__GLX_VENDOR_LIBRARY_NAME", "nvidia", env("__GLX_VENDOR_LIBRARY_NAME"), why);
+        let why =
+            "this laptop also has integrated graphics: these make the game run on the NVIDIA card";
+        want(
+            "env.__NV_PRIME_RENDER_OFFLOAD",
+            "1",
+            env("__NV_PRIME_RENDER_OFFLOAD"),
+            why,
+        );
+        want(
+            "env.__VK_LAYER_NV_optimus",
+            "NVIDIA_only",
+            env("__VK_LAYER_NV_optimus"),
+            why,
+        );
+        want(
+            "env.__GLX_VENDOR_LIBRARY_NAME",
+            "nvidia",
+            env("__GLX_VENDOR_LIBRARY_NAME"),
+            why,
+        );
     }
-    if !flat && nvidia && best.map(|b| b.name.to_ascii_lowercase().contains("rtx")).unwrap_or(false) {
-        want("env.PROTON_ENABLE_NVAPI", "1", env("PROTON_ENABLE_NVAPI"), "lets games offer DLSS and NVIDIA Reflex");
+    if !flat
+        && nvidia
+        && best
+            .map(|b| b.name.to_ascii_lowercase().contains("rtx"))
+            .unwrap_or(false)
+    {
+        want(
+            "env.PROTON_ENABLE_NVAPI",
+            "1",
+            env("PROTON_ENABLE_NVAPI"),
+            "lets games offer DLSS and NVIDIA Reflex",
+        );
     }
     v
 }
@@ -383,7 +563,13 @@ pub struct ProtonTip {
     pub alt: String,
 }
 
-pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&str>, cpu_v3: bool) -> Option<ProtonTip> {
+pub fn proton_tip(
+    g: &Game,
+    m: &Machine,
+    installed: &[String],
+    current: Option<&str>,
+    cpu_v3: bool,
+) -> Option<ProtonTip> {
     if g.source == "steam" || g.source == "flatpak" {
         return None; // Steam picks Proton for its own games (Properties > Compatibility); a Flatpak game is native
     }
@@ -394,7 +580,13 @@ pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&
     } else {
         String::new()
     };
-    let tip = |action: &str, cur: &str, why: String| ProtonTip { family: "ge".into(), action: action.into(), current: cur.into(), why, alt: alt.clone() };
+    let tip = |action: &str, cur: &str, why: String| ProtonTip {
+        family: "ge".into(),
+        action: action.into(),
+        current: cur.into(),
+        why,
+        alt: alt.clone(),
+    };
     if !g.proton.is_empty() && !installed.contains(&g.proton) {
         return Some(tip("install", "", format!("This game is pinned to {}, which is not installed. Install GE-Proton, then pick it under Runs with.", g.proton)));
     }
@@ -407,7 +599,11 @@ pub fn proton_tip(g: &Game, m: &Machine, installed: &[String], current: Option<&
 }
 
 pub fn nvidia_rtx(m: &Machine) -> bool {
-    m.best.map(|i| m.gpus[i].vendor == "nvidia" && m.gpus[i].name.to_ascii_lowercase().contains("rtx")).unwrap_or(false)
+    m.best
+        .map(|i| {
+            m.gpus[i].vendor == "nvidia" && m.gpus[i].name.to_ascii_lowercase().contains("rtx")
+        })
+        .unwrap_or(false)
 }
 
 // ------------------------------------------------------------------------------------------------ output
@@ -447,10 +643,31 @@ pub fn print_human(m: &Machine) {
         println!("  {w}");
     }
     for (i, g) in m.gpus.iter().enumerate() {
-        let mem = if g.vram_mb > 0 { format!(", {} MB", g.vram_mb) } else { String::new() };
-        println!("  GPU: {}{mem}{}{}", g.name, if g.discrete { ", dedicated" } else { ", integrated" }, if m.best == Some(i) { "  <- games use this one" } else { "" });
+        let mem = if g.vram_mb > 0 {
+            format!(", {} MB", g.vram_mb)
+        } else {
+            String::new()
+        };
+        println!(
+            "  GPU: {}{mem}{}{}",
+            g.name,
+            if g.discrete {
+                ", dedicated"
+            } else {
+                ", integrated"
+            },
+            if m.best == Some(i) {
+                "  <- games use this one"
+            } else {
+                ""
+            }
+        );
     }
-    println!("  CPU: {} threads   Memory: {} GB", m.threads, (m.ram_mb + 512) / 1024);
+    println!(
+        "  CPU: {} threads   Memory: {} GB",
+        m.threads,
+        (m.ram_mb + 512) / 1024
+    );
     if m.hybrid_nvidia {
         println!("  Hybrid graphics: hgl suggest <id> adds the variables that put a game on the NVIDIA card");
     }
@@ -461,20 +678,85 @@ mod tests {
     use super::*;
 
     fn gpu(name: &str, vendor: &str, vram: u64, discrete: bool) -> Gpu {
-        Gpu { vendor: vendor.into(), name: name.into(), vram_mb: vram, discrete, score: score_name(name).unwrap_or(score_vram(vram)) }
+        Gpu {
+            vendor: vendor.into(),
+            name: name.into(),
+            vram_mb: vram,
+            discrete,
+            score: score_name(name).unwrap_or(score_vram(vram)),
+        }
     }
 
     #[test]
     fn classes_of_known_machines() {
         // this author's laptop: RTX 4050 Laptop 6 GB, 16 threads, 16 GB
-        assert_eq!(classify(Some(&gpu("NVIDIA GeForce RTX 4050 Laptop GPU", "nvidia", 6141, true)), 16, 15_700).0, 'B');
-        assert_eq!(classify(Some(&gpu("NVIDIA GeForce RTX 4070 Ti", "nvidia", 12_282, true)), 16, 32_000).0, 'A');
-        assert_eq!(classify(Some(&gpu("NVIDIA GeForce RTX 3060", "nvidia", 12_288, true)), 12, 16_000).0, 'B');
-        assert_eq!(classify(Some(&gpu("Radeon RX 7800 XT", "amd", 16_368, true)), 16, 32_000).0, 'A');
-        assert_eq!(classify(Some(&gpu("Radeon RX 6600", "amd", 8_176, true)), 12, 16_000).0, 'B');
-        assert_eq!(classify(Some(&gpu("NVIDIA GeForce GTX 1650", "nvidia", 4_096, true)), 8, 16_000).0, 'C');
-        assert_eq!(classify(Some(&gpu("Radeon 780M", "amd", 512, false)), 16, 16_000).0, 'C');
-        assert_eq!(classify(Some(&gpu("Intel Iris Xe Graphics", "intel", 0, false)), 8, 16_000).0, 'D');
+        assert_eq!(
+            classify(
+                Some(&gpu(
+                    "NVIDIA GeForce RTX 4050 Laptop GPU",
+                    "nvidia",
+                    6141,
+                    true
+                )),
+                16,
+                15_700
+            )
+            .0,
+            'B'
+        );
+        assert_eq!(
+            classify(
+                Some(&gpu("NVIDIA GeForce RTX 4070 Ti", "nvidia", 12_282, true)),
+                16,
+                32_000
+            )
+            .0,
+            'A'
+        );
+        assert_eq!(
+            classify(
+                Some(&gpu("NVIDIA GeForce RTX 3060", "nvidia", 12_288, true)),
+                12,
+                16_000
+            )
+            .0,
+            'B'
+        );
+        assert_eq!(
+            classify(
+                Some(&gpu("Radeon RX 7800 XT", "amd", 16_368, true)),
+                16,
+                32_000
+            )
+            .0,
+            'A'
+        );
+        assert_eq!(
+            classify(Some(&gpu("Radeon RX 6600", "amd", 8_176, true)), 12, 16_000).0,
+            'B'
+        );
+        assert_eq!(
+            classify(
+                Some(&gpu("NVIDIA GeForce GTX 1650", "nvidia", 4_096, true)),
+                8,
+                16_000
+            )
+            .0,
+            'C'
+        );
+        assert_eq!(
+            classify(Some(&gpu("Radeon 780M", "amd", 512, false)), 16, 16_000).0,
+            'C'
+        );
+        assert_eq!(
+            classify(
+                Some(&gpu("Intel Iris Xe Graphics", "intel", 0, false)),
+                8,
+                16_000
+            )
+            .0,
+            'D'
+        );
         assert_eq!(classify(None, 8, 8_000).0, 'D');
     }
 
@@ -483,7 +765,10 @@ mod tests {
         let g = gpu("NVIDIA GeForce RTX 4080", "nvidia", 16_000, true);
         assert_eq!(classify(Some(&g), 4, 32_000).0, 'C'); // 4 threads
         assert_eq!(classify(Some(&g), 16, 8_000).0, 'B'); // 8 GB of memory
-        assert_eq!(classify(Some(&gpu("Some New GPU", "other", 6_000, true)), 16, 32_000).0, 'B'); // by video memory
+        assert_eq!(
+            classify(Some(&gpu("Some New GPU", "other", 6_000, true)), 16, 32_000).0,
+            'B'
+        ); // by video memory
     }
 
     #[test]
@@ -501,15 +786,46 @@ mod tests {
 
     #[test]
     fn proton_tips() {
-        let m = Machine { gpus: vec![], best: None, threads: 16, ram_mb: 16_000, hybrid_nvidia: false, class: 'B', why: vec![] };
+        let m = Machine {
+            gpus: vec![],
+            best: None,
+            threads: 16,
+            ram_mb: 16_000,
+            hybrid_nvidia: false,
+            class: 'B',
+            why: vec![],
+        };
         let g = Game::new("hades", "Hades", "exe");
-        assert_eq!(proton_tip(&g, &m, &[], None, true).map(|t| t.action), Some("install".into()));
-        let t = proton_tip(&g, &m, &["GE-Proton10-25".into()], Some("GE-Proton10-25"), true).unwrap_or_else(|| panic!("tip"));
+        assert_eq!(
+            proton_tip(&g, &m, &[], None, true).map(|t| t.action),
+            Some("install".into())
+        );
+        let t = proton_tip(
+            &g,
+            &m,
+            &["GE-Proton10-25".into()],
+            Some("GE-Proton10-25"),
+            true,
+        )
+        .unwrap_or_else(|| panic!("tip"));
         assert_eq!((t.action.as_str(), t.alt.is_empty()), ("ok", false));
-        assert_eq!(proton_tip(&g, &m, &["Proton-CachyOS-10".into()], Some("Proton-CachyOS-10"), false).map(|t| t.family), Some("cachyos".into()));
+        assert_eq!(
+            proton_tip(
+                &g,
+                &m,
+                &["Proton-CachyOS-10".into()],
+                Some("Proton-CachyOS-10"),
+                false
+            )
+            .map(|t| t.family),
+            Some("cachyos".into())
+        );
         let mut pinned = Game::new("x", "X", "exe");
         pinned.proton = "GE-Proton9-1".into();
-        assert_eq!(proton_tip(&pinned, &m, &["GE-Proton10-25".into()], None, true).map(|t| t.action), Some("install".into()));
+        assert_eq!(
+            proton_tip(&pinned, &m, &["GE-Proton10-25".into()], None, true).map(|t| t.action),
+            Some("install".into())
+        );
         assert!(proton_tip(&Game::new("s", "S", "steam"), &m, &[], None, true).is_none());
     }
 
@@ -517,7 +833,15 @@ mod tests {
     fn suggestions_for_a_hybrid_laptop() {
         let g4050 = gpu("NVIDIA GeForce RTX 4050 Laptop GPU", "nvidia", 6141, true);
         let igpu = gpu("Intel Graphics", "intel", 0, false);
-        let m = Machine { gpus: vec![igpu, g4050], best: Some(1), threads: 16, ram_mb: 15_700, hybrid_nvidia: true, class: 'B', why: vec![] };
+        let m = Machine {
+            gpus: vec![igpu, g4050],
+            best: Some(1),
+            threads: 16,
+            ram_mb: 15_700,
+            hybrid_nvidia: true,
+            class: 'B',
+            why: vec![],
+        };
         let mut g = Game::new("hades", "Hades", "exe");
         g.gamescope = "fsr1080".into();
         let s = suggest(&g, &m);
@@ -526,7 +850,7 @@ mod tests {
         assert!(keys.contains(&"env.PROTON_ENABLE_NVAPI"));
         assert!(keys.contains(&"gamescope")); // class B renders natively
         assert!(!keys.contains(&"lean")); // already on
-        // Steam games: only the lean island
+                                          // Steam games: only the lean island
         let st = Game::new("steam-1", "X", "steam");
         assert!(suggest(&st, &m).is_empty());
         // custom gamescope options are left alone

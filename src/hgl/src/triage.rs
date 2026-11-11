@@ -128,7 +128,12 @@ const RULES: &[Rule] = &[
 
 pub fn latest_log(id: &str) -> Option<PathBuf> {
     let dir = logs_dir().join(id);
-    let mut logs: Vec<PathBuf> = fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "log").unwrap_or(false)).collect();
+    let mut logs: Vec<PathBuf> = fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "log").unwrap_or(false))
+        .collect();
     logs.sort();
     logs.pop()
 }
@@ -143,7 +148,12 @@ pub fn scan(text: &str, vulkan_fine: bool) -> Vec<Finding> {
             if r.id == "d3d11" && !vulkan_fine {
                 fix = Fix::Doctor;
             }
-            out.push(Finding { id: r.id, title: r.title, detail: r.detail, fix });
+            out.push(Finding {
+                id: r.id,
+                title: r.title,
+                detail: r.detail,
+                fix,
+            });
         }
     }
     out
@@ -151,16 +161,24 @@ pub fn scan(text: &str, vulkan_fine: bool) -> Vec<Finding> {
 
 pub fn scan_game(id: &str) -> Result<(Option<PathBuf>, Vec<Finding>), String> {
     let _ = Game::load(id)?;
-    let Some(log) = latest_log(id) else { return Ok((None, vec![])) };
+    let Some(log) = latest_log(id) else {
+        return Ok((None, vec![]));
+    };
     let bytes = fs::read(&log).map_err(|e| format!("cannot read {}: {e}", log.display()))?;
-    let tail = if bytes.len() > 2_000_000 { &bytes[bytes.len() - 2_000_000..] } else { &bytes[..] };
+    let tail = if bytes.len() > 2_000_000 {
+        &bytes[bytes.len() - 2_000_000..]
+    } else {
+        &bytes[..]
+    };
     let whole = String::from_utf8_lossy(tail).to_string();
     // the header hgl writes (command line, environment) is not game output: never match against it
     let text = match whole.split_once(crate::run::OUTPUT_MARK) {
         Some((_, rest)) => rest.to_string(),
         None => whole,
     };
-    let wants_vk = RULES.iter().any(|r| r.id == "d3d11" && r.any.iter().any(|p| text.to_ascii_lowercase().contains(p)));
+    let wants_vk = RULES
+        .iter()
+        .any(|r| r.id == "d3d11" && r.any.iter().any(|p| text.to_ascii_lowercase().contains(p)));
     let vk = if wants_vk { doctor::vulkan_ok() } else { true };
     Ok((Some(log), scan(&text, vk)))
 }
@@ -201,7 +219,10 @@ pub fn print_json(log: &Option<PathBuf>, f: &[Finding]) {
             )
         })
         .collect();
-    let lg = log.as_ref().map(|p| json_str(&p.to_string_lossy())).unwrap_or_else(|| "null".into());
+    let lg = log
+        .as_ref()
+        .map(|p| json_str(&p.to_string_lossy()))
+        .unwrap_or_else(|| "null".into());
     println!("{{\"log\":{lg},\"findings\":[{}]}}", items.join(","));
 }
 
@@ -211,7 +232,10 @@ mod tests {
 
     #[test]
     fn finds_patterns() {
-        let f = scan("err:module:import_dll Library MSVCP140.dll not found\nvkCreateInstance failed", true);
+        let f = scan(
+            "err:module:import_dll Library MSVCP140.dll not found\nvkCreateInstance failed",
+            true,
+        );
         let ids: Vec<&str> = f.iter().map(|x| x.id).collect();
         assert!(ids.contains(&"vulkan-icd"));
         assert!(ids.contains(&"missing-dll"));
@@ -221,7 +245,10 @@ mod tests {
     fn d3d11_fix_depends_on_vulkan() {
         let log = "Failed to create D3D11 device";
         assert_eq!(scan(log, false)[0].fix, Fix::Doctor);
-        assert_eq!(scan(log, true)[0].fix, Fix::SetEnv("PROTON_USE_WINED3D", "1"));
+        assert_eq!(
+            scan(log, true)[0].fix,
+            Fix::SetEnv("PROTON_USE_WINED3D", "1")
+        );
     }
 
     #[test]

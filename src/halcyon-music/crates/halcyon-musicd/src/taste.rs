@@ -76,7 +76,10 @@ pub fn default_path() -> PathBuf {
 
 /// The key under which an artist is stored: case and spacing do not matter.
 pub fn artist_key(name: &str) -> String {
-    name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// Day part and weekday/weekend of a moment. `tz_offset_secs` moves UTC to the listener's clock.
@@ -128,7 +131,11 @@ impl TagTable {
             *merged.entry(name).or_insert(0.0) += *w;
         }
         let mut v: Vec<(String, f64)> = merged.into_iter().collect();
-        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+        v.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
         v.truncate(CENTROID_TAGS_KEPT);
         if !v.is_empty() {
             self.by_artist.insert(artist_key(artist), v);
@@ -267,7 +274,10 @@ impl TasteProfile {
         tags: &TagTable,
         tz_offset_secs: i64,
     ) -> Self {
-        let mut p = TasteProfile { built_at: now, ..Default::default() };
+        let mut p = TasteProfile {
+            built_at: now,
+            ..Default::default()
+        };
         for e in plays {
             if e.started_at > now {
                 continue;
@@ -279,8 +289,14 @@ impl TasteProfile {
             let df = 0.5f64.powf(age_days / FAST_HALF_LIFE_DAYS);
             let dr = 0.5f64.powf(age_days / RECENT_HALF_LIFE_DAYS);
             let key = artist_key(&e.artist);
-            p.artists.entry(key.clone()).or_default().add(w, ds, df, dr, e.started_at);
-            p.tracks.entry(e.track_id.clone()).or_default().add(w, ds, df, dr, e.started_at);
+            p.artists
+                .entry(key.clone())
+                .or_default()
+                .add(w, ds, df, dr, e.started_at);
+            p.tracks
+                .entry(e.track_id.clone())
+                .or_default()
+                .add(w, ds, df, dr, e.started_at);
             if w > 0.0 {
                 let b = bucket_of(e.started_at, tz_offset_secs);
                 let parts = p.buckets.entry(key).or_insert([0.0; BUCKETS]);
@@ -332,7 +348,8 @@ impl TasteProfile {
                 if total > 1e-9 {
                     if let Some(part) = parts.get(b) {
                         let share = part / total;
-                        score += (TIME_SCALE * (share - 1.0 / BUCKETS as f64)).clamp(-TIME_CAP, TIME_CAP);
+                        score += (TIME_SCALE * (share - 1.0 / BUCKETS as f64))
+                            .clamp(-TIME_CAP, TIME_CAP);
                     }
                 }
             }
@@ -375,7 +392,9 @@ impl TasteProfile {
             if total > 1e-9 {
                 if let Some(part) = parts.get(b) {
                     // 1/8 of the listening in this slot is "no preference" (0); all of it is 1.
-                    v.time_fit = ((part / total - 1.0 / BUCKETS as f64) / (1.0 - 1.0 / BUCKETS as f64)).clamp(-1.0, 1.0);
+                    v.time_fit = ((part / total - 1.0 / BUCKETS as f64)
+                        / (1.0 - 1.0 / BUCKETS as f64))
+                        .clamp(-1.0, 1.0);
                 }
             }
         }
@@ -404,10 +423,19 @@ impl TasteProfile {
         let mut ranked: Vec<(&String, f64)> = self
             .artists
             .iter()
-            .map(|(k, s)| (k, s.slow.max(0.0) / self.slow_max + s.fast.max(0.0) / self.fast_max))
+            .map(|(k, s)| {
+                (
+                    k,
+                    s.slow.max(0.0) / self.slow_max + s.fast.max(0.0) / self.fast_max,
+                )
+            })
             .filter(|(_, w)| *w > 0.0)
             .collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(b.0)));
+        ranked.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.cmp(b.0))
+        });
         ranked.into_iter().take(n).map(|(k, _)| k.clone()).collect()
     }
 
@@ -430,10 +458,19 @@ impl TasteProfile {
         let mut ranked: Vec<(&String, f64)> = self
             .artists
             .iter()
-            .map(|(k, s)| (k, s.slow.max(0.0) / self.slow_max + s.fast.max(0.0) / self.fast_max))
+            .map(|(k, s)| {
+                (
+                    k,
+                    s.slow.max(0.0) / self.slow_max + s.fast.max(0.0) / self.fast_max,
+                )
+            })
             .filter(|(_, w)| *w > 0.0)
             .collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(b.0)));
+        ranked.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.cmp(b.0))
+        });
         let mut text = String::new();
         for (k, _) in ranked.iter().take(FINGERPRINT_ARTISTS) {
             text.push_str(k);
@@ -461,7 +498,11 @@ impl TasteProfile {
                 (k.clone(), w)
             })
             .collect();
-        pool.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+        pool.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
         pool.truncate(CLUSTER_POOL);
         if pool.len() < MIN_CLUSTER_ARTISTS {
             return;
@@ -501,7 +542,9 @@ impl TasteProfile {
         let mut used_ids: BTreeSet<u32> = BTreeSet::new();
         let mut built: Vec<(f64, Cluster, Vec<String>)> = Vec::new();
         for c in 0..k {
-            let members: Vec<usize> = (0..pool.len()).filter(|&i| assign.get(i) == Some(&c)).collect();
+            let members: Vec<usize> = (0..pool.len())
+                .filter(|&i| assign.get(i) == Some(&c))
+                .collect();
             if members.is_empty() {
                 continue;
             }
@@ -516,15 +559,27 @@ impl TasteProfile {
                     }
                 }
             }
-            let mut ranked: Vec<(usize, f64)> =
-                tag_score.iter().copied().enumerate().filter(|(_, s)| *s > 1e-12).collect();
+            let mut ranked: Vec<(usize, f64)> = tag_score
+                .iter()
+                .copied()
+                .enumerate()
+                .filter(|(_, s)| *s > 1e-12)
+                .collect();
             ranked.sort_by(|a, b| {
                 b.1.partial_cmp(&a.1)
                     .unwrap_or(Ordering::Equal)
                     .then_with(|| vocab.get(a.0).cmp(&vocab.get(b.0)))
             });
-            let names: Vec<&str> = ranked.iter().take(2).filter_map(|(i, _)| vocab.get(*i).copied()).collect();
-            let label = if names.is_empty() { "mixed".to_string() } else { names.join(", ") };
+            let names: Vec<&str> = ranked
+                .iter()
+                .take(2)
+                .filter_map(|(i, _)| vocab.get(*i).copied())
+                .collect();
+            let label = if names.is_empty() {
+                "mixed".to_string()
+            } else {
+                names.join(", ")
+            };
             let mut id = fnv64(label.as_bytes()) as u32;
             while !used_ids.insert(id) {
                 id = id.wrapping_add(1);
@@ -534,15 +589,39 @@ impl TasteProfile {
                 .take(CENTROID_TAGS_KEPT)
                 .filter_map(|(i, s)| vocab.get(*i).map(|t| ((*t).to_string(), *s)))
                 .collect();
-            let mut member_keys: Vec<(String, f64)> =
-                members.iter().filter_map(|&i| pool.get(i).cloned()).collect();
-            member_keys.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+            let mut member_keys: Vec<(String, f64)> = members
+                .iter()
+                .filter_map(|&i| pool.get(i).cloned())
+                .collect();
+            member_keys.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.0.cmp(&b.0))
+            });
             let all_keys: Vec<String> = member_keys.iter().map(|(k, _)| k.clone()).collect();
-            let listed: Vec<String> = all_keys.iter().take(CLUSTER_MEMBERS_KEPT).cloned().collect();
-            built.push((total, Cluster { id, label, artists: listed, share: 0.0, centroid }, all_keys));
+            let listed: Vec<String> = all_keys
+                .iter()
+                .take(CLUSTER_MEMBERS_KEPT)
+                .cloned()
+                .collect();
+            built.push((
+                total,
+                Cluster {
+                    id,
+                    label,
+                    artists: listed,
+                    share: 0.0,
+                    centroid,
+                },
+                all_keys,
+            ));
         }
         let grand: f64 = built.iter().map(|(t, _, _)| *t).sum();
-        built.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(Ordering::Equal).then_with(|| a.1.id.cmp(&b.1.id)));
+        built.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.1.id.cmp(&b.1.id))
+        });
         for (total, mut cluster, all_keys) in built {
             cluster.share = if grand > 0.0 { total / grand } else { 0.0 };
             for key in all_keys {
@@ -594,8 +673,14 @@ impl Ranker for TasteV2 {
 
     fn scores(&self, ctx: &TrainCtx<'_>, items: &[Item]) -> Vec<f64> {
         let profile = TasteProfile::build(ctx.plays, ctx.liked, ctx.now, &TagTable::default(), 0);
-        let actx = AffinityCtx { now: ctx.now, bucket: None };
-        items.iter().map(|it| profile.affinity(&it.artist, &it.track_id, &actx)).collect()
+        let actx = AffinityCtx {
+            now: ctx.now,
+            bucket: None,
+        };
+        items
+            .iter()
+            .map(|it| profile.affinity(&it.artist, &it.track_id, &actx))
+            .collect()
     }
 }
 
@@ -625,7 +710,10 @@ fn dist_sq(a: &[f64], b: &[f64]) -> f64 {
 
 fn cosine(a: &[(String, f64)], b: &[(String, f64)]) -> f64 {
     let bm: BTreeMap<&str, f64> = b.iter().map(|(t, w)| (t.as_str(), *w)).collect();
-    let dot: f64 = a.iter().filter_map(|(t, w)| bm.get(t.as_str()).map(|x| w * x)).sum();
+    let dot: f64 = a
+        .iter()
+        .filter_map(|(t, w)| bm.get(t.as_str()).map(|x| w * x))
+        .sum();
     let na = a.iter().map(|(_, w)| w * w).sum::<f64>().sqrt();
     let nb = b.iter().map(|(_, w)| w * w).sum::<f64>().sqrt();
     if na > 1e-12 && nb > 1e-12 {
@@ -646,7 +734,9 @@ fn kmeans(vecs: &[Vec<f64>], weights: &[f64], k: usize) -> Vec<usize> {
     let dim = vecs.first().map_or(0, Vec::len);
     let mut first = 0usize;
     for i in 1..n {
-        if weights.get(i).copied().unwrap_or(0.0) > weights.get(first).copied().unwrap_or(0.0) + 1e-12 {
+        if weights.get(i).copied().unwrap_or(0.0)
+            > weights.get(first).copied().unwrap_or(0.0) + 1e-12
+        {
             first = i;
         }
     }
@@ -655,7 +745,10 @@ fn kmeans(vecs: &[Vec<f64>], weights: &[f64], k: usize) -> Vec<usize> {
         let mut best = 0usize;
         let mut best_d = -1.0f64;
         for (i, v) in vecs.iter().enumerate() {
-            let d = centers.iter().map(|c| dist_sq(v, c)).fold(f64::MAX, f64::min);
+            let d = centers
+                .iter()
+                .map(|c| dist_sq(v, c))
+                .fold(f64::MAX, f64::min);
             if d > best_d + 1e-12 {
                 best_d = d;
                 best = i;
@@ -716,7 +809,14 @@ mod tests {
 
     const NOW: u64 = 1_800_000_000;
 
-    fn play(id: i64, track: &str, artist: &str, days_ago: f64, ms: u64, done: bool) -> PlayLogEntry {
+    fn play(
+        id: i64,
+        track: &str,
+        artist: &str,
+        days_ago: f64,
+        ms: u64,
+        done: bool,
+    ) -> PlayLogEntry {
         PlayLogEntry {
             id,
             track_id: track.to_string(),
@@ -738,7 +838,10 @@ mod tests {
     }
 
     fn ctx() -> AffinityCtx {
-        AffinityCtx { now: NOW, bucket: None }
+        AffinityCtx {
+            now: NOW,
+            bucket: None,
+        }
     }
 
     fn build(plays: &[PlayLogEntry]) -> TasteProfile {
@@ -749,10 +852,17 @@ mod tests {
     fn fast_forgets_in_days_and_slow_in_months() {
         let p = build(&[done(1, "t", "Ash", 3.0)]);
         let a = p.artists.get("ash").unwrap_or_else(|| panic!("no artist"));
-        assert!((a.fast - 0.5).abs() < 1e-9, "fast after one half-life: {}", a.fast);
+        assert!(
+            (a.fast - 0.5).abs() < 1e-9,
+            "fast after one half-life: {}",
+            a.fast
+        );
         assert!(a.slow > 0.95, "slow barely moved: {}", a.slow);
         let old = build(&[done(1, "t", "Ash", 60.0)]);
-        let a = old.artists.get("ash").unwrap_or_else(|| panic!("no artist"));
+        let a = old
+            .artists
+            .get("ash")
+            .unwrap_or_else(|| panic!("no artist"));
         assert!((a.slow - 0.5).abs() < 1e-9);
         assert!(a.fast < 1e-5);
     }
@@ -769,11 +879,26 @@ mod tests {
     #[test]
     fn a_skip_subtracts_and_a_skipped_artist_falls_below_an_unknown_one() {
         let liked_once = build(&[done(1, "a", "Ash", 1.0)]);
-        let mixed = build(&[done(1, "a", "Ash", 1.0), skipped(2, "b", "Ash", 1.0), skipped(3, "c", "Ash", 1.0)]);
+        let mixed = build(&[
+            done(1, "a", "Ash", 1.0),
+            skipped(2, "b", "Ash", 1.0),
+            skipped(3, "c", "Ash", 1.0),
+        ]);
         assert!(mixed.affinity("Ash", "zz", &ctx()) < liked_once.affinity("Ash", "zz", &ctx()));
-        let hated = build(&[skipped(1, "a", "Dust", 1.0), skipped(2, "b", "Dust", 1.0), skipped(3, "c", "Dust", 2.0), skipped(4, "d", "Dust", 2.0)]);
-        assert!(hated.affinity("Dust", "zz", &ctx()) < 0.0, "worse than not knowing the artist");
-        assert!(hated.affinity("Dust", "a", &ctx()) < hated.affinity("Dust", "zz", &ctx()), "a skipped song is lower still");
+        let hated = build(&[
+            skipped(1, "a", "Dust", 1.0),
+            skipped(2, "b", "Dust", 1.0),
+            skipped(3, "c", "Dust", 2.0),
+            skipped(4, "d", "Dust", 2.0),
+        ]);
+        assert!(
+            hated.affinity("Dust", "zz", &ctx()) < 0.0,
+            "worse than not knowing the artist"
+        );
+        assert!(
+            hated.affinity("Dust", "a", &ctx()) < hated.affinity("Dust", "zz", &ctx()),
+            "a skipped song is lower still"
+        );
     }
 
     #[test]
@@ -833,8 +958,22 @@ mod tests {
         let prof = build(&plays);
         let home = bucket_of(NOW - DAY, 0);
         let other = (home + 2) % BUCKETS;
-        let at_home = prof.affinity("Ash", "zz", &AffinityCtx { now: NOW, bucket: Some(home) });
-        let elsewhere = prof.affinity("Ash", "zz", &AffinityCtx { now: NOW, bucket: Some(other) });
+        let at_home = prof.affinity(
+            "Ash",
+            "zz",
+            &AffinityCtx {
+                now: NOW,
+                bucket: Some(home),
+            },
+        );
+        let elsewhere = prof.affinity(
+            "Ash",
+            "zz",
+            &AffinityCtx {
+                now: NOW,
+                bucket: Some(other),
+            },
+        );
         let neutral = prof.affinity("Ash", "zz", &ctx());
         assert!(at_home > neutral && neutral > elsewhere);
         assert!(at_home - elsewhere <= 2.0 * TIME_CAP + 1e-9);
@@ -887,7 +1026,10 @@ mod tests {
         assert!((share - 1.0).abs() < 1e-9);
         // Same cluster for the same kind of artist.
         assert_eq!(p.artist_cluster.get("mellow"), p.artist_cluster.get("haze"));
-        assert_ne!(p.artist_cluster.get("mellow"), p.artist_cluster.get("anvil"));
+        assert_ne!(
+            p.artist_cluster.get("mellow"),
+            p.artist_cluster.get("anvil")
+        );
         // Every member is somewhere.
         assert_eq!(p.artist_cluster.len(), 8);
     }
@@ -934,14 +1076,31 @@ mod tests {
     #[test]
     fn tags_are_cleaned_and_expire() {
         let mut t = TagTable::default();
-        t.insert("  Some   Artist ", &[(" Lo-Fi ", 1.0), ("lo-fi", 0.5), ("", 3.0), ("bad", f64::NAN), ("neg", -1.0)]);
+        t.insert(
+            "  Some   Artist ",
+            &[
+                (" Lo-Fi ", 1.0),
+                ("lo-fi", 0.5),
+                ("", 3.0),
+                ("bad", f64::NAN),
+                ("neg", -1.0),
+            ],
+        );
         let got = t.get("some artist").unwrap_or_else(|| panic!("no tags"));
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0, "lo-fi");
         assert!((got[0].1 - 1.5).abs() < 1e-9);
         let rows = vec![
-            ("fresh".to_string(), vec![("rock".to_string(), 1.0)], NOW - DAY),
-            ("stale".to_string(), vec![("rock".to_string(), 1.0)], NOW - TAG_TTL_SECS - 1),
+            (
+                "fresh".to_string(),
+                vec![("rock".to_string(), 1.0)],
+                NOW - DAY,
+            ),
+            (
+                "stale".to_string(),
+                vec![("rock".to_string(), 1.0)],
+                NOW - TAG_TTL_SECS - 1,
+            ),
         ];
         let table = TagTable::from_rows(rows, NOW);
         assert!(table.get("fresh").is_some() && table.get("stale").is_none());
@@ -949,11 +1108,19 @@ mod tests {
 
     #[test]
     fn the_fingerprint_ignores_counts_but_notices_a_new_favourite() {
-        let base = vec![done(1, "a", "Ash", 1.0), done(2, "a", "Ash", 2.0), done(3, "b", "Birch", 3.0)];
+        let base = vec![
+            done(1, "a", "Ash", 1.0),
+            done(2, "a", "Ash", 2.0),
+            done(3, "b", "Birch", 3.0),
+        ];
         let f0 = build(&base).fingerprint();
         let mut more = base.clone();
         more.push(done(4, "a", "Ash", 1.5));
-        assert_eq!(build(&more).fingerprint(), f0, "one more play of the same favourite");
+        assert_eq!(
+            build(&more).fingerprint(),
+            f0,
+            "one more play of the same favourite"
+        );
         let mut changed = base.clone();
         for i in 0..6 {
             changed.push(done(10 + i, "d", "Dune", 0.5));
@@ -976,7 +1143,8 @@ mod tests {
         let (empty, recovered) = TasteProfile::load_or_default(&dir.path().join("nope.json"));
         assert!(!recovered && empty == TasteProfile::default());
         // Truncated file: recovered.
-        std::fs::write(&path, b"{\"built_at\": 12, \"artists\": {").unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(&path, b"{\"built_at\": 12, \"artists\": {")
+            .unwrap_or_else(|e| panic!("{e}"));
         let (rebuilt, recovered) = TasteProfile::load_or_default(&path);
         assert!(recovered && rebuilt == TasteProfile::default());
         assert!(path.with_extension("json.corrupt").exists());
@@ -988,17 +1156,29 @@ mod tests {
         let mut plays = Vec::new();
         for i in 0..5_000i64 {
             let artist = format!("Artist {}", i % 120);
-            plays.push(done(i, &format!("t{}", i % 900), &artist, (i % 90) as f64 + 0.1));
+            plays.push(done(
+                i,
+                &format!("t{}", i % 900),
+                &artist,
+                (i % 90) as f64 + 0.1,
+            ));
         }
         let mut tags = TagTable::default();
         for a in 0..120 {
             let genre = format!("genre{}", a % 7);
             let mood = format!("mood{}", a % 5);
-            tags.insert(&format!("Artist {a}"), &[(genre.as_str(), 1.0), (mood.as_str(), 0.5)]);
+            tags.insert(
+                &format!("Artist {a}"),
+                &[(genre.as_str(), 1.0), (mood.as_str(), 0.5)],
+            );
         }
         let t = std::time::Instant::now();
         let p = TasteProfile::build(&plays, &HashSet::new(), NOW, &tags, 0);
-        assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(1),
+            "{:?}",
+            t.elapsed()
+        );
         assert!(!p.clusters.is_empty() && p.clusters.len() <= MAX_CLUSTERS);
     }
 
@@ -1007,9 +1187,19 @@ mod tests {
         let (plays, liked) = fixture(Listener::Shift);
         let now = evaluate(&TasteV2, &plays, &liked).metrics;
         let before = evaluate(&CurrentEngine, &plays, &liked).metrics;
-        let (r_now, r_before) = (now.recall_at_k.unwrap_or(0.0), before.recall_at_k.unwrap_or(1.0));
-        assert!(r_now > r_before + 0.2, "recall {r_now:.3} against {r_before:.3}");
-        assert!(now.skip_auc.unwrap_or(0.0) > 0.6, "skip auc {:?}", now.skip_auc);
+        let (r_now, r_before) = (
+            now.recall_at_k.unwrap_or(0.0),
+            before.recall_at_k.unwrap_or(1.0),
+        );
+        assert!(
+            r_now > r_before + 0.2,
+            "recall {r_now:.3} against {r_before:.3}"
+        );
+        assert!(
+            now.skip_auc.unwrap_or(0.0) > 0.6,
+            "skip auc {:?}",
+            now.skip_auc
+        );
     }
 
     #[test]
@@ -1017,7 +1207,11 @@ mod tests {
         for kind in [Listener::Narrow, Listener::Broad] {
             let (plays, liked) = fixture(kind);
             let m = evaluate(&TasteV2, &plays, &liked).metrics;
-            assert!(m.skip_auc.unwrap_or(0.0) > 0.9, "{kind:?}: skip auc {:?}", m.skip_auc);
+            assert!(
+                m.skip_auc.unwrap_or(0.0) > 0.9,
+                "{kind:?}: skip auc {:?}",
+                m.skip_auc
+            );
         }
     }
 }

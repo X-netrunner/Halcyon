@@ -6,14 +6,34 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 const IGNORED_DIRS: &[&str] = &[
-    ".cache", ".git", "node_modules", "target", "__pycache__", ".cargo/registry",
-    ".cargo/git", ".rustup", ".steam", ".local/share/Trash", ".local/share/containers",
-    ".local/share/flatpak", ".local/share/Steam", ".local/share/lutris",
-    ".wine", ".var/app", "venv", ".venv",
+    ".cache",
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".cargo/registry",
+    ".cargo/git",
+    ".rustup",
+    ".steam",
+    ".local/share/Trash",
+    ".local/share/containers",
+    ".local/share/flatpak",
+    ".local/share/Steam",
+    ".local/share/lutris",
+    ".wine",
+    ".var/app",
+    "venv",
+    ".venv",
 ];
 
 const IGNORED_NAMES: &[&str] = &[
-    ".git", ".cache", "node_modules", "target", "__pycache__", "venv", ".venv",
+    ".git",
+    ".cache",
+    "node_modules",
+    "target",
+    "__pycache__",
+    "venv",
+    ".venv",
 ];
 
 /// The cached index is rebuilt when it is older than this.
@@ -51,7 +71,9 @@ fn should_ignore_dir(name: &str, full_path: &str) -> bool {
     }
     IGNORED_DIRS.iter().any(|ign| {
         if ign.contains('/') {
-            full_path.strip_suffix(ign).is_some_and(|rest| rest.ends_with('/'))
+            full_path
+                .strip_suffix(ign)
+                .is_some_and(|rest| rest.ends_with('/'))
         } else {
             name == *ign
         }
@@ -85,22 +107,44 @@ fn categorize(path: &str, is_dir: bool) -> &'static str {
     if path.contains("/Projects/") || path.contains("/src/") {
         return "project_source";
     }
-    if path.contains("/.local/bin/") || path.ends_with(".sh") || path.ends_with(".py") || path.ends_with(".fish") {
+    if path.contains("/.local/bin/")
+        || path.ends_with(".sh")
+        || path.ends_with(".py")
+        || path.ends_with(".fish")
+    {
         return "script";
     }
     if path.ends_with(".desktop") {
         return "desktop_entry";
     }
-    if path.ends_with(".pdf") || path.ends_with(".docx") || path.ends_with(".md") || path.ends_with(".txt") {
+    if path.ends_with(".pdf")
+        || path.ends_with(".docx")
+        || path.ends_with(".md")
+        || path.ends_with(".txt")
+    {
         return "document";
     }
-    if path.ends_with(".png") || path.ends_with(".jpg") || path.ends_with(".jpeg") || path.ends_with(".webp")
-        || path.ends_with(".svg") || path.ends_with(".mp4") || path.ends_with(".mkv") || path.ends_with(".mp3")
-        || path.ends_with(".flac") {
+    if path.ends_with(".png")
+        || path.ends_with(".jpg")
+        || path.ends_with(".jpeg")
+        || path.ends_with(".webp")
+        || path.ends_with(".svg")
+        || path.ends_with(".mp4")
+        || path.ends_with(".mkv")
+        || path.ends_with(".mp3")
+        || path.ends_with(".flac")
+    {
         return "media";
     }
-    if path.ends_with(".rs") || path.ends_with(".toml") || path.ends_with(".json") || path.ends_with(".lua")
-        || path.ends_with(".qml") || path.ends_with(".c") || path.ends_with(".cpp") || path.ends_with(".h") {
+    if path.ends_with(".rs")
+        || path.ends_with(".toml")
+        || path.ends_with(".json")
+        || path.ends_with(".lua")
+        || path.ends_with(".qml")
+        || path.ends_with(".c")
+        || path.ends_with(".cpp")
+        || path.ends_with(".h")
+    {
         return "source_code";
     }
     "file"
@@ -224,7 +268,11 @@ fn save_json(files: &[FileEntry]) {
         json.push_str(&format!("    \"category\": \"{}\",\n", f.category));
         json.push_str(&format!("    \"size\": {},\n", f.size));
         json.push_str(&format!("    \"is_dir\": {}\n", f.is_dir));
-        json.push_str(if i + 1 < files.len() { "  },\n" } else { "  }\n" });
+        json.push_str(if i + 1 < files.len() {
+            "  },\n"
+        } else {
+            "  }\n"
+        });
     }
     json.push_str("]\n");
 
@@ -257,7 +305,9 @@ fn save_markdown(files: &[FileEntry]) {
     }
 
     md.push_str("\n## 2. Key Anchor Directories\n");
-    md.push_str("- **Halcyon Rice & Configs**: `~/.config/Halcyon/` (Hyprland, Island, Helpers, Scripts)\n");
+    md.push_str(
+        "- **Halcyon Rice & Configs**: `~/.config/Halcyon/` (Hyprland, Island, Helpers, Scripts)\n",
+    );
     md.push_str("- **Hyprland Direct Configs**: `~/.config/hypr/` (Loads Halcyon)\n");
     md.push_str("- **Projects & Code**: `~/Projects/` (Luna-stable, local repos)\n");
     md.push_str("- **Local Executables**: `~/.local/bin/` (`luna`, `ollama`, custom scripts)\n");
@@ -266,17 +316,29 @@ fn save_markdown(files: &[FileEntry]) {
     md.push_str("- **Documents & Study**: `~/Documents/` and `~/Downloads/`\n");
 
     md.push_str("\n## 3. Rice & Desktop Configuration Files\n");
-    for f in files.iter().filter(|f| f.category == "rice_config" && !f.is_dir).take(40) {
+    for f in files
+        .iter()
+        .filter(|f| f.category == "rice_config" && !f.is_dir)
+        .take(40)
+    {
         md.push_str(&format!("- `{}`\n", f.rel_path));
     }
 
     md.push_str("\n## 4. Installed Scripts & Tooling\n");
-    for f in files.iter().filter(|f| f.category == "script" && !f.is_dir).take(30) {
+    for f in files
+        .iter()
+        .filter(|f| f.category == "script" && !f.is_dir)
+        .take(30)
+    {
         md.push_str(&format!("- `{}`\n", f.rel_path));
     }
 
     md.push_str("\n## 5. Active Projects\n");
-    for f in files.iter().filter(|f| f.category == "project_source" && f.is_dir).take(20) {
+    for f in files
+        .iter()
+        .filter(|f| f.category == "project_source" && f.is_dir)
+        .take(20)
+    {
         md.push_str(&format!("- `{}`\n", f.rel_path));
     }
 
@@ -285,9 +347,18 @@ fn save_markdown(files: &[FileEntry]) {
 
 fn sync_to_luna(files: &[FileEntry]) {
     let luna_mem_file = home_dir().join(".local/share/luna/permanent_memory.json");
-    let rice_count = files.iter().filter(|f| f.category == "rice_config" && !f.is_dir).count();
-    let script_count = files.iter().filter(|f| f.category == "script" && !f.is_dir).count();
-    let proj_count = files.iter().filter(|f| f.path.contains("/Projects/") && f.is_dir).count();
+    let rice_count = files
+        .iter()
+        .filter(|f| f.category == "rice_config" && !f.is_dir)
+        .count();
+    let script_count = files
+        .iter()
+        .filter(|f| f.category == "script" && !f.is_dir)
+        .count();
+    let proj_count = files
+        .iter()
+        .filter(|f| f.path.contains("/Projects/") && f.is_dir)
+        .count();
 
     let fact = format!(
         "System filemap indexed: {} total files mapped. Rice configs ({} files in ~/.config/Halcyon), Scripts ({} scripts in bin/scripts), Projects ({} repos in ~/Projects). Fast file lookup is available via filemap.",
@@ -319,8 +390,14 @@ fn sync_to_luna(files: &[FileEntry]) {
 
     let obj = vec![
         ("content".to_string(), crate::json::Json::Str(fact)),
-        ("added".to_string(), crate::json::Json::Str(date_clean.to_string())),
-        ("category".to_string(), crate::json::Json::Str("filemap".to_string())),
+        (
+            "added".to_string(),
+            crate::json::Json::Str(date_clean.to_string()),
+        ),
+        (
+            "category".to_string(),
+            crate::json::Json::Str("filemap".to_string()),
+        ),
     ];
     existing_mem.push(crate::json::Json::Obj(obj));
 
@@ -334,7 +411,11 @@ fn sync_to_luna(files: &[FileEntry]) {
         json_out.push_str(&format!("    \"content\": {},\n", serde_escape(content)));
         json_out.push_str(&format!("    \"added\": {},\n", serde_escape(added_dt)));
         json_out.push_str(&format!("    \"category\": {}\n", serde_escape(category)));
-        json_out.push_str(if i + 1 < existing_mem.len() { "  },\n" } else { "  }\n" });
+        json_out.push_str(if i + 1 < existing_mem.len() {
+            "  },\n"
+        } else {
+            "  }\n"
+        });
     }
     json_out.push_str("]\n");
 
@@ -388,13 +469,25 @@ pub fn search(query: &str) -> String {
         return format!("No files found matching query '{}'.", query);
     }
 
-    let mut out = format!("### Filemap Search Results for '{}' ({} found):\n", query, matches.len());
+    let mut out = format!(
+        "### Filemap Search Results for '{}' ({} found):\n",
+        query,
+        matches.len()
+    );
     for f in matches.iter().take(40) {
         let kind = if f.is_dir { "DIR" } else { &f.category };
-        out.push_str(&format!("- `[{}]` {} ({})\n", kind, f.rel_path, format_size(f.size)));
+        out.push_str(&format!(
+            "- `[{}]` {} ({})\n",
+            kind,
+            f.rel_path,
+            format_size(f.size)
+        ));
     }
     if matches.len() > 40 {
-        out.push_str(&format!("\n... and {} more matching files.\n", matches.len() - 40));
+        out.push_str(&format!(
+            "\n... and {} more matching files.\n",
+            matches.len() - 40
+        ));
     }
     out
 }
@@ -404,7 +497,11 @@ pub fn locate_category(cat: &str) -> String {
     let c = cat.to_lowercase();
     let matches: Vec<&FileEntry> = files
         .iter()
-        .filter(|f| !f.is_dir && (f.category.to_lowercase().contains(&c) || (c == "rice" && f.category == "rice_config")))
+        .filter(|f| {
+            !f.is_dir
+                && (f.category.to_lowercase().contains(&c)
+                    || (c == "rice" && f.category == "rice_config"))
+        })
         .collect();
 
     if matches.is_empty() {
@@ -416,7 +513,10 @@ pub fn locate_category(cat: &str) -> String {
         out.push_str(&format!("- `{}` ({})\n", f.rel_path, format_size(f.size)));
     }
     if matches.len() > 40 {
-        out.push_str(&format!("\n... and {} more files in this category.\n", matches.len() - 40));
+        out.push_str(&format!(
+            "\n... and {} more files in this category.\n",
+            matches.len() - 40
+        ));
     }
     out
 }

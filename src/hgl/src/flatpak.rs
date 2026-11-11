@@ -23,7 +23,10 @@ pub fn id_for(app: &str) -> String {
 
 /// A Flatpak app id: reverse-DNS, letters, digits, dots, dashes and underscores only (it goes on a command line).
 pub fn valid_app_id(s: &str) -> bool {
-    s.contains('.') && !s.starts_with('.') && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+    s.contains('.')
+        && !s.starts_with('.')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
 }
 
 /// Name and Categories of a desktop entry ([Desktop Entry] section only).
@@ -56,7 +59,14 @@ fn icon_path(loc: &Path, icon: &str) -> String {
     if let Ok(rd) = fs::read_dir(&base) {
         for e in rd.flatten() {
             let size = e.file_name().to_string_lossy().to_string();
-            let rank = if size == "scalable" { 10_000 } else { size.split('x').next().and_then(|n| n.parse().ok()).unwrap_or(0) };
+            let rank = if size == "scalable" {
+                10_000
+            } else {
+                size.split('x')
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0)
+            };
             for ext in ["svg", "png"] {
                 let p = e.path().join("apps").join(format!("{icon}.{ext}"));
                 if p.is_file() && best.as_ref().map(|b| rank > b.0).unwrap_or(true) {
@@ -65,23 +75,40 @@ fn icon_path(loc: &Path, icon: &str) -> String {
             }
         }
     }
-    best.map(|b| b.1.to_string_lossy().to_string()).unwrap_or_default()
+    best.map(|b| b.1.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 /// Installed Flatpak games (user and system installations).
 pub fn games() -> Vec<App> {
-    let Some(list) = out("flatpak", &["list", "--app", "--columns=application"]) else { return vec![] };
+    let Some(list) = out("flatpak", &["list", "--app", "--columns=application"]) else {
+        return vec![];
+    };
     let mut v: Vec<App> = Vec::new();
     for id in list.lines().map(str::trim).filter(|s| valid_app_id(s)) {
         if v.iter().any(|a| a.id == id) {
             continue;
         }
-        let Some(loc) = out("flatpak", &["info", "--show-location", id]) else { continue };
+        let Some(loc) = out("flatpak", &["info", "--show-location", id]) else {
+            continue;
+        };
         let loc = PathBuf::from(loc.trim());
-        let Ok(text) = fs::read_to_string(loc.join(format!("export/share/applications/{id}.desktop"))) else { continue };
+        let Ok(text) =
+            fs::read_to_string(loc.join(format!("export/share/applications/{id}.desktop")))
+        else {
+            continue;
+        };
         let (name, game, icon) = desktop_fields(&text);
         if game {
-            v.push(App { id: id.to_string(), name: if name.is_empty() { id.to_string() } else { name }, icon: icon_path(&loc, if icon.is_empty() { id } else { &icon }) });
+            v.push(App {
+                id: id.to_string(),
+                name: if name.is_empty() {
+                    id.to_string()
+                } else {
+                    name
+                },
+                icon: icon_path(&loc, if icon.is_empty() { id } else { &icon }),
+            });
         }
     }
     v
@@ -135,7 +162,10 @@ mod tests {
     #[test]
     fn desktop_entry() {
         let t = "[Desktop Entry]\nName=Sober\nIcon=org.vinegarhq.Sober\nCategories=GNOME;GTK;Game;\n[Desktop Action Settings]\nName=Settings\n";
-        assert_eq!(desktop_fields(t), ("Sober".into(), true, "org.vinegarhq.Sober".into()));
+        assert_eq!(
+            desktop_fields(t),
+            ("Sober".into(), true, "org.vinegarhq.Sober".into())
+        );
         assert!(!desktop_fields("[Desktop Entry]\nName=Files\nCategories=GNOME;Utility;\n").1);
         assert!(!desktop_fields("[Desktop Entry]\nName=X\nCategories=GameDev;\n").1);
     }

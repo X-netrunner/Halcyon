@@ -47,10 +47,18 @@ fn parse_workspaces(text: &str) -> Vec<(i64, i64)> {
     let mut cur_id: i64 = 0;
     for line in text.lines() {
         if line.starts_with("workspace ID") {
-            cur_id = line.split_whitespace().nth(2).and_then(|x| x.parse::<i64>().ok()).unwrap_or(0);
+            cur_id = line
+                .split_whitespace()
+                .nth(2)
+                .and_then(|x| x.parse::<i64>().ok())
+                .unwrap_or(0);
         } else if line.trim_start().starts_with("windows:") {
             if cur_id > 0 {
-                let n = line.split_whitespace().nth(1).and_then(|x| x.parse::<i64>().ok()).unwrap_or(0);
+                let n = line
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|x| x.parse::<i64>().ok())
+                    .unwrap_or(0);
                 list.push((cur_id, n));
             }
             cur_id = 0;
@@ -61,7 +69,15 @@ fn parse_workspaces(text: &str) -> Vec<(i64, i64)> {
 }
 
 /// Which workspace to go to. `ids` is sorted, lowest first, and never empty. None = stay where you are.
-fn decide(ids: &[i64], wins: &HashMap<i64, i64>, cur: i64, go_prev: bool, end: &str, start: &str, max: i64) -> Option<i64> {
+fn decide(
+    ids: &[i64],
+    wins: &HashMap<i64, i64>,
+    cur: i64,
+    go_prev: bool,
+    end: &str,
+    start: &str,
+    max: i64,
+) -> Option<i64> {
     let first = ids[0];
     let last = ids[ids.len() - 1];
     let mut target: Option<i64> = None;
@@ -90,10 +106,9 @@ fn decide(ids: &[i64], wins: &HashMap<i64, i64>, cur: i64, go_prev: bool, end: &
                         target = Some(first);
                     }
                 }
-                "wrap"
-                    if first != cur => {
-                        target = Some(first);
-                    }
+                "wrap" if first != cur => {
+                    target = Some(first);
+                }
                 _ => {}
             }
         }
@@ -131,7 +146,11 @@ pub fn run(args: &[String]) -> i32 {
         _ => inv = String::from("0"),
     }
     if inv == "1" {
-        dir = if dir == "next" { String::from("prev") } else { String::from("next") };
+        dir = if dir == "next" {
+            String::from("prev")
+        } else {
+            String::from("next")
+        };
     }
 
     let end_raw = flag("ws-end");
@@ -211,14 +230,23 @@ mod tests {
     #[test]
     fn next_on_the_last_one_opens_a_new_one_only_when_it_has_windows() {
         let ids = [1, 2];
-        assert_eq!(decide(&ids, &wins(&[(1, 1), (2, 1)]), 2, false, "new", "wrap", 9), Some(3));
-        assert_eq!(decide(&ids, &wins(&[(1, 1), (2, 0)]), 2, false, "new", "wrap", 9), None);
+        assert_eq!(
+            decide(&ids, &wins(&[(1, 1), (2, 1)]), 2, false, "new", "wrap", 9),
+            Some(3)
+        );
+        assert_eq!(
+            decide(&ids, &wins(&[(1, 1), (2, 0)]), 2, false, "new", "wrap", 9),
+            None
+        );
     }
 
     #[test]
     fn next_at_the_limit_wraps_to_the_first() {
         let ids = [1, 9];
-        assert_eq!(decide(&ids, &wins(&[(1, 1), (9, 1)]), 9, false, "new", "wrap", 9), Some(1));
+        assert_eq!(
+            decide(&ids, &wins(&[(1, 1), (9, 1)]), 9, false, "new", "wrap", 9),
+            Some(1)
+        );
     }
 
     #[test]

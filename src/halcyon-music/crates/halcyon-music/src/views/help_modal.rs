@@ -50,7 +50,10 @@ pub fn view<'a, Message: Clone + 'static>(
         row_item("/ or Ctrl + K", "Search library & Spotify"),
         row_item("Ctrl + L", "Toggle Lyrics view"),
         row_item("Q", "Toggle Queue panel"),
-        row_item("1 - 5", "Jump to page (Home, Discover, Library, Recently played, Capsule)"),
+        row_item(
+            "1 - 5",
+            "Jump to page (Home, Discover, Library, Recently played, Capsule)"
+        ),
         row_item("F", "Toggle Full-screen Now Playing"),
         row_item("Ctrl + R", "Refresh library and probes"),
         row_item("Esc", "Close overlay / Exit full-screen"),
@@ -70,7 +73,10 @@ pub fn view<'a, Message: Clone + 'static>(
                     width: 1.5,
                 },
                 shadow: iced::Shadow {
-                    color: iced::Color { a: 0.5, ..iced::Color::BLACK },
+                    color: iced::Color {
+                        a: 0.5,
+                        ..iced::Color::BLACK
+                    },
                     offset: iced::Vector::new(0.0, 8.0),
                     blur_radius: 24.0,
                 },
@@ -82,7 +88,13 @@ pub fn view<'a, Message: Clone + 'static>(
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_t| container::Style {
-        background: Some(iced::Color { a: 0.6, ..iced::Color::BLACK }.into()),
+        background: Some(
+            iced::Color {
+                a: 0.6,
+                ..iced::Color::BLACK
+            }
+            .into(),
+        ),
         ..Default::default()
     })
     .into()

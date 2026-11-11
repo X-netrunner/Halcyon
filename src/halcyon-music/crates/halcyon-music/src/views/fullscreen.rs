@@ -53,13 +53,22 @@ fn lyric_line<'a, Message: Clone + 'static>(
         theme::mix(palette.text, palette.accent, 0.55),
         w,
     );
-    let shown = if line.text.trim().is_empty() { "♪".to_string() } else { line.text.clone() };
-    button(text(shown).size(size).color(theme::alpha(base, alpha)).width(Length::Fill))
-        .on_press(on_seek(line.start_ms))
-        .padding([2, 10])
-        .width(Length::Fill)
-        .style(|_t, _s| button::Style::default())
-        .into()
+    let shown = if line.text.trim().is_empty() {
+        "♪".to_string()
+    } else {
+        line.text.clone()
+    };
+    button(
+        text(shown)
+            .size(size)
+            .color(theme::alpha(base, alpha))
+            .width(Length::Fill),
+    )
+    .on_press(on_seek(line.start_ms))
+    .padding([2, 10])
+    .width(Length::Fill)
+    .style(|_t, _s| button::Style::default())
+    .into()
 }
 
 /// The spotlight stack for synced lyrics.
@@ -117,13 +126,23 @@ fn spotlight<'a, Message: Clone + 'static>(
         container(above)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 16.0, left: 0.0 })
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 16.0,
+                left: 0.0
+            })
             .align_y(iced::alignment::Vertical::Bottom),
         mid,
         container(below)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(iced::Padding { top: 16.0, right: 0.0, bottom: 0.0, left: 0.0 })
+            .padding(iced::Padding {
+                top: 16.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0
+            })
             .align_y(iced::alignment::Vertical::Top),
     ]
     .width(Length::Fill)
@@ -169,7 +188,13 @@ pub fn near_top(cursor_y: f32) -> bool {
 
 /// A small icon button that fades with `alpha`. Fully faded it is not a button at all (an empty
 /// space of the same size), so nothing invisible can be clicked.
-fn fade_icon<'a, M: Clone + 'a>(glyph: Icon, size: f32, alpha: f32, pal: HalcyonPalette, msg: M) -> Element<'a, M> {
+fn fade_icon<'a, M: Clone + 'a>(
+    glyph: Icon,
+    size: f32,
+    alpha: f32,
+    pal: HalcyonPalette,
+    msg: M,
+) -> Element<'a, M> {
     let box_px = size + 20.0;
     if alpha <= 0.02 {
         return Space::new(box_px, box_px).into();
@@ -187,9 +212,17 @@ fn fade_icon<'a, M: Clone + 'a>(glyph: Icon, size: f32, alpha: f32, pal: Halcyon
         let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: Some(
-                if hot { theme::alpha(pal.text, 0.08 * alpha) } else { iced::Color::TRANSPARENT }.into(),
+                if hot {
+                    theme::alpha(pal.text, 0.08 * alpha)
+                } else {
+                    iced::Color::TRANSPARENT
+                }
+                .into(),
             ),
-            border: iced::Border { radius: (box_px / 2.0).into(), ..Default::default() },
+            border: iced::Border {
+                radius: (box_px / 2.0).into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     })
@@ -197,7 +230,12 @@ fn fade_icon<'a, M: Clone + 'a>(glyph: Icon, size: f32, alpha: f32, pal: Halcyon
 }
 
 /// The round play or pause button, accent filled, fading with `alpha`.
-fn fade_play<'a, M: Clone + 'a>(glyph: Icon, alpha: f32, pal: HalcyonPalette, msg: M) -> Element<'a, M> {
+fn fade_play<'a, M: Clone + 'a>(
+    glyph: Icon,
+    alpha: f32,
+    pal: HalcyonPalette,
+    msg: M,
+) -> Element<'a, M> {
     const PX: f32 = 44.0;
     if alpha <= 0.02 {
         return Space::new(PX, PX).into();
@@ -213,7 +251,10 @@ fn fade_play<'a, M: Clone + 'a>(glyph: Icon, alpha: f32, pal: HalcyonPalette, ms
     .on_press(msg)
     .style(move |_t, _status| button::Style {
         background: Some(theme::alpha(pal.accent, alpha).into()),
-        border: iced::Border { radius: (PX / 2.0).into(), ..Default::default() },
+        border: iced::Border {
+            radius: (PX / 2.0).into(),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .into()
@@ -261,7 +302,9 @@ pub fn view<'a, Message: Clone + 'static>(
 ) -> Element<'a, Message> {
     let pal = *palette;
     let track = state.track.as_ref();
-    let title = track.map(|t| t.title.as_str()).unwrap_or("No track playing");
+    let title = track
+        .map(|t| t.title.as_str())
+        .unwrap_or("No track playing");
     let artist = track.map(|t| t.artist.as_str()).unwrap_or("");
     let duration_ms = track.map(|t| t.duration_ms).unwrap_or(0);
     let position_ms = state.position_ms.min(duration_ms);
@@ -272,7 +315,9 @@ pub fn view<'a, Message: Clone + 'static>(
     let strip_content: Element<'a, Message> = if look.near_top {
         row![
             Space::with_width(Length::Fill),
-            text("Esc").size(theme::type_size::SMALL).color(theme::alpha(pal.text_muted, 0.8)),
+            text("Esc")
+                .size(theme::type_size::SMALL)
+                .color(theme::alpha(pal.text_muted, 0.8)),
             Space::with_width(12),
             crate::views::titlebar::window_controls(
                 pal,
@@ -287,8 +332,12 @@ pub fn view<'a, Message: Clone + 'static>(
     } else {
         Space::new(Length::Fill, Length::Fill).into()
     };
-    let drag_strip = mouse_area(container(strip_content).width(Length::Fill).height(DRAG_STRIP))
-        .on_press(actions.press_bar.clone());
+    let drag_strip = mouse_area(
+        container(strip_content)
+            .width(Length::Fill)
+            .height(DRAG_STRIP),
+    )
+    .on_press(actions.press_bar.clone());
 
     // Left: the cover with the title and the artist under it.
     let cover = crate::art::cover(
@@ -300,9 +349,13 @@ pub fn view<'a, Message: Clone + 'static>(
         title,
         pal,
     );
-    let mut song = column![cover, Space::with_height(18), text(title).size(22).color(pal.text)]
-        .spacing(2)
-        .align_x(Alignment::Center);
+    let mut song = column![
+        cover,
+        Space::with_height(18),
+        text(title).size(22).color(pal.text)
+    ]
+    .spacing(2)
+    .align_x(Alignment::Center);
     if !artist.is_empty() {
         song = song.push(text(artist).size(15).color(pal.text_muted));
     }
@@ -314,9 +367,16 @@ pub fn view<'a, Message: Clone + 'static>(
             Some(lrc) => {
                 let mut col = column![].spacing(14).padding([60, 10]);
                 for line in &lrc.lines {
-                    col = col.push(text(line.text.clone()).size(20).color(theme::alpha(pal.text, 0.9)));
+                    col = col.push(
+                        text(line.text.clone())
+                            .size(20)
+                            .color(theme::alpha(pal.text, 0.9)),
+                    );
                 }
-                scrollable(col).height(Length::Fill).width(Length::Fill).into()
+                scrollable(col)
+                    .height(Length::Fill)
+                    .width(Length::Fill)
+                    .into()
             }
             None => Space::new(Length::Fill, Length::Fill).into(),
         };
@@ -350,7 +410,10 @@ pub fn view<'a, Message: Clone + 'static>(
             .height(Length::Fill);
 
         row![
-            container(song).height(Length::Fill).center_y(Length::Fill).width(Length::FillPortion(1)),
+            container(song)
+                .height(Length::Fill)
+                .center_y(Length::Fill)
+                .width(Length::FillPortion(1)),
             Space::with_width(48),
             right_lyrics,
         ]
@@ -359,14 +422,27 @@ pub fn view<'a, Message: Clone + 'static>(
         .padding([0, 48])
         .into()
     } else {
-        container(song).width(Length::Fill).height(Length::Fill).center_x(Length::Fill).center_y(Length::Fill).into()
+        container(song)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
     };
 
     // Bottom: the small transport, centred. It fades; the area keeps its height so nothing
     // above it moves when it goes.
     let a = look.controls_alpha.clamp(0.0, 1.0);
-    let glyph = if state.playing { Icon::Pause } else { Icon::Play };
-    let time = format!("{} / {}", format_duration(position_ms), format_duration(duration_ms));
+    let glyph = if state.playing {
+        Icon::Pause
+    } else {
+        Icon::Play
+    };
+    let time = format!(
+        "{} / {}",
+        format_duration(position_ms),
+        format_duration(duration_ms)
+    );
     let transport = row![
         fade_icon(Icon::SkipBack, 18.0, a, pal, actions.previous.clone()),
         Space::with_width(10),
@@ -374,7 +450,9 @@ pub fn view<'a, Message: Clone + 'static>(
         Space::with_width(10),
         fade_icon(Icon::SkipForward, 18.0, a, pal, actions.next.clone()),
         Space::with_width(18),
-        text(time).size(theme::type_size::SMALL).color(theme::alpha(pal.text_muted, a)),
+        text(time)
+            .size(theme::type_size::SMALL)
+            .color(theme::alpha(pal.text_muted, a)),
         Space::with_width(14),
         // The same plain muted icon as the other layouts' full-screen button; here it leaves.
         fade_icon(Icon::Maximize, 16.0, a, pal, actions.exit.clone()),
@@ -386,9 +464,13 @@ pub fn view<'a, Message: Clone + 'static>(
         .center_x(Length::Fill)
         .center_y(TRANSPORT_AREA);
 
-    let content = column![drag_strip, container(body).width(Length::Fill).height(Length::Fill), bottom]
-        .width(Length::Fill)
-        .height(Length::Fill);
+    let content = column![
+        drag_strip,
+        container(body).width(Length::Fill).height(Length::Fill),
+        bottom
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill);
 
     // The visualizer lies behind everything; "Off" builds no canvas at all.
     let mut layers = stack![container(Space::new(Length::Fill, Length::Fill))
@@ -414,7 +496,10 @@ pub fn view<'a, Message: Clone + 'static>(
     }
     layers = layers.push(content);
 
-    container(layers).width(Length::Fill).height(Length::Fill).into()
+    container(layers)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 #[cfg(test)]
@@ -490,13 +575,23 @@ mod tests {
     }
 
     fn look(kind: VisualizerKind, alpha: f32, near_top: bool) -> Look {
-        Look { visualizer: kind, bands: [0.5; BANDS], clock: 1.0, controls_alpha: alpha, near_top }
+        Look {
+            visualizer: kind,
+            bands: [0.5; BANDS],
+            clock: 1.0,
+            controls_alpha: alpha,
+            near_top,
+        }
     }
 
     fn lyric_lines(n: usize) -> Lyrics {
         Lyrics {
             lines: (0..n)
-                .map(|i| LyricLine { start_ms: i as u64 * 2000, text: format!("line {i}"), ..LyricLine::default() })
+                .map(|i| LyricLine {
+                    start_ms: i as u64 * 2000,
+                    text: format!("line {i}"),
+                    ..LyricLine::default()
+                })
                 .collect(),
             synced: true,
             ..Lyrics::default()
@@ -511,11 +606,24 @@ mod tests {
             for alpha in [0.0, 0.4, 1.0] {
                 for near in [false, true] {
                     // No track, no lyrics.
-                    let _: Element<'_, Msg> = view(&state, &pal, None, look(kind, alpha, near), actions(), |_| Msg);
+                    let _: Element<'_, Msg> = view(
+                        &state,
+                        &pal,
+                        None,
+                        look(kind, alpha, near),
+                        actions(),
+                        |_| Msg,
+                    );
                     // Empty lyrics.
                     let empty = lyric_lines(0);
-                    let _: Element<'_, Msg> =
-                        view(&state, &pal, Some(&empty), look(kind, alpha, near), actions(), |_| Msg);
+                    let _: Element<'_, Msg> = view(
+                        &state,
+                        &pal,
+                        Some(&empty),
+                        look(kind, alpha, near),
+                        actions(),
+                        |_| Msg,
+                    );
                 }
             }
         }
@@ -530,7 +638,14 @@ mod tests {
         state.playing = true;
         let lrc = lyric_lines(40);
         for kind in VisualizerKind::ALL {
-            let _: Element<'_, Msg> = view(&state, &pal, Some(&lrc), look(kind, 1.0, true), actions(), |_| Msg);
+            let _: Element<'_, Msg> = view(
+                &state,
+                &pal,
+                Some(&lrc),
+                look(kind, 1.0, true),
+                actions(),
+                |_| Msg,
+            );
         }
     }
 }

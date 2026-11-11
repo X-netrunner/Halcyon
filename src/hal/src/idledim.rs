@@ -58,7 +58,9 @@ pub fn run(args: &[String]) -> i32 {
                             "screen" => {
                                 let target = val.parse::<i64>().unwrap_or(1);
                                 match light::best_screen_info() {
-                                    Some((_, cur, max)) if cur != target => light::fade_screen(dev, cur, target, max, 300),
+                                    Some((_, cur, max)) if cur != target => {
+                                        light::fade_screen(dev, cur, target, max, 300)
+                                    }
                                     _ => light::backlight_set_direct("backlight", dev, val),
                                 }
                             }

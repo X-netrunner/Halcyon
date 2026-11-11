@@ -33,8 +33,8 @@ impl SimpleRng {
 
     fn random_string(&mut self, max_len: usize) -> String {
         let chars = [
-            'a', 'b', 'c', '1', '2', '3', ' ', ':', '.', '[', ']', '<', '>', '-', '+',
-            'é', 'ü', 'ñ', '♪', '日', '本', '\n', '\r', '\t', '\0', '{', '}', '"',
+            'a', 'b', 'c', '1', '2', '3', ' ', ':', '.', '[', ']', '<', '>', '-', '+', 'é', 'ü',
+            'ñ', '♪', '日', '本', '\n', '\r', '\t', '\0', '{', '}', '"',
         ];
         let len = (self.next_u32() as usize) % (max_len.max(1));
         let mut s = String::with_capacity(len);
@@ -221,7 +221,13 @@ fn property_test_title_normalizer_invariants() {
     // 3. Exact matches must score 1.0
     let title = "Get Lucky - Radio Edit";
     let artist = "Daft Punk feat. Pharrell Williams";
-    let cand = Track::simple("t_exact".into(), title.into(), artist.into(), "RAM".into(), 248_000);
+    let cand = Track::simple(
+        "t_exact".into(),
+        title.into(),
+        artist.into(),
+        "RAM".into(),
+        248_000,
+    );
     let perfect_score = score_track_match(&cand, artist, title, Some(248_000));
     assert!(
         perfect_score >= 0.95,

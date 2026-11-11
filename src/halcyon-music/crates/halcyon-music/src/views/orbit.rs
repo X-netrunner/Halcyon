@@ -71,7 +71,12 @@ impl<M> canvas::Program<M> for Orbit {
                 }
                 b.close();
             });
-            frame.stroke(&path, Stroke::default().with_width(1.6 - 0.7 * p).with_color(colour));
+            frame.stroke(
+                &path,
+                Stroke::default()
+                    .with_width(1.6 - 0.7 * p)
+                    .with_color(colour),
+            );
         }
 
         vec![frame.into_geometry()]
@@ -79,11 +84,20 @@ impl<M> canvas::Program<M> for Orbit {
 }
 
 /// The ripples, `size` px square. Put the cover (`cover_px` wide) on top of its centre.
-pub fn view<'a, M: 'a>(viz: VizFrame, cover_px: f32, size: f32, palette: HalcyonPalette) -> Element<'a, M> {
-    Canvas::new(Orbit { viz, cover_px, palette })
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .into()
+pub fn view<'a, M: 'a>(
+    viz: VizFrame,
+    cover_px: f32,
+    size: f32,
+    palette: HalcyonPalette,
+) -> Element<'a, M> {
+    Canvas::new(Orbit {
+        viz,
+        cover_px,
+        palette,
+    })
+    .width(Length::Fixed(size))
+    .height(Length::Fixed(size))
+    .into()
 }
 
 #[cfg(test)]

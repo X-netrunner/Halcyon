@@ -56,7 +56,10 @@ fn entries<'a>(query: &str, r: &'a DetailedSearchResults) -> Vec<Entry<'a>> {
 
     // Index of the artist whose name is exactly what was typed; it leads the list and is
     // skipped when the remaining artists are added below.
-    let exact_artist = r.artists.iter().position(|a| a.name.trim().to_lowercase() == q);
+    let exact_artist = r
+        .artists
+        .iter()
+        .position(|a| a.name.trim().to_lowercase() == q);
     if let Some(i) = exact_artist {
         out.push(artist(&r.artists[i]));
     }
@@ -73,7 +76,9 @@ fn entries<'a>(query: &str, r: &'a DetailedSearchResults) -> Vec<Entry<'a>> {
         });
     }
     for (i, a) in r.artists.iter().enumerate().take(MAX_ARTISTS + 1) {
-        if Some(i) != exact_artist && out.iter().filter(|e| e.kind == "Artist").count() < MAX_ARTISTS {
+        if Some(i) != exact_artist
+            && out.iter().filter(|e| e.kind == "Artist").count() < MAX_ARTISTS
+        {
             out.push(artist(a));
         }
     }
@@ -105,10 +110,14 @@ fn entries<'a>(query: &str, r: &'a DetailedSearchResults) -> Vec<Entry<'a>> {
 }
 
 fn note<'a, M: 'a>(label: String, pal: HalcyonPalette) -> Element<'a, M> {
-    container(text(label).size(type_size::SMALL + 1.0).color(pal.text_muted))
-        .padding([space::MD, space::LG])
-        .width(Length::Fill)
-        .into()
+    container(
+        text(label)
+            .size(type_size::SMALL + 1.0)
+            .color(pal.text_muted),
+    )
+    .padding([space::MD, space::LG])
+    .width(Length::Fill)
+    .into()
 }
 
 pub fn view<'a, M: Clone + 'a>(
@@ -125,7 +134,13 @@ pub fn view<'a, M: Clone + 'a>(
         Some(r) => {
             let list = entries(query, r);
             if list.is_empty() {
-                col = col.push(note(format!("No matches for \u{201C}{}\u{201D}", super::ellipsize(query.trim(), 40)), pal));
+                col = col.push(note(
+                    format!(
+                        "No matches for \u{201C}{}\u{201D}",
+                        super::ellipsize(query.trim(), 40)
+                    ),
+                    pal,
+                ));
             }
             for e in list {
                 let cover = crate::art::cover(
@@ -141,8 +156,12 @@ pub fn view<'a, M: Clone + 'a>(
                     cover,
                     Space::with_width(space::MD),
                     column![
-                        text(super::ellipsize(&e.title, 44)).size(type_size::BODY).color(pal.text),
-                        text(super::ellipsize(&e.subtitle, 48)).size(type_size::SMALL).color(pal.text_muted),
+                        text(super::ellipsize(&e.title, 44))
+                            .size(type_size::BODY)
+                            .color(pal.text),
+                        text(super::ellipsize(&e.subtitle, 48))
+                            .size(type_size::SMALL)
+                            .color(pal.text_muted),
                     ]
                     .spacing(2)
                     .width(Length::Fill),
@@ -158,13 +177,22 @@ pub fn view<'a, M: Clone + 'a>(
                         .height(ROW_H)
                         .padding(0)
                         .style(move |_t, status| {
-                            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+                            let hovered =
+                                matches!(status, button::Status::Hovered | button::Status::Pressed);
                             button::Style {
                                 background: Some(
-                                    if hovered { pal.surface_variant } else { iced::Color::TRANSPARENT }.into(),
+                                    if hovered {
+                                        pal.surface_variant
+                                    } else {
+                                        iced::Color::TRANSPARENT
+                                    }
+                                    .into(),
                                 ),
                                 text_color: pal.text,
-                                border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+                                border: iced::Border {
+                                    radius: radius::SM.into(),
+                                    ..Default::default()
+                                },
                                 ..Default::default()
                             }
                         }),
@@ -178,9 +206,12 @@ pub fn view<'a, M: Clone + 'a>(
             row![
                 icon(Icon::Search, 14.0, pal.accent),
                 Space::with_width(space::SM),
-                text(format!("See all results for \u{201C}{}\u{201D}", super::ellipsize(query.trim(), 36)))
-                    .size(type_size::SMALL + 1.0)
-                    .color(pal.accent),
+                text(format!(
+                    "See all results for \u{201C}{}\u{201D}",
+                    super::ellipsize(query.trim(), 36)
+                ))
+                .size(type_size::SMALL + 1.0)
+                .color(pal.accent),
             ]
             .align_y(Alignment::Center),
         )
@@ -189,11 +220,18 @@ pub fn view<'a, M: Clone + 'a>(
         .padding([space::SM + 2.0, space::MD + 2.0])
         .style(move |_t, status| button::Style {
             background: Some(
-                if matches!(status, button::Status::Hovered) { pal.surface_variant } else { iced::Color::TRANSPARENT }
-                    .into(),
+                if matches!(status, button::Status::Hovered) {
+                    pal.surface_variant
+                } else {
+                    iced::Color::TRANSPARENT
+                }
+                .into(),
             ),
             text_color: pal.accent,
-            border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+            border: iced::Border {
+                radius: radius::SM.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }),
     );
@@ -203,9 +241,16 @@ pub fn view<'a, M: Clone + 'a>(
         .padding(space::XS)
         .style(move |_t| container::Style {
             background: Some(pal.surface.into()),
-            border: iced::Border { color: pal.border, width: 1.0, radius: radius::MD.into() },
+            border: iced::Border {
+                color: pal.border,
+                width: 1.0,
+                radius: radius::MD.into(),
+            },
             shadow: iced::Shadow {
-                color: iced::Color { a: 0.4, ..iced::Color::BLACK },
+                color: iced::Color {
+                    a: 0.4,
+                    ..iced::Color::BLACK
+                },
                 offset: iced::Vector::new(0.0, 6.0),
                 blur_radius: 20.0,
             },

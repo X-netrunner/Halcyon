@@ -25,7 +25,9 @@ struct Idle {
 /// Whole number, or the default (empty, text, "-3" and "1.5" all count as "not set").
 fn num(v: Option<&str>, default: u64) -> u64 {
     match v {
-        Some(s) if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) => s.parse::<u64>().unwrap_or(default),
+        Some(s) if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) => {
+            s.parse::<u64>().unwrap_or(default)
+        }
         _ => default,
     }
 }
@@ -117,7 +119,10 @@ pub fn run(args: &[String]) -> i32 {
     let _ = fs::create_dir_all(&state);
     let envf = state.join("idle.env");
     let conf = state.join("hypridle.conf");
-    let scripts = util::rice_dir().join("scripts").to_string_lossy().to_string();
+    let scripts = util::rice_dir()
+        .join("scripts")
+        .to_string_lossy()
+        .to_string();
     let saved = load(&fs::read_to_string(&envf).unwrap_or_default());
 
     match args.first().map(|s| s.as_str()) {
@@ -139,10 +144,15 @@ pub fn run(args: &[String]) -> i32 {
             };
             let _ = fs::write(
                 &envf,
-                format!("IDLE_LOCK={}\nIDLE_SLEEP={}\nIDLE_DIM={}\nAV_AI_IDLE={}\n", v.lock, v.sleep, v.dim, v.av),
+                format!(
+                    "IDLE_LOCK={}\nIDLE_SLEEP={}\nIDLE_DIM={}\nAV_AI_IDLE={}\n",
+                    v.lock, v.sleep, v.dim, v.av
+                ),
             );
             let text = conf_text(&scripts, v);
-            let unchanged = fs::read_to_string(&conf).map(|old| old == text).unwrap_or(false);
+            let unchanged = fs::read_to_string(&conf)
+                .map(|old| old == text)
+                .unwrap_or(false);
             if !unchanged || !util::ok("pgrep", &["-x", "hypridle"]) {
                 let _ = fs::write(&conf, &text);
                 if !restart(&conf) {
@@ -173,29 +183,69 @@ mod tests {
 
     #[test]
     fn load_uses_defaults_for_missing_keys() {
-        assert_eq!(load(""), Idle { lock: 5, sleep: 30, dim: 3, av: 5 });
+        assert_eq!(
+            load(""),
+            Idle {
+                lock: 5,
+                sleep: 30,
+                dim: 3,
+                av: 5
+            }
+        );
         assert_eq!(
             load("IDLE_LOCK=10\nIDLE_SLEEP=0\nIDLE_DIM=bad\n"),
-            Idle { lock: 10, sleep: 0, dim: 3, av: 5 }
+            Idle {
+                lock: 10,
+                sleep: 0,
+                dim: 3,
+                av: 5
+            }
         );
     }
 
     #[test]
     fn sleep_always_comes_after_the_lock() {
-        let t = conf_text("/s", Idle { lock: 10, sleep: 10, dim: 0, av: 0 });
+        let t = conf_text(
+            "/s",
+            Idle {
+                lock: 10,
+                sleep: 10,
+                dim: 0,
+                av: 0,
+            },
+        );
         assert!(t.contains("timeout = 600\n    on-timeout = /s/lock.sh"));
         assert!(t.contains("timeout = 660\n    on-timeout = systemctl suspend"));
     }
 
     #[test]
     fn zero_means_never() {
-        let t = conf_text("/s", Idle { lock: 0, sleep: 0, dim: 0, av: 0 });
-        assert_eq!(t, "general {\n    lock_cmd = /s/lock.sh\n    before_sleep_cmd = /s/lock.sh\n}\n");
+        let t = conf_text(
+            "/s",
+            Idle {
+                lock: 0,
+                sleep: 0,
+                dim: 0,
+                av: 0,
+            },
+        );
+        assert_eq!(
+            t,
+            "general {\n    lock_cmd = /s/lock.sh\n    before_sleep_cmd = /s/lock.sh\n}\n"
+        );
     }
 
     #[test]
     fn listeners_come_in_the_old_order() {
-        let t = conf_text("/s", Idle { lock: 5, sleep: 30, dim: 3, av: 5 });
+        let t = conf_text(
+            "/s",
+            Idle {
+                lock: 5,
+                sleep: 30,
+                dim: 3,
+                av: 5,
+            },
+        );
         let dim = t.find("idle-dim.sh dim").unwrap_or(usize::MAX);
         let av = t.find("av-ai-idle.sh idle").unwrap_or(usize::MAX);
         let lock = t.find("on-timeout = /s/lock.sh").unwrap_or(usize::MAX);

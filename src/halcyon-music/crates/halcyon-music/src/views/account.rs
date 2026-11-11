@@ -28,20 +28,35 @@ pub fn avatar<'a, M: 'a>(
 ) -> Element<'a, M> {
     if let Some(url) = image_url.filter(|u| !u.is_empty()) {
         if crate::art::is_ready(url, ArtSize::Small) {
-            return crate::art::cover(Some(url), ArtSize::Small, size, size / 2.0, Icon::Artist, name, palette);
+            return crate::art::cover(
+                Some(url),
+                ArtSize::Small,
+                size,
+                size / 2.0,
+                Icon::Artist,
+                name,
+                palette,
+            );
         }
     }
-    container(text(initial(name)).size(size * 0.45).color(palette.background))
-        .width(size)
-        .height(size)
-        .center_x(size)
-        .center_y(size)
-        .style(move |_t| container::Style {
-            background: Some(palette.accent_background()),
-            border: iced::Border { radius: (size / 2.0).into(), ..Default::default() },
+    container(
+        text(initial(name))
+            .size(size * 0.45)
+            .color(palette.background),
+    )
+    .width(size)
+    .height(size)
+    .center_x(size)
+    .center_y(size)
+    .style(move |_t| container::Style {
+        background: Some(palette.accent_background()),
+        border: iced::Border {
+            radius: (size / 2.0).into(),
             ..Default::default()
-        })
-        .into()
+        },
+        ..Default::default()
+    })
+    .into()
 }
 
 /// The clickable circle. `open` keeps a ring around it while the menu is shown.
@@ -61,7 +76,11 @@ pub fn avatar_button<'a, M: Clone + 'a>(
                 background: None,
                 text_color: palette.text,
                 border: iced::Border {
-                    color: if ring { palette.accent } else { iced::Color::TRANSPARENT },
+                    color: if ring {
+                        palette.accent
+                    } else {
+                        iced::Color::TRANSPARENT
+                    },
                     width: 1.5,
                     radius: ((AVATAR_SIZE + 4.0) / 2.0).into(),
                 },
@@ -82,20 +101,34 @@ fn item<'a, M: Clone + 'a>(
     msg: M,
 ) -> Element<'a, M> {
     let ink = if danger { palette.danger } else { palette.text };
-    let tile = container(icon(glyph, 15.0, if danger { palette.danger } else { palette.text_muted }))
-        .width(TILE)
-        .height(TILE)
-        .center_x(TILE)
-        .center_y(TILE)
-        .style(move |_t| container::Style {
-            background: Some(alpha(if danger { palette.danger } else { palette.text }, 0.07).into()),
-            border: iced::Border { radius: 10.0.into(), ..Default::default() },
+    let tile = container(icon(
+        glyph,
+        15.0,
+        if danger {
+            palette.danger
+        } else {
+            palette.text_muted
+        },
+    ))
+    .width(TILE)
+    .height(TILE)
+    .center_x(TILE)
+    .center_y(TILE)
+    .style(move |_t| container::Style {
+        background: Some(alpha(if danger { palette.danger } else { palette.text }, 0.07).into()),
+        border: iced::Border {
+            radius: 10.0.into(),
             ..Default::default()
-        });
+        },
+        ..Default::default()
+    });
     let mut content = row![
         tile,
         Space::with_width(space::MD),
-        text(label).size(type_size::BODY).color(ink).width(Length::Fill),
+        text(label)
+            .size(type_size::BODY)
+            .color(ink)
+            .width(Length::Fill),
     ]
     .align_y(Alignment::Center);
     if let Some(t) = trailing {
@@ -110,14 +143,20 @@ fn item<'a, M: Clone + 'a>(
             button::Style {
                 background: Some(
                     if hot {
-                        alpha(if danger { palette.danger } else { palette.text }, if danger { 0.12 } else { 0.07 })
+                        alpha(
+                            if danger { palette.danger } else { palette.text },
+                            if danger { 0.12 } else { 0.07 },
+                        )
                     } else {
                         iced::Color::TRANSPARENT
                     }
                     .into(),
                 ),
                 text_color: ink,
-                border: iced::Border { radius: 14.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 14.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         })
@@ -133,7 +172,10 @@ fn plan_chip<'a, M: 'a>(plan: String, palette: HalcyonPalette) -> Element<'a, M>
         .padding([1, 8])
         .style(move |_t| container::Style {
             background: Some(alpha(palette.accent, 0.14).into()),
-            border: iced::Border { radius: radius::PILL.into(), ..Default::default() },
+            border: iced::Border {
+                radius: radius::PILL.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into()
@@ -171,14 +213,25 @@ pub fn menu_card<'a, M: Clone + 'a>(
     let picture = container(avatar(&name, image_url, 44.0, palette))
         .padding(2)
         .style(move |_t| container::Style {
-            border: iced::Border { color: alpha(palette.accent, 0.55), width: 1.5, radius: 26.0.into() },
+            border: iced::Border {
+                color: alpha(palette.accent, 0.55),
+                width: 1.5,
+                radius: 26.0.into(),
+            },
             ..Default::default()
         });
 
-    let mut who = column![text(name.clone()).size(type_size::BODY + 1.0).color(palette.text)].spacing(3);
+    let mut who = column![text(name.clone())
+        .size(type_size::BODY + 1.0)
+        .color(palette.text)]
+    .spacing(3);
     let mut second = row![].spacing(space::SM).align_y(Alignment::Center);
     if let Some(h) = handle {
-        second = second.push(text(crate::views::ellipsize(&h, 18)).size(type_size::CAPTION).color(palette.text_muted));
+        second = second.push(
+            text(crate::views::ellipsize(&h, 18))
+                .size(type_size::CAPTION)
+                .color(palette.text_muted),
+        );
     }
     if let Some(p) = plan {
         second = second.push(plan_chip(p, palette));
@@ -188,26 +241,53 @@ pub fn menu_card<'a, M: Clone + 'a>(
     // Where this app is connected, with a small lit dot.
     let dot = container(Space::new(6, 6)).style(move |_t| container::Style {
         background: Some(palette.accent.into()),
-        border: iced::Border { radius: 3.0.into(), ..Default::default() },
+        border: iced::Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
-    let status = row![dot, text(device_line).size(type_size::CAPTION).color(palette.text_muted)]
-        .spacing(space::SM)
-        .align_y(Alignment::Center);
+    let status = row![
+        dot,
+        text(device_line)
+            .size(type_size::CAPTION)
+            .color(palette.text_muted)
+    ]
+    .spacing(space::SM)
+    .align_y(Alignment::Center);
 
     let header = column![
         row![picture, Space::with_width(space::MD), who].align_y(Alignment::Center),
         Space::with_height(space::SM),
         status,
     ]
-    .padding(iced::Padding { top: space::SM, right: space::SM, bottom: space::XS, left: space::SM });
+    .padding(iced::Padding {
+        top: space::SM,
+        right: space::SM,
+        bottom: space::XS,
+        left: space::SM,
+    });
 
     container(
         column![
             header,
             divider(palette),
-            item(Icon::Settings, "Settings", palette, None, false, on_settings),
-            item(Icon::Music, "Spotify settings", palette, Some(Icon::ExternalLink), false, on_spotify_settings),
+            item(
+                Icon::Settings,
+                "Settings",
+                palette,
+                None,
+                false,
+                on_settings
+            ),
+            item(
+                Icon::Music,
+                "Spotify settings",
+                palette,
+                Some(Icon::ExternalLink),
+                false,
+                on_spotify_settings
+            ),
             divider(palette),
             item(Icon::LogOut, "Sign out", palette, None, true, on_sign_out),
         ]
@@ -218,9 +298,16 @@ pub fn menu_card<'a, M: Clone + 'a>(
     .style(move |_t| container::Style {
         // A solid surface a little above the page, so the card is clearly in front of it.
         background: Some(crate::theme::mix(palette.surface, palette.text, 0.035).into()),
-        border: iced::Border { color: palette.soft_border(), width: 1.0, radius: 22.0.into() },
+        border: iced::Border {
+            color: palette.soft_border(),
+            width: 1.0,
+            radius: 22.0.into(),
+        },
         shadow: iced::Shadow {
-            color: iced::Color { a: 0.45, ..iced::Color::BLACK },
+            color: iced::Color {
+                a: 0.45,
+                ..iced::Color::BLACK
+            },
             offset: iced::Vector::new(0.0, 12.0),
             blur_radius: 32.0,
         },
@@ -244,7 +331,12 @@ pub fn overlay<'a, M: Clone + 'a>(
         container(menu)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(Padding { top, left, right: 0.0, bottom: 0.0 }),
+            .padding(Padding {
+                top,
+                left,
+                right: 0.0,
+                bottom: 0.0
+            }),
     ]
     .into()
 }
@@ -265,7 +357,12 @@ pub fn overlay_above<'a, M: Clone + 'a>(
             .width(Length::Fill)
             .height(Length::Fill)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(Padding { top: 0.0, left, right: 0.0, bottom }),
+            .padding(Padding {
+                top: 0.0,
+                left,
+                right: 0.0,
+                bottom
+            }),
     ]
     .into()
 }

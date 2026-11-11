@@ -41,7 +41,12 @@ fn first_exec(paths: &[&str]) -> Option<String> {
 
 /// The agent for the Settings choice; when that one is not installed, any installed one is better than none.
 fn pick_agent(choice: &str) -> Option<String> {
-    let all: Vec<&str> = HYPR.iter().chain(GNOME.iter()).chain(KDE.iter()).copied().collect();
+    let all: Vec<&str> = HYPR
+        .iter()
+        .chain(GNOME.iter())
+        .chain(KDE.iter())
+        .copied()
+        .collect();
     let chosen = match choice {
         "hyprpolkitagent" => first_exec(HYPR),
         "gnome" => first_exec(GNOME),

@@ -31,7 +31,10 @@ fn describe(e: &ApiError) -> String {
         ApiError::AuthRequired(_) => "not signed in".to_string(),
         ApiError::Timeout => "timed out".to_string(),
         ApiError::RateLimited(s) if *s >= 3600 => {
-            format!("rate limited by Spotify for about {} h (Retry-After {s}s)", s / 3600)
+            format!(
+                "rate limited by Spotify for about {} h (Retry-After {s}s)",
+                s / 3600
+            )
         }
         ApiError::RateLimited(s) => format!("rate limited ({s}s)"),
         ApiError::CircuitOpen { .. } => "cooling down after errors".to_string(),
@@ -139,7 +142,9 @@ pub async fn run() -> bool {
         print_token_summary();
     }
     if !client.is_authenticated().await {
-        println!("Not signed in for this mode. Run `halcyon-musicd --login`, or sign in from the app.");
+        println!(
+            "Not signed in for this mode. Run `halcyon-musicd --login`, or sign in from the app."
+        );
         return false;
     }
 
@@ -147,13 +152,34 @@ pub async fn run() -> bool {
     let mut rows: Vec<Row> = Vec::new();
 
     // Does Spotify accept this token on the Web API at all?
-    emit(&mut rows, check(&client, EndpointFamily::Other, "account (/me)", "/me").await.0);
+    emit(
+        &mut rows,
+        check(&client, EndpointFamily::Other, "account (/me)", "/me")
+            .await
+            .0,
+    );
 
     for (family, name, endpoint) in [
-        (EndpointFamily::Playlists, "playlists", "/me/playlists?limit=1"),
-        (EndpointFamily::UserLibrary, "liked songs", "/me/tracks?limit=1"),
-        (EndpointFamily::UserLibrary, "saved albums", "/me/albums?limit=1"),
-        (EndpointFamily::UserLibrary, "followed artists", "/me/following?type=artist&limit=1"),
+        (
+            EndpointFamily::Playlists,
+            "playlists",
+            "/me/playlists?limit=1",
+        ),
+        (
+            EndpointFamily::UserLibrary,
+            "liked songs",
+            "/me/tracks?limit=1",
+        ),
+        (
+            EndpointFamily::UserLibrary,
+            "saved albums",
+            "/me/albums?limit=1",
+        ),
+        (
+            EndpointFamily::UserLibrary,
+            "followed artists",
+            "/me/following?type=artist&limit=1",
+        ),
     ] {
         emit(&mut rows, check(&client, family, name, endpoint).await.0);
     }
@@ -170,7 +196,13 @@ pub async fn run() -> bool {
         let got = items_len(&json, "tracks").unwrap_or(0);
         search.detail = format!("limit 50 asked, {got} results returned");
     } else {
-        let (retry, json10) = check(&client, EndpointFamily::Search, "search", "/search?q=daft%20punk&type=track&limit=10").await;
+        let (retry, json10) = check(
+            &client,
+            EndpointFamily::Search,
+            "search",
+            "/search?q=daft%20punk&type=track&limit=10",
+        )
+        .await;
         search.detail = if retry.pass == Some(true) {
             format!(
                 "limit 50 refused ({}); limit 10 works, {} results",
@@ -186,20 +218,56 @@ pub async fn run() -> bool {
 
     // Home feed, Capsule and suggestions are built from these calls.
     for (family, name, endpoint) in [
-        (EndpointFamily::Player, "home feed (recently played)", "/me/player/recently-played?limit=1"),
-        (EndpointFamily::UserLibrary, "capsule (top tracks)", "/me/top/tracks?limit=1"),
-        (EndpointFamily::UserLibrary, "capsule (top artists)", "/me/top/artists?limit=1"),
-        (EndpointFamily::Recommendations, "suggestions (recommendations)", "/recommendations?seed_genres=pop&limit=1"),
-        (EndpointFamily::Artists, "suggestions (related artists)", "/artists/06HL4z0CvFAxyc27GXpf02/related-artists"),
+        (
+            EndpointFamily::Player,
+            "home feed (recently played)",
+            "/me/player/recently-played?limit=1",
+        ),
+        (
+            EndpointFamily::UserLibrary,
+            "capsule (top tracks)",
+            "/me/top/tracks?limit=1",
+        ),
+        (
+            EndpointFamily::UserLibrary,
+            "capsule (top artists)",
+            "/me/top/artists?limit=1",
+        ),
+        (
+            EndpointFamily::Recommendations,
+            "suggestions (recommendations)",
+            "/recommendations?seed_genres=pop&limit=1",
+        ),
+        (
+            EndpointFamily::Artists,
+            "suggestions (related artists)",
+            "/artists/06HL4z0CvFAxyc27GXpf02/related-artists",
+        ),
     ] {
         emit(&mut rows, check(&client, family, name, endpoint).await.0);
     }
 
     let artist_endpoint = format!("/artists/{ARTIST_ID}");
-    emit(&mut rows, check(&client, EndpointFamily::Artists, "artist detail", &artist_endpoint).await.0);
+    emit(
+        &mut rows,
+        check(
+            &client,
+            EndpointFamily::Artists,
+            "artist detail",
+            &artist_endpoint,
+        )
+        .await
+        .0,
+    );
 
     let albums_endpoint = format!("/artists/{ARTIST_ID}/albums?limit=1");
-    let (albums_row, albums_json) = check(&client, EndpointFamily::Albums, "artist albums", &albums_endpoint).await;
+    let (albums_row, albums_json) = check(
+        &client,
+        EndpointFamily::Albums,
+        "artist albums",
+        &albums_endpoint,
+    )
+    .await;
     let album_id = albums_json
         .as_ref()
         .and_then(|j| j.get("items"))
@@ -212,7 +280,12 @@ pub async fn run() -> bool {
     match album_id {
         Some(id) => {
             let endpoint = format!("/albums/{id}");
-            emit(&mut rows, check(&client, EndpointFamily::Albums, "album detail", &endpoint).await.0);
+            emit(
+                &mut rows,
+                check(&client, EndpointFamily::Albums, "album detail", &endpoint)
+                    .await
+                    .0,
+            );
         }
         None => emit(
             &mut rows,
@@ -246,7 +319,10 @@ mod tests {
 
     #[test]
     fn failures_are_described_without_the_response_body() {
-        let e = ApiError::Http { status: 403, message: "Bearer secret".into() };
+        let e = ApiError::Http {
+            status: 403,
+            message: "Bearer secret".into(),
+        };
         assert_eq!(describe(&e), "HTTP 403");
         assert_eq!(describe(&ApiError::RateLimited(7)), "rate limited (7s)");
         assert!(describe(&ApiError::RateLimited(86_400)).contains("24 h"));

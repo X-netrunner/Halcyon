@@ -17,7 +17,9 @@ use super::playlist::{PICK_MIN, PLAYLIST_MAX};
 use super::prompts;
 use super::taste::TasteSummary;
 use super::validate::{self, filter_ids};
-use super::{answer_key, call_with_retry, is_paused, mix_content_hash, set_pause, sha_hex, ANSWER_TTL_SECS};
+use super::{
+    answer_key, call_with_retry, is_paused, mix_content_hash, set_pause, sha_hex, ANSWER_TTL_SECS,
+};
 use crate::cache::Cache;
 use halcyon_music_core::models::{MusicMix, Track};
 use std::time::Duration;
@@ -59,14 +61,21 @@ pub fn eligible(mix: &MusicMix) -> bool {
 
 /// The songs the model is shown for a mix (and so the only ones it can pick): the first 50.
 fn candidates(mix: &MusicMix) -> Vec<Track> {
-    mix.tracks.iter().take(prompts::MAX_CANDIDATES_PER_CALL).cloned().collect()
+    mix.tracks
+        .iter()
+        .take(prompts::MAX_CANDIDATES_PER_CALL)
+        .cloned()
+        .collect()
 }
 
 /// Check `ids` against the mix's own songs. `None` (keep the engine's order) when too few are valid.
 fn checked_order(mix: &MusicMix, ids: &[String]) -> Option<MixOrder> {
     let allowed: Vec<String> = candidates(mix).into_iter().map(|t| t.id).collect();
     let picked = filter_ids(ids, &allowed, PICK_MIN.min(allowed.len()), PLAYLIST_MAX);
-    (!picked.fell_back).then(|| MixOrder { mix_id: mix.id.clone(), track_ids: picked.ids })
+    (!picked.fell_back).then(|| MixOrder {
+        mix_id: mix.id.clone(),
+        track_ids: picked.ids,
+    })
 }
 
 /// Reorder and trim the personal mixes among `mixes`. Pure of the daemon: it takes the cache, a
@@ -133,7 +142,9 @@ pub async fn rerank_mixes(
                 return Err(e);
             }
         };
-        let ids: Vec<String> = validate::parse_pick(&raw, &prompt.aliases).map(|p| p.ids).unwrap_or_default();
+        let ids: Vec<String> = validate::parse_pick(&raw, &prompt.aliases)
+            .map(|p| p.ids)
+            .unwrap_or_default();
         match checked_order(mix, &ids) {
             Some(order) => {
                 if let Ok(json) = serde_json::to_string(&order.track_ids) {
@@ -165,7 +176,17 @@ mod tests {
             title: "On Repeat".into(),
             description: String::new(),
             source: source.into(),
-            tracks: (0..n).map(|i| Track::simple(format!("id{i}"), format!("S{i}"), "A".into(), "Al".into(), 1000)).collect(),
+            tracks: (0..n)
+                .map(|i| {
+                    Track::simple(
+                        format!("id{i}"),
+                        format!("S{i}"),
+                        "A".into(),
+                        "Al".into(),
+                        1000,
+                    )
+                })
+                .collect(),
             art_url: None,
         }
     }
@@ -195,6 +216,10 @@ mod tests {
         let m = mix(PERSONAL_SOURCE, 80);
         let ids: Vec<String> = (40..80).map(|i| format!("id{i}")).collect();
         let o = checked_order(&m, &ids).expect("ten of them are among the first fifty");
-        assert!(o.track_ids.iter().all(|id| id.trim_start_matches("id").parse::<usize>().map(|n| n < 50).unwrap_or(false)));
+        assert!(o.track_ids.iter().all(|id| id
+            .trim_start_matches("id")
+            .parse::<usize>()
+            .map(|n| n < 50)
+            .unwrap_or(false)));
     }
 }

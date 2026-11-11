@@ -73,7 +73,9 @@ pub fn installed() -> Vec<Runtime> {
 }
 
 pub fn default_family(cfg: &Conf) -> Family {
-    cfg.get("proton_family").and_then(Family::parse).unwrap_or(Family::Ge)
+    cfg.get("proton_family")
+        .and_then(Family::parse)
+        .unwrap_or(Family::Ge)
 }
 
 /// The runtime a game with this pin uses: its pin, else the default, else the newest of the default family, else the newest of any.
@@ -88,11 +90,19 @@ pub fn resolve(pin: &str, cfg: &Conf) -> Option<Runtime> {
         }
     }
     let fam = default_family(cfg);
-    all.iter().rev().find(|r| family_of(&r.name) == Some(fam)).or_else(|| all.last()).cloned()
+    all.iter()
+        .rev()
+        .find(|r| family_of(&r.name) == Some(fam))
+        .or_else(|| all.last())
+        .cloned()
 }
 
 fn pinned_names() -> Vec<String> {
-    store::all_games().into_iter().map(|g| g.proton).filter(|p| !p.is_empty()).collect()
+    store::all_games()
+        .into_iter()
+        .map(|g| g.proton)
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 // ---------------------------------------------------------------- GitHub releases
@@ -134,7 +144,11 @@ pub fn parse_releases(json: &str, fam: Family, cpu_v3: bool) -> Vec<Release> {
     let mut out = Vec::new();
     for (i, (pos, tag)) in tags.iter().enumerate() {
         let end = tags.get(i + 1).map(|t| t.0).unwrap_or(usize::MAX);
-        let assets: Vec<&String> = urls.iter().filter(|(p, _)| p > pos && *p < end).map(|(_, u)| u).collect();
+        let assets: Vec<&String> = urls
+            .iter()
+            .filter(|(p, _)| p > pos && *p < end)
+            .map(|(_, u)| u)
+            .collect();
         let base = |u: &str| u.rsplit('/').next().unwrap_or("").to_string();
         let tarballs: Vec<&&String> = assets
             .iter()
@@ -152,7 +166,9 @@ pub fn parse_releases(json: &str, fam: Family, cpu_v3: bool) -> Vec<Release> {
             Family::Ge => tarballs.first().copied(),
             Family::Cachy => {
                 let v3 = tarballs.iter().find(|u| base(u).contains("x86_64_v3"));
-                let plain = tarballs.iter().find(|u| base(u).ends_with("-x86_64.tar.xz"));
+                let plain = tarballs
+                    .iter()
+                    .find(|u| base(u).ends_with("-x86_64.tar.xz"));
                 if cpu_v3 {
                     v3.or(plain).or(tarballs.first()).copied()
                 } else {
@@ -162,7 +178,14 @@ pub fn parse_releases(json: &str, fam: Family, cpu_v3: bool) -> Vec<Release> {
         };
         if let Some(t) = pick {
             let name = base(t);
-            let sum = assets.iter().find(|u| base(u) == format!("{}.sha512sum", name.trim_end_matches(".tar.gz").trim_end_matches(".tar.xz")) || base(u) == format!("{name}.sha512sum"));
+            let sum = assets.iter().find(|u| {
+                base(u)
+                    == format!(
+                        "{}.sha512sum",
+                        name.trim_end_matches(".tar.gz").trim_end_matches(".tar.xz")
+                    )
+                    || base(u) == format!("{name}.sha512sum")
+            });
             out.push(Release {
                 tag: tag.clone(),
                 tarball: name,
@@ -178,15 +201,31 @@ pub fn parse_releases(json: &str, fam: Family, cpu_v3: bool) -> Vec<Release> {
 pub fn cpu_has_v3() -> bool {
     let info = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
     let flags = info.lines().find(|l| l.starts_with("flags")).unwrap_or("");
-    ["avx2", "bmi1", "bmi2", "fma", "movbe"].iter().all(|f| flags.split_whitespace().any(|x| x == *f))
+    ["avx2", "bmi1", "bmi2", "fma", "movbe"]
+        .iter()
+        .all(|f| flags.split_whitespace().any(|x| x == *f))
 }
 
 fn curl_text(url: &str) -> Result<String, String> {
     if !have("curl") {
         return Err("curl is not installed (run: hgl doctor --fix)".into());
     }
-    out("curl", &["-fsSL", "--max-time", "30", "-H", "Accept: application/vnd.github+json", "-A", "halcyon-hgl", url])
-        .ok_or_else(|| format!("could not download {url} (offline, or GitHub's rate limit; try again later)"))
+    out(
+        "curl",
+        &[
+            "-fsSL",
+            "--max-time",
+            "30",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-A",
+            "halcyon-hgl",
+            url,
+        ],
+    )
+    .ok_or_else(|| {
+        format!("could not download {url} (offline, or GitHub's rate limit; try again later)")
+    })
 }
 
 pub fn available(fam: Family, count: usize) -> Result<Vec<Release>, String> {
@@ -205,14 +244,20 @@ fn gh_token() -> Option<String> {
         }
     }
     if have("gh") {
-        return out("gh", &["auth", "token"]).map(|t| t.trim().to_string()).filter(|t| ok(t));
+        return out("gh", &["auth", "token"])
+            .map(|t| t.trim().to_string())
+            .filter(|t| ok(t));
     }
     None
 }
 
 /// The releases JSON from the GitHub API (with the token if there is one; it goes in a 0600 header file, never on a command line).
 fn api_releases(fam: Family, count: usize) -> Option<String> {
-    let url = format!("https://api.github.com/repos/{}/releases?per_page={}", fam.repo(), count.clamp(1, 30));
+    let url = format!(
+        "https://api.github.com/repos/{}/releases?per_page={}",
+        fam.repo(),
+        count.clamp(1, 30)
+    );
     if let Some(t) = gh_token() {
         if let Some(b) = curl_run(&url, Some(&format!("Authorization: Bearer {t}")), None) {
             return Some(b);
@@ -226,10 +271,17 @@ fn api_releases(fam: Family, count: usize) -> Option<String> {
 /// is read), "latest" (stops at the first release with a usable file), or None (the newest `count`).
 fn web_releases(fam: Family, count: usize, want: Option<&str>) -> Option<String> {
     let repo = fam.repo();
-    let atom = curl_run(&format!("https://github.com/{repo}/releases.atom"), None, None)?;
+    let atom = curl_run(
+        &format!("https://github.com/{repo}/releases.atom"),
+        None,
+        None,
+    )?;
     let mut tags: Vec<String> = Vec::new();
     for part in atom.split("/releases/tag/").skip(1) {
-        let t: String = part.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+')).collect();
+        let t: String = part
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
+            .collect();
         if !t.is_empty() && !tags.contains(&t) {
             tags.push(t);
         }
@@ -239,7 +291,13 @@ fn web_releases(fam: Family, count: usize, want: Option<&str>) -> Option<String>
         if want.is_some_and(|w| w != "latest" && w != tag) {
             continue;
         }
-        let Some(html) = curl_run(&format!("https://github.com/{repo}/releases/expanded_assets/{tag}"), None, None) else { continue };
+        let Some(html) = curl_run(
+            &format!("https://github.com/{repo}/releases/expanded_assets/{tag}"),
+            None,
+            None,
+        ) else {
+            continue;
+        };
         let prefix = format!("/{repo}/releases/download/{tag}/");
         let files: Vec<String> = html
             .split("href=\"")
@@ -248,8 +306,18 @@ fn web_releases(fam: Family, count: usize, want: Option<&str>) -> Option<String>
             .filter(|h| h.starts_with(&prefix) && !h.contains(['<', '>', ' ']))
             .map(|h| format!("{{\"browser_download_url\":\"https://github.com{h}\"}}"))
             .collect();
-        json.push_str(&format!("{{\"tag_name\":\"{tag}\",\"assets\":[{}]}},", files.join(",")));
-        if want == Some("latest") && !parse_releases(&format!("{}]", json.trim_end_matches(',')), fam, cpu_has_v3()).is_empty() {
+        json.push_str(&format!(
+            "{{\"tag_name\":\"{tag}\",\"assets\":[{}]}},",
+            files.join(",")
+        ));
+        if want == Some("latest")
+            && !parse_releases(
+                &format!("{}]", json.trim_end_matches(',')),
+                fam,
+                cpu_has_v3(),
+            )
+            .is_empty()
+        {
             break;
         }
     }
@@ -277,7 +345,10 @@ fn available_for(fam: Family, count: usize, want: Option<&str>) -> Result<Vec<Re
 // ---------------------------------------------------------------- install / remove
 
 fn valid_runtime_name(n: &str) -> bool {
-    !n.is_empty() && !n.starts_with('.') && n.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
+    !n.is_empty()
+        && !n.starts_with('.')
+        && n.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
 }
 
 fn sha512_of(path: &Path) -> Option<String> {
@@ -294,15 +365,27 @@ pub fn install(spec: &str, fam: Family, cfg: &mut Conf) -> Result<String, String
     }
     // the newest only needs one release; a named tag is looked for among the newest 12
     let latest = spec == "latest" || spec.is_empty();
-    let releases = available_for(fam, if latest { 5 } else { 12 }, Some(if latest { "latest" } else { spec }))?;
+    let releases = available_for(
+        fam,
+        if latest { 5 } else { 12 },
+        Some(if latest { "latest" } else { spec }),
+    )?;
     let rel = if spec == "latest" || spec.is_empty() {
         releases.first()
     } else {
         releases.iter().find(|r| r.tag == spec)
     }
-    .ok_or_else(|| format!("release '{spec}' not found among the newest {} (see: hgl proton available)", releases.len()))?;
+    .ok_or_else(|| {
+        format!(
+            "release '{spec}' not found among the newest {} (see: hgl proton available)",
+            releases.len()
+        )
+    })?;
     if rel.sum_url.is_empty() {
-        return Err(format!("{} has no .sha512sum file: refusing to install an unchecked download", rel.tag));
+        return Err(format!(
+            "{} has no .sha512sum file: refusing to install an unchecked download",
+            rel.tag
+        ));
     }
 
     let root = proton_dir();
@@ -341,27 +424,50 @@ fn install_into(rel: &Release, root: &Path, tmp: &Path) -> Result<String, String
     }
     let sum_text = curl_text(&rel.sum_url)?;
     let _ = fs::write(sums, sum_text.as_str());
-    let want = sum_text.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+    let want = sum_text
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if want.len() != 128 || !want.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("the checksum file is not a SHA-512 sum".into());
     }
     let got = sha512_of(&file).ok_or("could not compute the checksum")?;
     if got != want {
-        return Err(format!("checksum mismatch for {} (expected {}..., got {}...): download discarded", rel.tarball, &want[..12], &got[..12.min(got.len())]));
+        return Err(format!(
+            "checksum mismatch for {} (expected {}..., got {}...): download discarded",
+            rel.tarball,
+            &want[..12],
+            &got[..12.min(got.len())]
+        ));
     }
     eprintln!("Checksum OK. Unpacking ...");
     let ex = tmp.join("x");
     fs::create_dir_all(&ex).map_err(|e| e.to_string())?;
-    let st = Command::new("tar").arg("-xf").arg(&file).arg("-C").arg(&ex).status().map_err(|e| e.to_string())?;
+    let st = Command::new("tar")
+        .arg("-xf")
+        .arg(&file)
+        .arg("-C")
+        .arg(&ex)
+        .status()
+        .map_err(|e| e.to_string())?;
     if !st.success() {
         return Err("unpacking failed (xz needed for CachyOS builds: run hgl doctor --fix)".into());
     }
-    let mut dirs: Vec<PathBuf> = fs::read_dir(&ex).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let mut dirs: Vec<PathBuf> = fs::read_dir(&ex)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
     if dirs.len() != 1 {
         return Err("unexpected archive layout".into());
     }
     let top = dirs.remove(0);
-    let name = top.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let name = top
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     if !valid_runtime_name(&name) || !top.join("proton").is_file() {
         return Err("the archive does not look like a Proton build".into());
     }
@@ -381,7 +487,10 @@ pub fn prune(cfg: &Conf) -> Result<Vec<String>, String> {
     let all = installed();
     let mut removed = Vec::new();
     for fam in [Family::Ge, Family::Cachy] {
-        let of: Vec<&Runtime> = all.iter().filter(|r| family_of(&r.name) == Some(fam)).collect();
+        let of: Vec<&Runtime> = all
+            .iter()
+            .filter(|r| family_of(&r.name) == Some(fam))
+            .collect();
         if of.len() <= keep {
             continue;
         }
@@ -401,10 +510,20 @@ pub fn remove(name: &str, cfg: &Conf) -> Result<(), String> {
     if !valid_runtime_name(name) {
         return Err(format!("not a runtime name: {name}"));
     }
-    let r = installed().into_iter().find(|r| r.name == name).ok_or_else(|| format!("{name} is not installed"))?;
-    let users: Vec<String> = store::all_games().into_iter().filter(|g| g.proton == name).map(|g| g.name).collect();
+    let r = installed()
+        .into_iter()
+        .find(|r| r.name == name)
+        .ok_or_else(|| format!("{name} is not installed"))?;
+    let users: Vec<String> = store::all_games()
+        .into_iter()
+        .filter(|g| g.proton == name)
+        .map(|g| g.name)
+        .collect();
     if !users.is_empty() {
-        return Err(format!("{name} is pinned by: {} (change their runtime first)", users.join(", ")));
+        return Err(format!(
+            "{name} is pinned by: {} (change their runtime first)",
+            users.join(", ")
+        ));
     }
     if cfg.get("proton_default") == Some(name) {
         return Err(format!("{name} is the default runtime (set another default first, or use: hgl proton rollback)"));
@@ -419,8 +538,13 @@ pub fn rollback(cfg: &mut Conf) -> Result<(String, String), String> {
     let all = installed();
     let cur = resolve("", cfg).ok_or("no runtime installed")?;
     let fam = family_of(&cur.name);
-    let older: Vec<&Runtime> = all.iter().filter(|r| family_of(&r.name) == fam && natural_cmp(&r.name, &cur.name).is_lt()).collect();
-    let prev = older.last().ok_or_else(|| format!("nothing older than {} is installed", cur.name))?;
+    let older: Vec<&Runtime> = all
+        .iter()
+        .filter(|r| family_of(&r.name) == fam && natural_cmp(&r.name, &cur.name).is_lt())
+        .collect();
+    let prev = older
+        .last()
+        .ok_or_else(|| format!("nothing older than {} is installed", cur.name))?;
     cfg.set("proton_default", &prev.name)?;
     Ok((cur.name, prev.name.clone()))
 }
@@ -435,13 +559,19 @@ pub fn set_default(name: &str, cfg: &mut Conf) -> Result<(), String> {
 // ---------------------------------------------------------------- Steam's compatibilitytools.d
 
 fn steam_tool_dirs() -> Vec<PathBuf> {
-    steam_roots_for_tools().into_iter().map(|r| r.join("compatibilitytools.d")).collect()
+    steam_roots_for_tools()
+        .into_iter()
+        .map(|r| r.join("compatibilitytools.d"))
+        .collect()
 }
 
 fn steam_roots_for_tools() -> Vec<PathBuf> {
     let h = home();
     let mut v = Vec::new();
-    for c in [data_home().join("Steam"), h.join(".var/app/com.valvesoftware.Steam/.local/share/Steam")] {
+    for c in [
+        data_home().join("Steam"),
+        h.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"),
+    ] {
         if c.join("steamapps").is_dir() && !v.contains(&c) {
             v.push(c);
         }
@@ -450,7 +580,9 @@ fn steam_roots_for_tools() -> Vec<PathBuf> {
 }
 
 fn link_steam_one(name: &str) {
-    let Some(r) = installed().into_iter().find(|r| r.name == name) else { return };
+    let Some(r) = installed().into_iter().find(|r| r.name == name) else {
+        return;
+    };
     for d in steam_tool_dirs() {
         if fs::create_dir_all(&d).is_ok() {
             let l = d.join(name);
@@ -531,7 +663,10 @@ mod tests {
     #[test]
     fn families() {
         assert_eq!(family_of("GE-Proton10-4"), Some(Family::Ge));
-        assert_eq!(family_of("proton-cachyos-10.0-20251111-slr-x86_64_v3"), Some(Family::Cachy));
+        assert_eq!(
+            family_of("proton-cachyos-10.0-20251111-slr-x86_64_v3"),
+            Some(Family::Cachy)
+        );
         assert_eq!(family_of("Proton-9.0"), None);
         assert!(valid_runtime_name("GE-Proton10-4"));
         assert!(!valid_runtime_name("../evil"));

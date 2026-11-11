@@ -14,8 +14,15 @@ pub fn run(args: &[String]) -> i32 {
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join("theme"), format!("{}\n", mode));
     if util::command_exists("gsettings") {
-        let scheme = if mode == "light" { "prefer-light" } else { "prefer-dark" };
-        let _ = util::ok("gsettings", &["set", "org.gnome.desktop.interface", "color-scheme", scheme]);
+        let scheme = if mode == "light" {
+            "prefer-light"
+        } else {
+            "prefer-dark"
+        };
+        let _ = util::ok(
+            "gsettings",
+            &["set", "org.gnome.desktop.interface", "color-scheme", scheme],
+        );
     }
     // GTK apps (Thunar ...) get the matching colours; still bash for now, so it is run, not ported
     let gtk = util::scripts_dir().join("gtk-theme.sh");

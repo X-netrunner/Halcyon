@@ -36,7 +36,9 @@ pub struct LrclibResponse {
 
 /// Parse timestamp formatted as `mm:ss`, `mm:ss.xx`, or `mm:ss.xxx` into milliseconds.
 pub fn parse_timestamp_ms(s: &str) -> Option<u64> {
-    let clean = s.trim().trim_matches(|c| c == '[' || c == ']' || c == '<' || c == '>');
+    let clean = s
+        .trim()
+        .trim_matches(|c| c == '[' || c == ']' || c == '<' || c == '>');
     let mut parts = clean.split(':');
     let mins_str = parts.next()?;
     let secs_str = parts.next()?;
@@ -61,7 +63,11 @@ pub fn parse_timestamp_ms(s: &str) -> Option<u64> {
         (sec, 0)
     };
 
-    Some(mins.saturating_mul(60_000).saturating_add(secs.saturating_mul(1000)).saturating_add(ms))
+    Some(
+        mins.saturating_mul(60_000)
+            .saturating_add(secs.saturating_mul(1000))
+            .saturating_add(ms),
+    )
 }
 
 /// Parse word-level tags in a line (e.g., `<00:12.34>word1 <00:13.00>word2`).
@@ -128,7 +134,9 @@ pub fn parse_lrc(lrc_text: &str) -> (Vec<LyricLine>, i64) {
 
         // Check for [offset:+/-ms] tag
         if trimmed.starts_with("[offset:") && trimmed.ends_with(']') {
-            let inner = trimmed.get(8..trimmed.len().saturating_sub(1)).unwrap_or("");
+            let inner = trimmed
+                .get(8..trimmed.len().saturating_sub(1))
+                .unwrap_or("");
             if let Ok(val) = inner.trim().parse::<i64>() {
                 global_offset_ms = val;
             }

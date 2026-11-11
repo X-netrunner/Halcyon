@@ -40,7 +40,8 @@ pub fn libraries() -> Vec<PathBuf> {
         if !libs.contains(&root) {
             libs.push(root.clone());
         }
-        let text = fs::read_to_string(root.join("steamapps/libraryfolders.vdf")).unwrap_or_default();
+        let text =
+            fs::read_to_string(root.join("steamapps/libraryfolders.vdf")).unwrap_or_default();
         let v = vdf::parse(&text);
         if let Some(lf) = v.get("libraryfolders") {
             for (_, f) in lf.entries() {
@@ -76,11 +77,21 @@ pub fn parse_manifest(text: &str) -> Option<SteamApp> {
     }
     let name = a.str("name")?.to_string();
     // StateFlags bit 4 = fully installed
-    let flags: u64 = a.str("StateFlags").and_then(|s| s.parse().ok()).unwrap_or(0);
+    let flags: u64 = a
+        .str("StateFlags")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
     if flags & 4 == 0 || is_tool(&name) {
         return None;
     }
-    Some(SteamApp { appid, name, last_played: a.str("LastPlayed").and_then(|s| s.parse().ok()).unwrap_or(0) })
+    Some(SteamApp {
+        appid,
+        name,
+        last_played: a
+            .str("LastPlayed")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0),
+    })
 }
 
 pub fn installed_apps() -> Vec<SteamApp> {
@@ -112,7 +123,11 @@ pub fn find_cover(appid: &str) -> Option<PathBuf> {
     }
     for root in roots() {
         let cache = root.join("appcache/librarycache");
-        for name in [format!("{appid}_library_600x900.jpg"), format!("{appid}_library_capsule.jpg"), format!("{appid}_header.jpg")] {
+        for name in [
+            format!("{appid}_library_600x900.jpg"),
+            format!("{appid}_library_capsule.jpg"),
+            format!("{appid}_header.jpg"),
+        ] {
             let p = cache.join(&name);
             if p.is_file() {
                 return Some(p);
@@ -159,13 +174,18 @@ pub fn id_for(appid: &str) -> String {
 /// Add new Steam games, refresh names and art, drop entries whose game was uninstalled. Own settings are kept.
 pub fn import() -> Result<(usize, usize, usize), String> {
     if roots().is_empty() {
-        return Err("no Steam installation found (looked in ~/.local/share/Steam, ~/.steam, Flatpak)".into());
+        return Err(
+            "no Steam installation found (looked in ~/.local/share/Steam, ~/.steam, Flatpak)"
+                .into(),
+        );
     }
     let apps = installed_apps();
     let (mut added, mut updated, mut removed) = (0, 0, 0);
     for a in &apps {
         let id = id_for(&a.appid);
-        let cover = find_cover(&a.appid).map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+        let cover = find_cover(&a.appid)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
         match Game::load(&id) {
             Ok(mut g) => {
                 let before = (g.name.clone(), g.cover.clone());
@@ -226,11 +246,17 @@ mod tests {
         assert!(a.is_some());
         assert_eq!(a.map(|a| a.last_played), Some(1_700_000_000));
         // still downloading
-        assert!(parse_manifest("\"AppState\" { \"appid\" \"1\" \"name\" \"X\" \"StateFlags\" \"1026\" }").is_none());
+        assert!(parse_manifest(
+            "\"AppState\" { \"appid\" \"1\" \"name\" \"X\" \"StateFlags\" \"1026\" }"
+        )
+        .is_none());
         // Steam's own tools are not games
         assert!(parse_manifest("\"AppState\" { \"appid\" \"1493710\" \"name\" \"Proton Experimental\" \"StateFlags\" \"4\" }").is_none());
         assert!(parse_manifest("\"AppState\" { \"appid\" \"1628350\" \"name\" \"Steam Linux Runtime 3.0 (sniper)\" \"StateFlags\" \"4\" }").is_none());
         // appid must be numeric: it ends up in a command line and a file name
-        assert!(parse_manifest("\"AppState\" { \"appid\" \"1;rm\" \"name\" \"X\" \"StateFlags\" \"4\" }").is_none());
+        assert!(parse_manifest(
+            "\"AppState\" { \"appid\" \"1;rm\" \"name\" \"X\" \"StateFlags\" \"4\" }"
+        )
+        .is_none());
     }
 }

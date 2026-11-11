@@ -22,13 +22,21 @@ pub struct Slide<'a, M, T, R> {
 
 impl<'a, M, T, R> Slide<'a, M, T, R> {
     pub fn new(content: impl Into<Element<'a, M, T, R>>, shown: f32) -> Self {
-        Self { content: content.into(), shown: shown.clamp(0.0, 1.0), horizontal: false }
+        Self {
+            content: content.into(),
+            shown: shown.clamp(0.0, 1.0),
+            horizontal: false,
+        }
     }
 
     /// Like `new`, but the content is revealed sideways: `shown` of its width is visible and it
     /// emerges from the left edge, like something sliding out from behind the button before it.
     pub fn horizontal(content: impl Into<Element<'a, M, T, R>>, shown: f32) -> Self {
-        Self { content: content.into(), shown: shown.clamp(0.0, 1.0), horizontal: true }
+        Self {
+            content: content.into(),
+            shown: shown.clamp(0.0, 1.0),
+            horizontal: true,
+        }
     }
 }
 
@@ -56,7 +64,10 @@ where
         let Some(child_tree) = tree.children.first_mut() else {
             return layout::Node::new(Size::ZERO);
         };
-        let child = self.content.as_widget().layout(child_tree, renderer, limits);
+        let child = self
+            .content
+            .as_widget()
+            .layout(child_tree, renderer, limits);
         let full = child.size();
         let (visible, at) = if self.horizontal {
             let v = Size::new(full.width * self.shown, full.height);
@@ -83,24 +94,42 @@ where
     ) {
         let bounds = layout.bounds();
         // Clip to what the parent lets through as well, so nothing is drawn over a scroll area's edge.
-        let Some(clip) = bounds.intersection(viewport) else { return };
+        let Some(clip) = bounds.intersection(viewport) else {
+            return;
+        };
         if clip.height < 0.5 || clip.width < 0.5 {
             return;
         }
-        let (Some(child_tree), Some(child)) = (tree.children.first(), layout.children().next()) else {
+        let (Some(child_tree), Some(child)) = (tree.children.first(), layout.children().next())
+        else {
             return;
         };
-        let cursor = if cursor.is_over(bounds) { cursor } else { mouse::Cursor::Unavailable };
+        let cursor = if cursor.is_over(bounds) {
+            cursor
+        } else {
+            mouse::Cursor::Unavailable
+        };
         renderer.with_layer(clip, |renderer| {
-            self.content.as_widget().draw(child_tree, renderer, theme, style, child, cursor, &clip);
+            self.content
+                .as_widget()
+                .draw(child_tree, renderer, theme, style, child, cursor, &clip);
         });
     }
 
-    fn operate(&self, tree: &mut Tree, layout: Layout<'_>, renderer: &R, operation: &mut dyn Operation) {
-        let (Some(child_tree), Some(child)) = (tree.children.first_mut(), layout.children().next()) else {
+    fn operate(
+        &self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &R,
+        operation: &mut dyn Operation,
+    ) {
+        let (Some(child_tree), Some(child)) = (tree.children.first_mut(), layout.children().next())
+        else {
             return;
         };
-        self.content.as_widget().operate(child_tree, child, renderer, operation);
+        self.content
+            .as_widget()
+            .operate(child_tree, child, renderer, operation);
     }
 
     fn on_event(
@@ -118,14 +147,19 @@ where
             return event::Status::Ignored;
         }
         let bounds = layout.bounds();
-        let (Some(child_tree), Some(child)) = (tree.children.first_mut(), layout.children().next()) else {
+        let (Some(child_tree), Some(child)) = (tree.children.first_mut(), layout.children().next())
+        else {
             return event::Status::Ignored;
         };
         // Pointer events outside the visible strip belong to whatever is under it.
-        let cursor = if cursor.is_over(bounds) { cursor } else { mouse::Cursor::Unavailable };
-        self.content
-            .as_widget_mut()
-            .on_event(child_tree, event, child, cursor, renderer, clipboard, shell, &bounds)
+        let cursor = if cursor.is_over(bounds) {
+            cursor
+        } else {
+            mouse::Cursor::Unavailable
+        };
+        self.content.as_widget_mut().on_event(
+            child_tree, event, child, cursor, renderer, clipboard, shell, &bounds,
+        )
     }
 
     fn mouse_interaction(
@@ -140,14 +174,19 @@ where
         if self.shown < 0.02 || !cursor.is_over(bounds) {
             return mouse::Interaction::None;
         }
-        let (Some(child_tree), Some(child)) = (tree.children.first(), layout.children().next()) else {
+        let (Some(child_tree), Some(child)) = (tree.children.first(), layout.children().next())
+        else {
             return mouse::Interaction::None;
         };
-        self.content.as_widget().mouse_interaction(child_tree, child, cursor, &bounds, renderer)
+        self.content
+            .as_widget()
+            .mouse_interaction(child_tree, child, cursor, &bounds, renderer)
     }
 }
 
-impl<'a, M: 'a, T: 'a, R: renderer::Renderer + 'a> From<Slide<'a, M, T, R>> for Element<'a, M, T, R> {
+impl<'a, M: 'a, T: 'a, R: renderer::Renderer + 'a> From<Slide<'a, M, T, R>>
+    for Element<'a, M, T, R>
+{
     fn from(slide: Slide<'a, M, T, R>) -> Self {
         Element::new(slide)
     }

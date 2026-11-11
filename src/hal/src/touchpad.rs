@@ -22,7 +22,10 @@ fn get_touchpad_device() -> Option<String> {
                         let after_quote = &val_part[v_start + 1..];
                         if let Some(v_end) = after_quote.find('\"') {
                             let name = &after_quote[..v_end];
-                            if name.chars().all(|c| c.is_ascii_alphanumeric() || " _:./+@()-".contains(c)) {
+                            if name
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || " _:./+@()-".contains(c))
+                            {
                                 return Some(name.to_string());
                             }
                         }
@@ -48,7 +51,12 @@ pub fn run(args: &[String]) -> i32 {
             let dev = match get_touchpad_device() {
                 Some(d) => d,
                 None => {
-                    util::notify("Touchpad", "No touchpad found", Some("input-touchpad"), 2500);
+                    util::notify(
+                        "Touchpad",
+                        "No touchpad found",
+                        Some("input-touchpad"),
+                        2500,
+                    );
                     return 1;
                 }
             };
@@ -60,15 +68,27 @@ pub fn run(args: &[String]) -> i32 {
                 ("enabled", "true")
             };
 
-            let eval_cmd = format!("hl.device({{ name = \"{}\", enabled = {} }})", dev, flag_str);
+            let eval_cmd = format!(
+                "hl.device({{ name = \"{}\", enabled = {} }})",
+                dev, flag_str
+            );
             let ok = util::ok("hyprctl", &["eval", &eval_cmd]);
             if ok {
                 let _ = fs::write(&sp, format!("{}\n", new_st));
-                let capitalized = if new_st == "enabled" { "Enabled" } else { "Disabled" };
+                let capitalized = if new_st == "enabled" {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                };
                 util::notify("Touchpad", capitalized, Some("input-touchpad"), 2000);
                 0
             } else {
-                util::notify("Touchpad", "Could not switch it (hyprctl failed)", Some("input-touchpad"), 2500);
+                util::notify(
+                    "Touchpad",
+                    "Could not switch it (hyprctl failed)",
+                    Some("input-touchpad"),
+                    2500,
+                );
                 1
             }
         }

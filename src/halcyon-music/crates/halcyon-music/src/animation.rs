@@ -32,7 +32,9 @@ fn preference_file() -> std::path::PathBuf {
 
 /// The saved "Reduce motion" choice (off when nothing is saved).
 pub fn load_preference() -> bool {
-    std::fs::read_to_string(preference_file()).map(|v| v.trim() == "1").unwrap_or(false)
+    std::fs::read_to_string(preference_file())
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
 }
 
 /// Remember the choice for next launch. Failure is harmless, so it is ignored.
@@ -47,7 +49,9 @@ pub fn save_preference(on: bool) {
 /// Solve a CSS-style cubic bezier easing `(x1, y1, x2, y2)` at time `t`.
 fn bezier(x1: f32, y1: f32, x2: f32, y2: f32, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
-    let at = |a: f32, b: f32, s: f32| 3.0 * a * (1.0 - s).powi(2) * s + 3.0 * b * (1.0 - s) * s * s + s.powi(3);
+    let at = |a: f32, b: f32, s: f32| {
+        3.0 * a * (1.0 - s).powi(2) * s + 3.0 * b * (1.0 - s) * s * s + s.powi(3)
+    };
     // Find the curve parameter whose x equals `t` (bisection: always converges, and is cheap).
     let (mut lo, mut hi) = (0.0f32, 1.0f32);
     for _ in 0..24 {
@@ -292,17 +296,27 @@ impl AnimationManager {
         let views = self.view_times.borrow();
         let avg = |v: &mut dyn Iterator<Item = f32>| {
             let (sum, n) = v.fold((0.0f32, 0usize), |(s, n), x| (s + x, n + 1));
-            if n == 0 { 0.0 } else { sum / n as f32 }
+            if n == 0 {
+                0.0
+            } else {
+                sum / n as f32
+            }
         };
         FrameStats {
             ticks: gaps.len(),
             avg_gap_ms: avg(&mut gaps.iter().copied()),
             worst_gap_ms: gaps.iter().copied().fold(0.0, f32::max),
-            late_ticks: gaps.iter().filter(|g| **g > motion::FRAME_BUDGET_MS + 4.0).count(),
+            late_ticks: gaps
+                .iter()
+                .filter(|g| **g > motion::FRAME_BUDGET_MS + 4.0)
+                .count(),
             views: views.len(),
             avg_view_ms: avg(&mut views.iter().copied()),
             worst_view_ms: views.iter().copied().fold(0.0, f32::max),
-            slow_views: views.iter().filter(|v| **v > motion::FRAME_BUDGET_MS).count(),
+            slow_views: views
+                .iter()
+                .filter(|v| **v > motion::FRAME_BUDGET_MS)
+                .count(),
         }
     }
 
@@ -529,7 +543,10 @@ mod tests {
 
     #[test]
     fn tokens_are_the_three_durations_from_the_plan() {
-        assert_eq!((motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS), (120, 220, 420));
+        assert_eq!(
+            (motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS),
+            (120, 220, 420)
+        );
         assert_eq!(crate::theme::MAX_ANIMATION_MS, motion::SLOW_MS);
     }
 
@@ -551,22 +568,40 @@ mod tests {
 
     #[test]
     fn every_started_animation_stays_within_the_slow_token() {
-        let mut m = AnimationManager { reduce_motion: false, ..Default::default() };
+        let mut m = AnimationManager {
+            reduce_motion: false,
+            ..Default::default()
+        };
         m.animate_page_switch();
         m.animate_sidebar_pill(2.0);
         m.animate_sidebar(true);
         m.animate_queue(true);
         m.animate_search(false);
         m.animate_toast_show();
-        for a in [&m.page_transition, &m.sidebar_pill, &m.sidebar_expand, &m.queue_expand, &m.search_reveal, &m.toast_slide] {
-            assert!(a.duration <= Duration::from_millis(motion::SLOW_MS), "{:?}", a.duration);
-            assert!([motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS].contains(&(a.duration.as_millis() as u64)));
+        for a in [
+            &m.page_transition,
+            &m.sidebar_pill,
+            &m.sidebar_expand,
+            &m.queue_expand,
+            &m.search_reveal,
+            &m.toast_slide,
+        ] {
+            assert!(
+                a.duration <= Duration::from_millis(motion::SLOW_MS),
+                "{:?}",
+                a.duration
+            );
+            assert!([motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS]
+                .contains(&(a.duration.as_millis() as u64)));
         }
     }
 
     #[test]
     fn the_reduce_motion_switch_turns_every_animation_off() {
-        let mut m = AnimationManager { system_reduce_motion: false, ..Default::default() };
+        let mut m = AnimationManager {
+            system_reduce_motion: false,
+            ..Default::default()
+        };
         m.set_user_reduce_motion(false);
         m.animate_page_switch();
         m.animate_sidebar(true);
@@ -574,7 +609,10 @@ mod tests {
         assert!(m.is_animating());
         m.set_user_reduce_motion(true);
         assert!(m.reduce_motion && m.user_reduce_motion);
-        assert!(!m.is_animating(), "switching it on must stop what is moving");
+        assert!(
+            !m.is_animating(),
+            "switching it on must stop what is moving"
+        );
         assert_eq!(m.page_progress(), 1.0);
         m.animate_page_switch();
         m.animate_sidebar(false);
@@ -582,7 +620,14 @@ mod tests {
         m.animate_search(false);
         m.animate_toast_show();
         assert!(!m.is_animating());
-        assert_eq!((m.sidebar_progress(), m.queue_progress(), m.search_progress()), (0.0, 1.0, 0.0));
+        assert_eq!(
+            (
+                m.sidebar_progress(),
+                m.queue_progress(),
+                m.search_progress()
+            ),
+            (0.0, 1.0, 0.0)
+        );
         assert_eq!((m.breath(), m.clock()), (0.5, 0.0));
         // and off again
         m.set_user_reduce_motion(false);
@@ -591,9 +636,15 @@ mod tests {
 
     #[test]
     fn the_system_setting_wins_over_the_switch() {
-        let mut m = AnimationManager { system_reduce_motion: true, ..Default::default() };
+        let mut m = AnimationManager {
+            system_reduce_motion: true,
+            ..Default::default()
+        };
         m.set_user_reduce_motion(false);
-        assert!(m.reduce_motion, "GTK_ENABLE_ANIMATIONS=0 must stay respected");
+        assert!(
+            m.reduce_motion,
+            "GTK_ENABLE_ANIMATIONS=0 must stay respected"
+        );
         assert!(AnimationManager::with_preference(true).reduce_motion);
     }
 
@@ -601,7 +652,11 @@ mod tests {
     fn frame_stats_ignore_idle_gaps_and_count_slow_work() {
         let mut m = AnimationManager::default();
         assert_eq!(m.frame_stats(), FrameStats::default());
-        m.frame_gaps.extend([16.6, 16.7, 40.0, 16.6, 900.0_f32].iter().filter(|g| **g < IDLE_GAP_MS));
+        m.frame_gaps.extend(
+            [16.6, 16.7, 40.0, 16.6, 900.0_f32]
+                .iter()
+                .filter(|g| **g < IDLE_GAP_MS),
+        );
         m.record_view(Duration::from_micros(2500));
         m.record_view(Duration::from_millis(20));
         let s = m.frame_stats();

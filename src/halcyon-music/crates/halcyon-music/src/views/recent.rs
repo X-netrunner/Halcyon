@@ -29,7 +29,11 @@ pub fn view<'a, Message: Clone + 'static>(
     .padding([16, 24])
     .width(Length::Fill);
 
-    let words: Vec<String> = filter.to_lowercase().split_whitespace().map(String::from).collect();
+    let words: Vec<String> = filter
+        .to_lowercase()
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     let items: Vec<_> = feed
         .jump_back_in
         .iter()
@@ -46,8 +50,8 @@ pub fn view<'a, Message: Clone + 'static>(
             } else {
                 "Nothing matches your search."
             })
-                .size(13)
-                .color(palette.text_muted),
+            .size(13)
+            .color(palette.text_muted),
         );
         return page.into();
     }
@@ -69,7 +73,9 @@ pub fn view<'a, Message: Clone + 'static>(
                         palette,
                     ),
                     Space::with_height(8),
-                    text(super::ellipsize(&item.title, 22)).size(13).color(palette.text),
+                    text(super::ellipsize(&item.title, 22))
+                        .size(13)
+                        .color(palette.text),
                     text(super::ellipsize(&item.subtitle, 26))
                         .size(11)
                         .color(palette.text_muted),
@@ -86,7 +92,11 @@ pub fn view<'a, Message: Clone + 'static>(
             })
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
+                    if s == button::Status::Hovered {
+                        crate::theme::mix(palette.surface, palette.accent, 0.16)
+                    } else {
+                        crate::theme::alpha(palette.surface, 0.62)
+                    }
                     .into(),
                 ),
                 border: iced::Border {

@@ -124,12 +124,17 @@ fn verified_path(dir: &Path, file: &str) -> PathBuf {
 
 /// Does this file start with the GGUF magic and have a believable size?
 pub fn looks_like_gguf(path: &Path) -> bool {
-    let Ok(meta) = std::fs::metadata(path) else { return false };
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
     if !meta.is_file() || meta.len() < MIN_MODEL_BYTES {
         return false;
     }
     let mut magic = [0u8; 4];
-    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok() && &magic == b"GGUF"
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut magic))
+        .is_ok()
+        && &magic == b"GGUF"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -143,14 +148,27 @@ pub struct DiskStatus {
 pub fn disk_status(dir: &Path, file: &str) -> DiskStatus {
     let final_path = model_path(dir, file);
     let installed = looks_like_gguf(&final_path);
-    let size = if installed { std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0) } else { 0 };
-    let partial = std::fs::metadata(part_path(dir, file)).map(|m| m.len()).unwrap_or(0);
+    let size = if installed {
+        std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0)
+    } else {
+        0
+    };
+    let partial = std::fs::metadata(part_path(dir, file))
+        .map(|m| m.len())
+        .unwrap_or(0);
     let verified = if installed {
-        std::fs::read_to_string(verified_path(dir, file)).map(|s| s.trim().to_string()).unwrap_or_default()
+        std::fs::read_to_string(verified_path(dir, file))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
     } else {
         String::new()
     };
-    DiskStatus { installed, size, partial, verified }
+    DiskStatus {
+        installed,
+        size,
+        partial,
+        verified,
+    }
 }
 
 pub fn info(spec: &ModelSpec, dir: &Path) -> LlmModelInfo {
@@ -158,7 +176,11 @@ pub fn info(spec: &ModelSpec, dir: &Path) -> LlmModelInfo {
     LlmModelInfo {
         id: spec.id.to_string(),
         name: spec.name.to_string(),
-        size_bytes: if d.installed { d.size } else { spec.approx_bytes },
+        size_bytes: if d.installed {
+            d.size
+        } else {
+            spec.approx_bytes
+        },
         licence: spec.licence.to_string(),
         installed: d.installed,
         partial_bytes: if d.installed { 0 } else { d.partial },
@@ -172,7 +194,12 @@ pub fn list(dir: &Path) -> Vec<LlmModelInfo> {
 
 /// Remove the model file, any half-finished download of it and its markers.
 pub fn delete_files(dir: &Path, file: &str) {
-    for p in [model_path(dir, file), part_path(dir, file), meta_path(dir, file), verified_path(dir, file)] {
+    for p in [
+        model_path(dir, file),
+        part_path(dir, file),
+        meta_path(dir, file),
+        verified_path(dir, file),
+    ] {
         let _ = std::fs::remove_file(p);
     }
 }
@@ -244,7 +271,12 @@ pub struct Plan<'a> {
 
 impl<'a> Plan<'a> {
     pub fn from_spec(spec: &'a ModelSpec) -> Self {
-        Self { url: spec.url, file: spec.file, pinned_sha: spec.sha256, approx_bytes: spec.approx_bytes }
+        Self {
+            url: spec.url,
+            file: spec.file,
+            pinned_sha: spec.sha256,
+            approx_bytes: spec.approx_bytes,
+        }
     }
 }
 
@@ -264,12 +296,20 @@ pub struct HeadInfo {
 }
 
 fn clean_sha(raw: &str) -> Option<String> {
-    let t = raw.trim().trim_start_matches("W/").trim_matches('"').to_ascii_lowercase();
+    let t = raw
+        .trim()
+        .trim_start_matches("W/")
+        .trim_matches('"')
+        .to_ascii_lowercase();
     (t.len() == 64 && t.chars().all(|c| c.is_ascii_hexdigit())).then_some(t)
 }
 
 fn client(redirects: bool) -> reqwest::Client {
-    let policy = if redirects { reqwest::redirect::Policy::limited(8) } else { reqwest::redirect::Policy::none() };
+    let policy = if redirects {
+        reqwest::redirect::Policy::limited(8)
+    } else {
+        reqwest::redirect::Policy::none()
+    };
     reqwest::Client::builder()
         .redirect(policy)
         .connect_timeout(Duration::from_secs(15))
@@ -285,20 +325,30 @@ fn map_err(e: reqwest::Error) -> DownloadError {
 /// Ask the server about the file without following redirects: the checksum and size are on the
 /// first answer (the redirect), not on the storage host it points to.
 pub async fn head(url: &str) -> Result<HeadInfo, DownloadError> {
-    let resp = client(false).head(url).timeout(Duration::from_secs(20)).send().await.map_err(map_err)?;
+    let resp = client(false)
+        .head(url)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(map_err)?;
     let status = resp.status();
     if status.is_client_error() || status.is_server_error() {
         return Err(DownloadError::Server(status.as_u16()));
     }
     let h = resp.headers();
-    let sha = h.get("x-linked-etag").and_then(|v| v.to_str().ok()).and_then(clean_sha);
+    let sha = h
+        .get("x-linked-etag")
+        .and_then(|v| v.to_str().ok())
+        .and_then(clean_sha);
     let total = h
         .get("x-linked-size")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
         .or_else(|| {
             if status.is_success() {
-                h.get(reqwest::header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok())
+                h.get(reqwest::header::CONTENT_LENGTH)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse().ok())
             } else {
                 None
             }
@@ -308,14 +358,22 @@ pub async fn head(url: &str) -> Result<HeadInfo, DownloadError> {
 }
 
 fn content_range(resp: &reqwest::Response) -> Option<(u64, Option<u64>)> {
-    let v = resp.headers().get(reqwest::header::CONTENT_RANGE)?.to_str().ok()?;
+    let v = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)?
+        .to_str()
+        .ok()?;
     let rest = v.strip_prefix("bytes ")?;
     let (range, total) = rest.split_once('/')?;
     let (start, _end) = range.split_once('-')?;
     Some((start.parse().ok()?, total.parse().ok()))
 }
 
-fn sha256_file(path: &Path, cancel: &AtomicBool, mut on_block: impl FnMut(u64)) -> Result<String, DownloadError> {
+fn sha256_file(
+    path: &Path,
+    cancel: &AtomicBool,
+    mut on_block: impl FnMut(u64),
+) -> Result<String, DownloadError> {
     let mut f = std::fs::File::open(path).map_err(|e| DownloadError::Io(e.to_string()))?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];
@@ -324,7 +382,9 @@ fn sha256_file(path: &Path, cancel: &AtomicBool, mut on_block: impl FnMut(u64)) 
         if cancel.load(Ordering::SeqCst) {
             return Err(DownloadError::Cancelled);
         }
-        let n = f.read(&mut buf).map_err(|e| DownloadError::Io(e.to_string()))?;
+        let n = f
+            .read(&mut buf)
+            .map_err(|e| DownloadError::Io(e.to_string()))?;
         if n == 0 {
             break;
         }
@@ -357,7 +417,11 @@ pub async fn download(
         let same = std::fs::read_to_string(&meta)
             .ok()
             .and_then(|s| serde_json::from_str::<PartMeta>(&s).ok())
-            .map(|m| m.url == plan.url && m.sha == info.sha && (m.total.is_none() || total.is_none() || m.total == total))
+            .map(|m| {
+                m.url == plan.url
+                    && m.sha == info.sha
+                    && (m.total.is_none() || total.is_none() || m.total == total)
+            })
             .unwrap_or(false);
         if !same || total.map(|t| have > t).unwrap_or(false) {
             let _ = std::fs::remove_file(&part);
@@ -366,14 +430,20 @@ pub async fn download(
     }
 
     let expected_total = total.unwrap_or(plan.approx_bytes);
-    let needed = expected_total.saturating_sub(have).saturating_add(SPACE_MARGIN);
+    let needed = expected_total
+        .saturating_sub(have)
+        .saturating_add(SPACE_MARGIN);
     if let Some(free) = free_bytes(dir) {
         if free < needed {
             return Err(DownloadError::DiskFull { needed, free });
         }
     }
     let write_meta = |total: Option<u64>| {
-        let m = PartMeta { url: plan.url.to_string(), sha: info.sha.clone(), total };
+        let m = PartMeta {
+            url: plan.url.to_string(),
+            sha: info.sha.clone(),
+            total,
+        };
         if let Ok(json) = serde_json::to_string(&m) {
             let _ = std::fs::write(&meta, json);
         }
@@ -381,7 +451,11 @@ pub async fn download(
     write_meta(total);
 
     let mut last = Instant::now() - PROGRESS_EVERY;
-    let mut emit = |state: &'static str, done: u64, total: u64, force: bool, f: &mut (dyn FnMut(Progress) + Send)| {
+    let mut emit = |state: &'static str,
+                    done: u64,
+                    total: u64,
+                    force: bool,
+                    f: &mut (dyn FnMut(Progress) + Send)| {
         if force || last.elapsed() >= PROGRESS_EVERY {
             last = Instant::now();
             f(Progress { state, done, total });
@@ -464,14 +538,26 @@ pub async fn download(
                     }
                     Ok(Ok(None)) => break,
                     Ok(Ok(Some(bytes))) => {
-                        file.write_all(&bytes).await.map_err(|e| DownloadError::Io(e.to_string()))?;
+                        file.write_all(&bytes)
+                            .await
+                            .map_err(|e| DownloadError::Io(e.to_string()))?;
                         done += bytes.len() as u64;
-                        emit("downloading", done, total.unwrap_or(plan.approx_bytes).max(done), false, on_progress);
+                        emit(
+                            "downloading",
+                            done,
+                            total.unwrap_or(plan.approx_bytes).max(done),
+                            false,
+                            on_progress,
+                        );
                     }
                 }
             }
-            file.flush().await.map_err(|e| DownloadError::Io(e.to_string()))?;
-            file.sync_all().await.map_err(|e| DownloadError::Io(e.to_string()))?;
+            file.flush()
+                .await
+                .map_err(|e| DownloadError::Io(e.to_string()))?;
+            file.sync_all()
+                .await
+                .map_err(|e| DownloadError::Io(e.to_string()))?;
             break;
         }
     }
@@ -494,7 +580,10 @@ pub async fn download(
     }
 
     // Verify: read the whole file once.
-    let expected = plan.pinned_sha.map(str::to_ascii_lowercase).or_else(|| info.sha.clone());
+    let expected = plan
+        .pinned_sha
+        .map(str::to_ascii_lowercase)
+        .or_else(|| info.sha.clone());
     let mut how = "size";
     if let Some(expected) = expected {
         emit("verifying", 0, size, true, on_progress);
@@ -522,7 +611,11 @@ pub async fn download(
             let _ = std::fs::remove_file(&meta);
             return Err(DownloadError::Checksum);
         }
-        how = if plan.pinned_sha.is_some() { "pinned" } else { "server" };
+        how = if plan.pinned_sha.is_some() {
+            "pinned"
+        } else {
+            "server"
+        };
     }
 
     std::fs::rename(&part, &final_path).map_err(|e| DownloadError::Io(e.to_string()))?;
@@ -546,14 +639,30 @@ struct Active {
 
 static ACTIVE: Mutex<Option<Active>> = Mutex::new(None);
 
-fn download_event(id: &str, state: &str, done: u64, total: u64, error: Option<String>) -> protocol::Event {
-    protocol::event(EventBody::LlmDownload { id: id.to_string(), state: state.to_string(), done, total, error })
+fn download_event(
+    id: &str,
+    state: &str,
+    done: u64,
+    total: u64,
+    error: Option<String>,
+) -> protocol::Event {
+    protocol::event(EventBody::LlmDownload {
+        id: id.to_string(),
+        state: state.to_string(),
+        done,
+        total,
+        error,
+    })
 }
 
 /// Tell every client which models exist and what is on disk.
 pub fn announce_models(ctx: &DaemonContext) {
     let settings = super::load_settings(&ctx.cache);
-    let active = if settings.backend == "local" { settings.local_model.clone() } else { String::new() };
+    let active = if settings.backend == "local" {
+        settings.local_model.clone()
+    } else {
+        String::new()
+    };
     let _ = ctx.events_tx.send(protocol::event(EventBody::LlmModels {
         models: list(&models_dir()),
         engine: super::local::engine_available(),
@@ -570,7 +679,13 @@ pub fn is_downloading() -> bool {
 /// a download is running; says so on the event stream when the id is unknown.
 pub fn spawn_download(ctx: Arc<DaemonContext>, id: String) {
     let Some(spec) = find(&id) else {
-        let _ = ctx.events_tx.send(download_event(&id, "failed", 0, 0, Some("That model isn't in the list.".into())));
+        let _ = ctx.events_tx.send(download_event(
+            &id,
+            "failed",
+            0,
+            0,
+            Some("That model isn't in the list.".into()),
+        ));
         return;
     };
     if disk_status(&models_dir(), spec.file).installed {
@@ -579,7 +694,9 @@ pub fn spawn_download(ctx: Arc<DaemonContext>, id: String) {
     }
     let cancel = Arc::new(AtomicBool::new(false));
     {
-        let Ok(mut active) = ACTIVE.lock() else { return };
+        let Ok(mut active) = ACTIVE.lock() else {
+            return;
+        };
         if let Some(a) = active.as_ref() {
             if a.id != id {
                 let _ = ctx.events_tx.send(download_event(
@@ -592,7 +709,10 @@ pub fn spawn_download(ctx: Arc<DaemonContext>, id: String) {
             }
             return;
         }
-        *active = Some(Active { id: id.clone(), cancel: cancel.clone() });
+        *active = Some(Active {
+            id: id.clone(),
+            cancel: cancel.clone(),
+        });
     }
     crate::supervisor::run_guarded("llm-model-download", async move {
         info!(model = spec.id, "model download started");
@@ -610,19 +730,29 @@ pub fn spawn_download(ctx: Arc<DaemonContext>, id: String) {
             Ok(how) => {
                 info!(model = spec.id, checked = %how, "model download finished");
                 let size = disk_status(&dir, spec.file).size;
-                let _ = ctx.events_tx.send(download_event(spec.id, "done", size, size, None));
+                let _ = ctx
+                    .events_tx
+                    .send(download_event(spec.id, "done", size, size, None));
                 announce_models(&ctx);
                 super::model_ready(ctx.clone(), spec.id);
             }
             Err(DownloadError::Cancelled) => {
                 let d = disk_status(&dir, spec.file);
-                let _ = ctx.events_tx.send(download_event(spec.id, "cancelled", d.partial, 0, None));
+                let _ =
+                    ctx.events_tx
+                        .send(download_event(spec.id, "cancelled", d.partial, 0, None));
                 announce_models(&ctx);
             }
             Err(e) => {
                 warn!(model = spec.id, "model download failed: {e}");
                 let d = disk_status(&dir, spec.file);
-                let _ = ctx.events_tx.send(download_event(spec.id, "failed", d.partial, 0, Some(e.to_string())));
+                let _ = ctx.events_tx.send(download_event(
+                    spec.id,
+                    "failed",
+                    d.partial,
+                    0,
+                    Some(e.to_string()),
+                ));
                 announce_models(&ctx);
             }
         }
@@ -641,9 +771,18 @@ pub fn cancel_download() {
 /// Delete a model file. Refused while that model is downloading.
 pub fn delete_model(ctx: &DaemonContext, id: &str) {
     let Some(spec) = find(id) else { return };
-    let busy = ACTIVE.lock().map(|a| a.as_ref().map(|a| a.id == id).unwrap_or(false)).unwrap_or(false);
+    let busy = ACTIVE
+        .lock()
+        .map(|a| a.as_ref().map(|a| a.id == id).unwrap_or(false))
+        .unwrap_or(false);
     if busy {
-        let _ = ctx.events_tx.send(download_event(id, "failed", 0, 0, Some("Cancel the download before deleting it.".into())));
+        let _ = ctx.events_tx.send(download_event(
+            id,
+            "failed",
+            0,
+            0,
+            Some("Cancel the download before deleting it.".into()),
+        ));
         return;
     }
     // The model may be loaded in memory: let go of it first.
@@ -668,9 +807,21 @@ mod tests {
         for m in CATALOGUE {
             assert!(ids.insert(m.id), "duplicate id {}", m.id);
             assert!(m.url.starts_with("https://"), "{}", m.id);
-            assert!(m.url.ends_with(m.file), "file name must be the end of the URL: {}", m.id);
-            assert!(m.file.ends_with(".gguf") && !m.file.contains('/'), "{}", m.id);
-            assert!(m.approx_bytes > 100_000_000 && m.approx_bytes < 2_000_000_000, "{}", m.id);
+            assert!(
+                m.url.ends_with(m.file),
+                "file name must be the end of the URL: {}",
+                m.id
+            );
+            assert!(
+                m.file.ends_with(".gguf") && !m.file.contains('/'),
+                "{}",
+                m.id
+            );
+            assert!(
+                m.approx_bytes > 100_000_000 && m.approx_bytes < 2_000_000_000,
+                "{}",
+                m.id
+            );
             assert!(!m.licence.is_empty());
             if let Some(h) = m.sha256 {
                 assert!(clean_sha(h).is_some(), "bad pinned checksum for {}", m.id);
@@ -679,7 +830,10 @@ mod tests {
         assert!(is_known(DEFAULT_LOCAL_MODEL));
         assert!(!is_known("../../etc/passwd"));
         // The default must be the permissively licensed one.
-        assert_eq!(find(DEFAULT_LOCAL_MODEL).map(|m| m.licence), Some("Apache-2.0"));
+        assert_eq!(
+            find(DEFAULT_LOCAL_MODEL).map(|m| m.licence),
+            Some("Apache-2.0")
+        );
     }
 
     #[test]
@@ -739,8 +893,15 @@ mod tests {
 
     #[test]
     fn error_messages_are_plain_language_with_a_next_step() {
-        assert!(DownloadError::Offline("dns".into()).to_string().contains("try again"));
-        assert!(DownloadError::DiskFull { needed: 600_000_000, free: 100_000_000 }.to_string().contains("Free some space"));
+        assert!(DownloadError::Offline("dns".into())
+            .to_string()
+            .contains("try again"));
+        assert!(DownloadError::DiskFull {
+            needed: 600_000_000,
+            free: 100_000_000
+        }
+        .to_string()
+        .contains("Free some space"));
         assert!(DownloadError::Checksum.to_string().contains("deleted"));
         assert!(DownloadError::Cancelled.to_string().contains("resumes"));
         assert!(DownloadError::Server(503).to_string().contains("503"));
@@ -754,7 +915,13 @@ mod tests {
         let p = dir.path().join("f");
         std::fs::write(&p, b"abc").expect("write");
         let h = sha256_file(&p, &AtomicBool::new(false), |_| {}).expect("hash");
-        assert_eq!(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        assert_eq!(sha256_file(&p, &AtomicBool::new(true), |_| {}), Err(DownloadError::Cancelled));
+        assert_eq!(
+            h,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256_file(&p, &AtomicBool::new(true), |_| {}),
+            Err(DownloadError::Cancelled)
+        );
     }
 }

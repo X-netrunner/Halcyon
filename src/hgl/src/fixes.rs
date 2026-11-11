@@ -7,7 +7,15 @@ use crate::util::*;
 const BUILTIN: &str = include_str!("../fixes.db");
 
 /// The `hgl set` keys a fix may change. Never `exe`, `proton`, `prefix`: a database entry must not point a game somewhere else.
-const SETTABLE: &[&str] = &["wrappers", "args", "wayland", "gamescope", "umu_id", "lean", "debug"];
+const SETTABLE: &[&str] = &[
+    "wrappers",
+    "args",
+    "wayland",
+    "gamescope",
+    "umu_id",
+    "lean",
+    "debug",
+];
 
 #[derive(Clone, Debug, Default)]
 pub struct Fix {
@@ -26,12 +34,21 @@ pub fn parse(text: &str) -> Vec<Fix> {
             continue;
         }
         if let Some(inner) = t.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
-            let keys: Vec<String> = inner.split(',').map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()).collect();
-            v.push(Fix { keys, ..Fix::default() });
+            let keys: Vec<String> = inner
+                .split(',')
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            v.push(Fix {
+                keys,
+                ..Fix::default()
+            });
             continue;
         }
         let Some(cur) = v.last_mut() else { continue };
-        let Some((k, val)) = t.split_once('=') else { continue };
+        let Some((k, val)) = t.split_once('=') else {
+            continue;
+        };
         let (k, val) = (k.trim(), val.trim());
         if k == "note" {
             cur.note = val.to_string();
@@ -79,7 +96,12 @@ impl Db {
 
     /// The warnings that apply to this game, in one line.
     pub fn note_for(&self, g: &Game) -> String {
-        self.matches(g).iter().map(|f| f.note.clone()).filter(|n| !n.is_empty()).collect::<Vec<String>>().join(" ")
+        self.matches(g)
+            .iter()
+            .map(|f| f.note.clone())
+            .filter(|n| !n.is_empty())
+            .collect::<Vec<String>>()
+            .join(" ")
     }
 
     /// What applying would change (for `hgl fixes`).
@@ -118,7 +140,8 @@ impl Db {
             }
         }
         g.unknown.retain(|(k, _)| k != "fixes_applied");
-        g.unknown.push(("fixes_applied".to_string(), "1".to_string()));
+        g.unknown
+            .push(("fixes_applied".to_string(), "1".to_string()));
         done
     }
 }
@@ -134,7 +157,10 @@ mod tests {
         let f = parse(SAMPLE);
         assert_eq!(f.len(), 2);
         assert_eq!(f[0].keys, vec!["steam:42", "name:old game"]);
-        assert_eq!(f[0].env, vec![("PROTON_USE_WINED3D".to_string(), "1".to_string())]);
+        assert_eq!(
+            f[0].env,
+            vec![("PROTON_USE_WINED3D".to_string(), "1".to_string())]
+        );
         // exe is not settable from a database, and a bad variable name is dropped
         assert_eq!(f[0].sets, vec![("wayland".to_string(), "off".to_string())]);
     }
@@ -143,12 +169,16 @@ mod tests {
     fn builtin_parses() {
         let f = parse(BUILTIN);
         assert!(f.iter().all(|x| !x.keys.is_empty() && !x.note.is_empty()));
-        assert!(f.iter().any(|x| x.keys.iter().any(|k| k == "epic:fortnite")));
+        assert!(f
+            .iter()
+            .any(|x| x.keys.iter().any(|k| k == "epic:fortnite")));
     }
 
     #[test]
     fn matching_and_applying_once() {
-        let db = Db { fixes: parse(SAMPLE) };
+        let db = Db {
+            fixes: parse(SAMPLE),
+        };
         let mut g = Game::new("steam-42", "Whatever", "steam");
         g.appid = "42".into();
         assert_eq!(db.note_for(&g), "careful");

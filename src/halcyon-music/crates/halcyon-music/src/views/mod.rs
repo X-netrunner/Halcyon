@@ -1,9 +1,9 @@
+pub mod account;
 pub mod capsule;
+pub mod connect_settings;
 pub mod crossfade;
 pub mod detail;
-pub mod account;
 pub mod diagnostics;
-pub mod connect_settings;
 pub mod discover;
 pub mod dock;
 pub mod frame;
@@ -31,8 +31,8 @@ pub mod side_panel;
 pub mod sidebar;
 pub mod slide;
 pub mod tabs;
-pub mod track_menu;
 pub mod titlebar;
+pub mod track_menu;
 pub mod up_next;
 pub mod viz_canvas;
 
@@ -97,9 +97,7 @@ pub fn ghost(
 }
 
 /// A calm raised card: faint glow at the top, hairline border, soft shadow.
-pub fn card(
-    palette: HalcyonPalette,
-) -> impl Fn(&iced::Theme) -> container::Style + Copy {
+pub fn card(palette: HalcyonPalette) -> impl Fn(&iced::Theme) -> container::Style + Copy {
     move |_theme| container::Style {
         background: Some(palette.card_background()),
         border: iced::Border {
@@ -108,7 +106,10 @@ pub fn card(
             radius: theme::radius::LG.into(),
         },
         shadow: iced::Shadow {
-            color: theme::alpha(iced::Color::BLACK, if palette.is_light() { 0.08 } else { 0.28 }),
+            color: theme::alpha(
+                iced::Color::BLACK,
+                if palette.is_light() { 0.08 } else { 0.28 },
+            ),
             offset: iced::Vector::new(0.0, 8.0),
             blur_radius: 24.0,
         },
@@ -117,9 +118,7 @@ pub fn card(
 }
 
 /// A small rounded tag (for "Live Suggestions" and similar).
-pub fn chip(
-    palette: HalcyonPalette,
-) -> impl Fn(&iced::Theme) -> container::Style + Copy {
+pub fn chip(palette: HalcyonPalette) -> impl Fn(&iced::Theme) -> container::Style + Copy {
     move |_theme| container::Style {
         background: Some(theme::alpha(palette.accent, 0.14).into()),
         border: iced::Border {
@@ -214,9 +213,15 @@ pub fn slider_style(
                 },
             },
             handle: slider::Handle {
-                shape: slider::HandleShape::Circle { radius: handle_radius },
+                shape: slider::HandleShape::Circle {
+                    radius: handle_radius,
+                },
                 background: iced::Background::Color(palette.accent),
-                border_width: if status == slider::Status::Active { 0.0 } else { 3.0 },
+                border_width: if status == slider::Status::Active {
+                    0.0
+                } else {
+                    3.0
+                },
                 border_color: theme::alpha(palette.glow, 0.35),
             },
         }
@@ -232,7 +237,11 @@ pub fn icon_action<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     msg: Option<M>,
 ) -> Element<'a, M> {
-    let tint = if msg.is_some() { palette.text } else { theme::alpha(palette.text_muted, 0.55) };
+    let tint = if msg.is_some() {
+        palette.text
+    } else {
+        theme::alpha(palette.text_muted, 0.55)
+    };
     let mut b = button(
         container(icon(glyph, 18.0, tint))
             .width(40)
@@ -245,12 +254,21 @@ pub fn icon_action<'a, M: Clone + 'a>(
         let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: Some(
-                if hot { theme::alpha(palette.accent, 0.16) } else { iced::Color::TRANSPARENT }.into(),
+                if hot {
+                    theme::alpha(palette.accent, 0.16)
+                } else {
+                    iced::Color::TRANSPARENT
+                }
+                .into(),
             ),
             text_color: tint,
             border: iced::Border {
                 radius: 26.0.into(),
-                color: if hot { theme::alpha(palette.accent, 0.35) } else { iced::Color::TRANSPARENT },
+                color: if hot {
+                    theme::alpha(palette.accent, 0.35)
+                } else {
+                    iced::Color::TRANSPARENT
+                },
                 width: 1.0,
             },
             ..Default::default()
@@ -261,17 +279,21 @@ pub fn icon_action<'a, M: Clone + 'a>(
     }
     tooltip(
         b,
-        container(text(label).size(theme::type_size::SMALL).color(palette.text))
-            .padding([5, 10])
-            .style(move |_t| container::Style {
-                background: Some(palette.surface_variant.into()),
-                border: iced::Border {
-                    color: palette.soft_border(),
-                    width: 1.0,
-                    radius: theme::radius::SM.into(),
-                },
-                ..Default::default()
-            }),
+        container(
+            text(label)
+                .size(theme::type_size::SMALL)
+                .color(palette.text),
+        )
+        .padding([5, 10])
+        .style(move |_t| container::Style {
+            background: Some(palette.surface_variant.into()),
+            border: iced::Border {
+                color: palette.soft_border(),
+                width: 1.0,
+                radius: theme::radius::SM.into(),
+            },
+            ..Default::default()
+        }),
         tooltip::Position::Bottom,
     )
     .gap(6)
@@ -307,8 +329,15 @@ pub fn play_orb<'a, M: Clone + 'a>(
             } else {
                 iced::Background::Color(theme::alpha(palette.accent, 0.35))
             }),
-            border: iced::Border { radius: (size / 2.0).into(), ..Default::default() },
-            shadow: if enabled { shadow } else { iced::Shadow::default() },
+            border: iced::Border {
+                radius: (size / 2.0).into(),
+                ..Default::default()
+            },
+            shadow: if enabled {
+                shadow
+            } else {
+                iced::Shadow::default()
+            },
             ..Default::default()
         }
     });
@@ -355,11 +384,16 @@ pub fn equalizer_vertical<'a, M: 'a>(
         let w = 4.0 + (max_w - 4.0) * lvl;
         let t = i as f32 / rows.max(1) as f32;
         let base = theme::mix(palette.accent, palette.accent_secondary, t);
-        col = col.push(container(Space::new(w, bar_h)).style(move |_t| container::Style {
-            background: Some(theme::gradient2(theme::alpha(base, 0.35), base, false)),
-            border: iced::Border { radius: (bar_h / 2.0).into(), ..Default::default() },
-            ..Default::default()
-        }));
+        col = col.push(
+            container(Space::new(w, bar_h)).style(move |_t| container::Style {
+                background: Some(theme::gradient2(theme::alpha(base, 0.35), base, false)),
+                border: iced::Border {
+                    radius: (bar_h / 2.0).into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        );
     }
     col.into()
 }
@@ -393,14 +427,20 @@ pub fn empty_state<'a, M: Clone + 'a>(
     let mut col = column![
         crate::icons::icon(icon_kind, 28.0, palette.text_muted),
         Space::with_height(theme::space::MD),
-        text(message).size(theme::type_size::BODY).color(palette.text_muted),
+        text(message)
+            .size(theme::type_size::BODY)
+            .color(palette.text_muted),
     ]
     .align_x(Alignment::Center);
     if let Some((label, msg)) = action {
         col = col.push(Space::with_height(theme::space::LG));
         col = col.push(settings::action(label, None, palette, msg));
     }
-    container(col).width(Length::Fill).padding(theme::space::XXL).center_x(Length::Fill).into()
+    container(col)
+        .width(Length::Fill)
+        .padding(theme::space::XXL)
+        .center_x(Length::Fill)
+        .into()
 }
 
 #[cfg(test)]

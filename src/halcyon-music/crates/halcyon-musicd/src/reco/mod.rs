@@ -176,10 +176,12 @@ impl Candidate {
 
     /// The source that counts for the bandit and the reason line: the most trusted one.
     pub fn primary_source(&self) -> Option<Source> {
-        self.sources
-            .iter()
-            .copied()
-            .max_by(|a, b| a.trust().partial_cmp(&b.trust()).unwrap_or(std::cmp::Ordering::Equal).then_with(|| b.cmp(a)))
+        self.sources.iter().copied().max_by(|a, b| {
+            a.trust()
+                .partial_cmp(&b.trust())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.cmp(a))
+        })
     }
 
     /// A song from the play log or the liked list.
@@ -214,8 +216,15 @@ mod tests {
     #[test]
     fn trust_puts_your_own_music_first_and_charts_last() {
         let mut order: Vec<Source> = Source::ALL.to_vec();
-        order.sort_by(|a, b| b.trust().partial_cmp(&a.trust()).unwrap_or(std::cmp::Ordering::Equal));
-        assert!(matches!(order.first(), Some(Source::History) | Some(Source::Liked)));
+        order.sort_by(|a, b| {
+            b.trust()
+                .partial_cmp(&a.trust())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        assert!(matches!(
+            order.first(),
+            Some(Source::History) | Some(Source::Liked)
+        ));
         assert_eq!(order.last(), Some(&Source::Chart));
     }
 
@@ -224,9 +233,19 @@ mod tests {
         let a = Candidate::new("Daft Punk", "Get Lucky (Radio Edit)", Source::Chart);
         let b = Candidate::new("daft punk", "get lucky", Source::Similar);
         assert_eq!(a.key(), b.key());
-        let album = Candidate { is_album: true, ..Candidate::new("Daft Punk", "Get Lucky", Source::NewRelease) };
-        assert_ne!(a.key(), album.key(), "an album is not the song of the same name");
-        let bare = Candidate { track_id: Some("abc".into()), ..Default::default() };
+        let album = Candidate {
+            is_album: true,
+            ..Candidate::new("Daft Punk", "Get Lucky", Source::NewRelease)
+        };
+        assert_ne!(
+            a.key(),
+            album.key(),
+            "an album is not the song of the same name"
+        );
+        let bare = Candidate {
+            track_id: Some("abc".into()),
+            ..Default::default()
+        };
         assert_eq!(bare.key(), "id:abc");
     }
 

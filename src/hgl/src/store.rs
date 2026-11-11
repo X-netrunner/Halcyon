@@ -71,7 +71,13 @@ impl Game {
                 "proton" => g.proton = v,
                 "prefix" => g.prefix = v,
                 "args" => g.args = v,
-                "wrappers" => g.wrappers = v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                "wrappers" => {
+                    g.wrappers = v
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                }
                 "gamescope" => g.gamescope = v,
                 "wayland" => g.wayland = parse_bool(&v).unwrap_or(false),
                 "lean" => g.lean = parse_bool(&v).unwrap_or(true),
@@ -146,7 +152,8 @@ impl Game {
         if !valid_id(&self.id) {
             return Err(format!("not a valid game id: {}", self.id));
         }
-        atomic_write(&Game::path(&self.id), &self.serialize()).map_err(|e| format!("cannot write {}: {e}", Game::path(&self.id).display()))
+        atomic_write(&Game::path(&self.id), &self.serialize())
+            .map_err(|e| format!("cannot write {}: {e}", Game::path(&self.id).display()))
     }
 
     pub fn remove(id: &str) -> Result<(), String> {
@@ -251,8 +258,17 @@ pub fn list_ids() -> Vec<String> {
 
 /// Favourites first, then last played, then by name.
 pub fn all_games() -> Vec<Game> {
-    let mut v: Vec<Game> = list_ids().iter().filter_map(|id| Game::load(id).ok()).collect();
-    v.sort_by(|a, b| b.fav.cmp(&a.fav).then_with(|| b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))));
+    let mut v: Vec<Game> = list_ids()
+        .iter()
+        .filter_map(|id| Game::load(id).ok())
+        .collect();
+    v.sort_by(|a, b| {
+        b.fav.cmp(&a.fav).then_with(|| {
+            b.last_played
+                .cmp(&a.last_played)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        })
+    });
     v
 }
 
@@ -282,10 +298,19 @@ impl Conf {
         config_dir().join("hgl.conf")
     }
     pub fn load() -> Conf {
-        Conf { pairs: fs::read_to_string(Conf::path()).map(|t| parse_kv(&t)).unwrap_or_default() }
+        Conf {
+            pairs: fs::read_to_string(Conf::path())
+                .map(|t| parse_kv(&t))
+                .unwrap_or_default(),
+        }
     }
     pub fn get(&self, k: &str) -> Option<&str> {
-        self.pairs.iter().rev().find(|(key, _)| key == k).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty())
+        self.pairs
+            .iter()
+            .rev()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.as_str())
+            .filter(|v| !v.is_empty())
     }
     pub fn flag(&self, k: &str, default: bool) -> bool {
         self.get(k).and_then(parse_bool).unwrap_or(default)
@@ -302,7 +327,8 @@ impl Conf {
                 s.push_str(&format!("{k}={v}\n"));
             }
         }
-        atomic_write(&Conf::path(), &s).map_err(|e| format!("cannot write {}: {e}", Conf::path().display()))?;
+        atomic_write(&Conf::path(), &s)
+            .map_err(|e| format!("cannot write {}: {e}", Conf::path().display()))?;
         // the file may hold an API key: only this user reads it
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(Conf::path(), fs::Permissions::from_mode(0o600));

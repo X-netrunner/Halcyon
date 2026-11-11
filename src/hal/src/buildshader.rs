@@ -57,7 +57,12 @@ pub fn run(args: &[String]) -> i32 {
 
     let ok = crate::util::ok(
         &qsb.to_string_lossy(),
-        &["--qt6", "-o", &out.to_string_lossy(), &src.to_string_lossy()],
+        &[
+            "--qt6",
+            "-o",
+            &out.to_string_lossy(),
+            &src.to_string_lossy(),
+        ],
     );
 
     if ok && out.is_file() {

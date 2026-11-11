@@ -157,10 +157,11 @@ async fn search_songs_budgeted(spotify: &SpotifyClient, query: &str) -> Option<V
     tokio::time::sleep(Duration::from_millis(600)).await;
     match spotify.search_detailed(query, "songs", 10, 0).await {
         Ok(found) => Some(found.tracks),
-        Err(e) if {
-            let m = e.to_string();
-            m.contains("invalid argument") || m.contains("400 Bad Request")
-        } =>
+        Err(e)
+            if {
+                let m = e.to_string();
+                m.contains("invalid argument") || m.contains("400 Bad Request")
+            } =>
         {
             // Spotify refused this one query (a bad request), which says nothing about the
             // others. Pausing here made the same song fail first every round and blocked
@@ -191,7 +192,11 @@ pub async fn resolve_outside_track(
     title: &str,
     duration_ms: Option<u64>,
 ) -> Option<Track> {
-    let query_key = format!("{} - {}", artist.trim().to_lowercase(), title.trim().to_lowercase());
+    let query_key = format!(
+        "{} - {}",
+        artist.trim().to_lowercase(),
+        title.trim().to_lowercase()
+    );
 
     // 1. Check cache
     if let Ok(Some(cached_res)) = cache.get_resolved_track(&query_key) {
@@ -235,7 +240,11 @@ pub async fn resolve_outside_album(
     artist: &str,
     album: &str,
 ) -> Option<Track> {
-    let key = format!("album:{} - {}", artist.trim().to_lowercase(), album.trim().to_lowercase());
+    let key = format!(
+        "album:{} - {}",
+        artist.trim().to_lowercase(),
+        album.trim().to_lowercase()
+    );
     if let Ok(Some(Some(track))) = cache.get_resolved_track(&key) {
         return Some(track);
     }
@@ -249,8 +258,12 @@ pub async fn resolve_outside_album(
             .artists
             .iter()
             .map(|a| token_similarity(&normalize_string(a), &want_artist))
-            .fold(token_similarity(&normalize_string(&t.artist), &want_artist), f32::max);
-        let s = 0.6 * token_similarity(&normalize_string(&t.album), &want_album) + 0.4 * artist_score;
+            .fold(
+                token_similarity(&normalize_string(&t.artist), &want_artist),
+                f32::max,
+            );
+        let s =
+            0.6 * token_similarity(&normalize_string(&t.album), &want_album) + 0.4 * artist_score;
         if s > best_score {
             best_score = s;
             best = Some(t);
@@ -287,11 +300,7 @@ struct ListenBrainzPayload {
 /// Query ListenBrainz open explore API for fresh releases.
 pub async fn fetch_listenbrainz_fresh_releases(http: &reqwest::Client) -> Vec<(String, String)> {
     let url = "https://api.listenbrainz.org/1/explore/fresh-releases";
-    let resp = http
-        .get(url)
-        .timeout(Duration::from_secs(6))
-        .send()
-        .await;
+    let resp = http.get(url).timeout(Duration::from_secs(6)).send().await;
 
     match resp {
         Ok(res) if res.status().is_success() => {
@@ -345,11 +354,7 @@ struct DeezerArtist {
 /// Query Deezer public chart for top global tracks.
 pub async fn fetch_deezer_top_tracks(http: &reqwest::Client) -> Vec<(String, String, Option<u64>)> {
     let url = "https://api.deezer.com/chart/0/tracks";
-    let resp = http
-        .get(url)
-        .timeout(Duration::from_secs(6))
-        .send()
-        .await;
+    let resp = http.get(url).timeout(Duration::from_secs(6)).send().await;
 
     if let Ok(res) = resp {
         if res.status().is_success() {
@@ -405,7 +410,9 @@ pub async fn fetch_deezer_playlist_tracks(
 
 /// ListenBrainz sitewide most-played songs this week (open API, no key):
 /// `(artist, title, None)` rows.
-pub async fn fetch_listenbrainz_trending(http: &reqwest::Client) -> Vec<(String, String, Option<u64>)> {
+pub async fn fetch_listenbrainz_trending(
+    http: &reqwest::Client,
+) -> Vec<(String, String, Option<u64>)> {
     let url = "https://api.listenbrainz.org/1/stats/sitewide/recordings?range=this_week&count=40";
     let Ok(res) = http.get(url).timeout(Duration::from_secs(8)).send().await else {
         warn!("ListenBrainz trending: request failed");
@@ -554,7 +561,9 @@ pub async fn fetch_deezer_fresh_albums(http: &reqwest::Client) -> Vec<FreshAlbum
 
 /// The lead song of each fresh album, as `(artist, title, duration_ms)` rows ready to be
 /// matched on Spotify.
-pub async fn fetch_deezer_new_release_songs(http: &reqwest::Client) -> Vec<(String, String, Option<u64>)> {
+pub async fn fetch_deezer_new_release_songs(
+    http: &reqwest::Client,
+) -> Vec<(String, String, Option<u64>)> {
     fetch_deezer_fresh_albums(http)
         .await
         .into_iter()
@@ -583,7 +592,9 @@ async fn resolve_many(
         let chunk = &chunk;
         let get = |i: usize| async move {
             match chunk.get(i) {
-                Some((artist, title, dur)) => resolve_outside_track(spotify, cache, artist, title, *dur).await,
+                Some((artist, title, dur)) => {
+                    resolve_outside_track(spotify, cache, artist, title, *dur).await
+                }
                 None => None,
             }
         };
@@ -665,7 +676,10 @@ const ALL_TIME_CLASSICS: &[(&str, &str)] = &[
     ("Michael Jackson", "Thriller"),
     ("Michael Jackson", "Beat It"),
     ("Prince", "Purple Rain"),
-    ("Whitney Houston", "I Wanna Dance with Somebody (Who Loves Me)"),
+    (
+        "Whitney Houston",
+        "I Wanna Dance with Somebody (Who Loves Me)",
+    ),
     ("Nirvana", "Smells Like Teen Spirit"),
     ("Oasis", "Wonderwall"),
     ("Radiohead", "Creep"),
@@ -758,7 +772,10 @@ const ALL_TIME_CLASSICS: &[(&str, &str)] = &[
     ("Pharrell Williams", "Happy"),
     ("Passenger", "Let Her Go"),
     ("The Beach Boys", "God Only Knows"),
-    ("Creedence Clearwater Revival", "Have You Ever Seen The Rain?"),
+    (
+        "Creedence Clearwater Revival",
+        "Have You Ever Seen The Rain?",
+    ),
     ("The Police", "Every Breath You Take"),
     ("Elton John", "Rocket Man"),
     ("Elton John", "Tiny Dancer"),
@@ -850,7 +867,6 @@ const ALL_TIME_CLASSICS: &[(&str, &str)] = &[
     ("Lady Gaga", "Die With A Smile"),
 ];
 
-
 // --- Big lists: All-Time Best, Top 100, Top 200 ---
 
 /// Songs in "All-Time Best".
@@ -869,7 +885,11 @@ type OutsideSong = (String, String, Option<u64>);
 static CHART_POOL: std::sync::Mutex<Option<(u64, Vec<OutsideSong>)>> = std::sync::Mutex::new(None);
 
 /// Adds rows to `pool`, skipping a song that is already in it (same artist and title).
-fn push_unique_songs(pool: &mut Vec<OutsideSong>, seen: &mut HashSet<String>, rows: Vec<OutsideSong>) {
+fn push_unique_songs(
+    pool: &mut Vec<OutsideSong>,
+    seen: &mut HashSet<String>,
+    rows: Vec<OutsideSong>,
+) {
     for (artist, title, dur) in rows {
         let key = format!("{}|{}", normalize_string(&artist), normalize_string(&title));
         if seen.insert(key) {
@@ -899,7 +919,11 @@ async fn fetch_deezer_chart_100(http: &reqwest::Client) -> Vec<OutsideSong> {
 
 /// ListenBrainz sitewide most-played songs for one stats `range` (`this_month`, `month`,
 /// `quarter`, `half_yearly`, `this_year`, `year`), 100 rows from `offset`. Open API, no key.
-async fn fetch_listenbrainz_range(http: &reqwest::Client, range: &str, offset: u32) -> Vec<OutsideSong> {
+async fn fetch_listenbrainz_range(
+    http: &reqwest::Client,
+    range: &str,
+    offset: u32,
+) -> Vec<OutsideSong> {
     let url = format!(
         "https://api.listenbrainz.org/1/stats/sitewide/recordings?range={range}&count=100&offset={offset}"
     );
@@ -917,7 +941,11 @@ async fn fetch_listenbrainz_range(http: &reqwest::Client, range: &str, offset: u
         .map(|rows| {
             rows.iter()
                 .filter_map(|r| {
-                    Some((r.get("artist_name")?.as_str()?.to_string(), r.get("track_name")?.as_str()?.to_string(), None))
+                    Some((
+                        r.get("artist_name")?.as_str()?.to_string(),
+                        r.get("track_name")?.as_str()?.to_string(),
+                        None,
+                    ))
                 })
                 .collect()
         })
@@ -941,14 +969,29 @@ pub async fn fetch_chart_pool(http: &reqwest::Client) -> Vec<OutsideSong> {
     let mut seen: HashSet<String> = HashSet::new();
     push_unique_songs(&mut pool, &mut seen, fetch_deezer_chart_100(http).await);
     if pool.len() < CHART_POOL_SIZE {
-        push_unique_songs(&mut pool, &mut seen, fetch_deezer_playlist_tracks(http, 3155776842, 100).await);
+        push_unique_songs(
+            &mut pool,
+            &mut seen,
+            fetch_deezer_playlist_tracks(http, 3155776842, 100).await,
+        );
     }
-    for range in ["this_month", "month", "quarter", "half_yearly", "this_year", "year"] {
+    for range in [
+        "this_month",
+        "month",
+        "quarter",
+        "half_yearly",
+        "this_year",
+        "year",
+    ] {
         for offset in [0u32, 100] {
             if pool.len() >= CHART_POOL_SIZE {
                 break;
             }
-            push_unique_songs(&mut pool, &mut seen, fetch_listenbrainz_range(http, range, offset).await);
+            push_unique_songs(
+                &mut pool,
+                &mut seen,
+                fetch_listenbrainz_range(http, range, offset).await,
+            );
         }
     }
     pool.truncate(CHART_POOL_SIZE);
@@ -973,7 +1016,11 @@ pub(crate) fn all_time_candidates() -> Vec<OutsideSong> {
 
 /// A song already matched on Spotify earlier, found without any lookup.
 fn resolve_cached(cache: &Cache, artist: &str, title: &str) -> Option<Track> {
-    let key = format!("{} - {}", artist.trim().to_lowercase(), title.trim().to_lowercase());
+    let key = format!(
+        "{} - {}",
+        artist.trim().to_lowercase(),
+        title.trim().to_lowercase()
+    );
     cache.get_resolved_track(&key).ok().flatten().flatten()
 }
 
@@ -996,7 +1043,9 @@ fn resolve_many_cached(cache: &Cache, entries: &[OutsideSong], want: usize) -> V
 
 /// Seconds until Spotify lookups are allowed again (0 when they are not paused).
 pub fn search_pause_remaining() -> u64 {
-    SEARCH_PAUSED_UNTIL.load(Ordering::Relaxed).saturating_sub(now_secs())
+    SEARCH_PAUSED_UNTIL
+        .load(Ordering::Relaxed)
+        .saturating_sub(now_secs())
 }
 
 /// `(matched, unknown)` for the first rows of a list: how many are matched on Spotify, and
@@ -1005,7 +1054,11 @@ fn resolution_state(cache: &Cache, entries: &[OutsideSong], first: usize) -> (us
     let mut matched = 0;
     let mut unknown = 0;
     for (artist, title, _) in entries.iter().take(first) {
-        let key = format!("{} - {}", artist.trim().to_lowercase(), title.trim().to_lowercase());
+        let key = format!(
+            "{} - {}",
+            artist.trim().to_lowercase(),
+            title.trim().to_lowercase()
+        );
         match cache.get_resolved_track(&key).ok().flatten() {
             Some(Some(_)) => matched += 1,
             Some(None) => {}
@@ -1103,7 +1156,12 @@ struct ItunesItem {
 pub async fn fetch_itunes_artist_albums(http: &reqwest::Client, artist: &str) -> Vec<OutsideAlbum> {
     let sent = http
         .get("https://itunes.apple.com/search")
-        .query(&[("term", artist), ("entity", "album"), ("attribute", "artistTerm"), ("limit", "30")])
+        .query(&[
+            ("term", artist),
+            ("entity", "album"),
+            ("attribute", "artistTerm"),
+            ("limit", "30"),
+        ])
         .timeout(Duration::from_secs(6))
         .send()
         .await;
@@ -1233,9 +1291,14 @@ pub async fn fetch_listenbrainz_fresh_albums(http: &reqwest::Client) -> Vec<Outs
         .map(|rows| {
             rows.iter()
                 .filter_map(|r| {
-                    let artist = r["artist_credit_name"].as_str().or_else(|| r["artist_name"].as_str())?;
+                    let artist = r["artist_credit_name"]
+                        .as_str()
+                        .or_else(|| r["artist_name"].as_str())?;
                     let title = r["release_name"].as_str()?;
-                    let date = r["release_date"].as_str().map(short_date).unwrap_or_else(|| today.clone());
+                    let date = r["release_date"]
+                        .as_str()
+                        .map(short_date)
+                        .unwrap_or_else(|| today.clone());
                     Some(OutsideAlbum {
                         artist: artist.to_string(),
                         title: title.to_string(),
@@ -1252,7 +1315,11 @@ pub async fn fetch_listenbrainz_fresh_albums(http: &reqwest::Client) -> Vec<Outs
 }
 
 /// A Deezer API answer (open, no key) as loose JSON.
-async fn deezer_get(http: &reqwest::Client, path: &str, query: &[(&str, &str)]) -> Option<serde_json::Value> {
+async fn deezer_get(
+    http: &reqwest::Client,
+    path: &str,
+    query: &[(&str, &str)],
+) -> Option<serde_json::Value> {
     let res = http
         .get(format!("https://api.deezer.com{path}"))
         .query(query)
@@ -1278,9 +1345,14 @@ pub(crate) async fn deezer_artist_id(http: &reqwest::Client, name: &str) -> Opti
 }
 
 /// Artists Deezer lists as similar to `id` (their ids).
-pub(crate) async fn deezer_related_artists(http: &reqwest::Client, id: u64, limit: u32) -> Vec<u64> {
+pub(crate) async fn deezer_related_artists(
+    http: &reqwest::Client,
+    id: u64,
+    limit: u32,
+) -> Vec<u64> {
     let limit = limit.to_string();
-    let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await else {
+    let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await
+    else {
         return Vec::new();
     };
     v.get("data")
@@ -1290,7 +1362,11 @@ pub(crate) async fn deezer_related_artists(http: &reqwest::Client, id: u64, limi
 }
 
 /// An artist's most popular songs on Deezer, as `(artist, title, duration_ms)` rows.
-pub(crate) async fn deezer_artist_top(http: &reqwest::Client, id: u64, limit: u32) -> Vec<(String, String, Option<u64>)> {
+pub(crate) async fn deezer_artist_top(
+    http: &reqwest::Client,
+    id: u64,
+    limit: u32,
+) -> Vec<(String, String, Option<u64>)> {
     let limit = limit.to_string();
     let Some(v) = deezer_get(http, &format!("/artist/{id}/top"), &[("limit", &limit)]).await else {
         return Vec::new();
@@ -1303,7 +1379,9 @@ pub(crate) async fn deezer_artist_top(http: &reqwest::Client, id: u64, limit: u3
                     Some((
                         r.pointer("/artist/name")?.as_str()?.to_string(),
                         r.get("title")?.as_str()?.to_string(),
-                        r.get("duration").and_then(serde_json::Value::as_u64).map(|d| d * 1000),
+                        r.get("duration")
+                            .and_then(serde_json::Value::as_u64)
+                            .map(|d| d * 1000),
                     ))
                 })
                 .collect()
@@ -1347,7 +1425,10 @@ fn rank_artists(played: &[String], liked: &[Track], want: usize) -> Vec<String> 
         if key.is_empty() || key == "various artists" {
             return;
         }
-        score.entry(key).or_insert_with(|| (name.trim().to_string(), 0.0)).1 += weight;
+        score
+            .entry(key)
+            .or_insert_with(|| (name.trim().to_string(), 0.0))
+            .1 += weight;
     }
     let mut score: HashMap<String, (String, f32)> = HashMap::new();
     for (i, name) in played.iter().enumerate() {
@@ -1362,14 +1443,21 @@ fn rank_artists(played: &[String], liked: &[Track], want: usize) -> Vec<String> 
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.cmp(&b.0))
     });
-    ranked.into_iter().map(|(name, _)| name).take(want).collect()
+    ranked
+        .into_iter()
+        .map(|(name, _)| name)
+        .take(want)
+        .collect()
 }
 
 /// The artists Discover is built around: from your play log and liked songs, so it works
 /// without the Spotify "followed artists" list (which the default sign-in cannot read).
 fn taste_artists(cache: &Cache, want: usize) -> Vec<String> {
     let played = cache.get_top_artists_in_period(365, 25).unwrap_or_default();
-    let liked: Vec<Track> = cache.get_liked_tracks(1000, 0).map(|(t, _)| t).unwrap_or_default();
+    let liked: Vec<Track> = cache
+        .get_liked_tracks(1000, 0)
+        .map(|(t, _)| t)
+        .unwrap_or_default();
     rank_artists(&played, &liked, want)
 }
 
@@ -1391,7 +1479,11 @@ async fn resolve_album_cards(
         if out.len() >= want || tries >= max_tries {
             break;
         }
-        let key = format!("{}|{}", normalize_string(&a.artist), normalize_string(&a.title));
+        let key = format!(
+            "{}|{}",
+            normalize_string(&a.artist),
+            normalize_string(&a.title)
+        );
         if !seen_albums.insert(key) {
             continue;
         }
@@ -1434,7 +1526,11 @@ async fn build_artist_mix(
 ) -> Option<MusicMix> {
     let id = deezer_artist_id(http, artist).await?;
     let mut entries = deezer_artist_top(http, id, 4).await;
-    for related in deezer_related_artists(http, id, 6).await.into_iter().take(5) {
+    for related in deezer_related_artists(http, id, 6)
+        .await
+        .into_iter()
+        .take(5)
+    {
         entries.extend(deezer_artist_top(http, related, 3).await);
     }
     let resolved = resolve_many(spotify, cache, entries, 14, 24).await;
@@ -1471,18 +1567,78 @@ struct GenreSection {
 
 /// Mood and genre sections of Discover, in page order.
 const DISCOVER_GENRES: &[GenreSection] = &[
-    GenreSection { id: "genre-calm", title: "Calm", blurb: "Soft, slow songs to unwind to", source: GenreSource::Playlist("calm") },
-    GenreSection { id: "genre-hiphop", title: "Hip-Hop", blurb: "The best hip-hop right now", source: GenreSource::Chart(116) },
-    GenreSection { id: "genre-pop", title: "Pop", blurb: "The biggest pop songs right now", source: GenreSource::Chart(132) },
-    GenreSection { id: "genre-rock", title: "Rock", blurb: "The best rock right now", source: GenreSource::Chart(152) },
-    GenreSection { id: "genre-rnb", title: "R&B", blurb: "Smooth R&B at the top of the charts", source: GenreSource::Chart(165) },
-    GenreSection { id: "genre-dance", title: "Dance", blurb: "Dance floor songs at the top of the charts", source: GenreSource::Chart(113) },
-    GenreSection { id: "genre-latin", title: "Latin", blurb: "The best Latin songs right now", source: GenreSource::Chart(197) },
-    GenreSection { id: "genre-indie", title: "Indie & Alternative", blurb: "The best indie and alternative songs right now", source: GenreSource::Chart(85) },
-    GenreSection { id: "genre-jazz", title: "Jazz", blurb: "The best jazz right now", source: GenreSource::Chart(129) },
-    GenreSection { id: "genre-country", title: "Country", blurb: "The best country right now", source: GenreSource::Chart(84) },
-    GenreSection { id: "genre-focus", title: "Focus", blurb: "Steady songs to work and study to", source: GenreSource::Playlist("deep focus") },
-    GenreSection { id: "genre-workout", title: "Workout", blurb: "High-energy songs to move to", source: GenreSource::Playlist("workout") },
+    GenreSection {
+        id: "genre-calm",
+        title: "Calm",
+        blurb: "Soft, slow songs to unwind to",
+        source: GenreSource::Playlist("calm"),
+    },
+    GenreSection {
+        id: "genre-hiphop",
+        title: "Hip-Hop",
+        blurb: "The best hip-hop right now",
+        source: GenreSource::Chart(116),
+    },
+    GenreSection {
+        id: "genre-pop",
+        title: "Pop",
+        blurb: "The biggest pop songs right now",
+        source: GenreSource::Chart(132),
+    },
+    GenreSection {
+        id: "genre-rock",
+        title: "Rock",
+        blurb: "The best rock right now",
+        source: GenreSource::Chart(152),
+    },
+    GenreSection {
+        id: "genre-rnb",
+        title: "R&B",
+        blurb: "Smooth R&B at the top of the charts",
+        source: GenreSource::Chart(165),
+    },
+    GenreSection {
+        id: "genre-dance",
+        title: "Dance",
+        blurb: "Dance floor songs at the top of the charts",
+        source: GenreSource::Chart(113),
+    },
+    GenreSection {
+        id: "genre-latin",
+        title: "Latin",
+        blurb: "The best Latin songs right now",
+        source: GenreSource::Chart(197),
+    },
+    GenreSection {
+        id: "genre-indie",
+        title: "Indie & Alternative",
+        blurb: "The best indie and alternative songs right now",
+        source: GenreSource::Chart(85),
+    },
+    GenreSection {
+        id: "genre-jazz",
+        title: "Jazz",
+        blurb: "The best jazz right now",
+        source: GenreSource::Chart(129),
+    },
+    GenreSection {
+        id: "genre-country",
+        title: "Country",
+        blurb: "The best country right now",
+        source: GenreSource::Chart(84),
+    },
+    GenreSection {
+        id: "genre-focus",
+        title: "Focus",
+        blurb: "Steady songs to work and study to",
+        source: GenreSource::Playlist("deep focus"),
+    },
+    GenreSection {
+        id: "genre-workout",
+        title: "Workout",
+        blurb: "High-energy songs to move to",
+        source: GenreSource::Playlist("workout"),
+    },
 ];
 
 /// Uncached Spotify searches the genre sections may use in one Discover build.
@@ -1494,14 +1650,26 @@ const GENRE_FIRST_PASS: usize = 12;
 
 /// Songs of the first Deezer playlist matching `query` that has enough songs to be a real
 /// playlist: `(artist, title, duration_ms)` rows.
-async fn fetch_deezer_mood_playlist(http: &reqwest::Client, query: &str, limit: u32) -> Vec<OutsideSong> {
-    let Some(v) = deezer_get(http, "/search/playlist", &[("q", query), ("limit", "10")]).await else {
+async fn fetch_deezer_mood_playlist(
+    http: &reqwest::Client,
+    query: &str,
+    limit: u32,
+) -> Vec<OutsideSong> {
+    let Some(v) = deezer_get(http, "/search/playlist", &[("q", query), ("limit", "10")]).await
+    else {
         return Vec::new();
     };
     let id = v
         .get("data")
         .and_then(serde_json::Value::as_array)
-        .and_then(|rows| rows.iter().find(|r| r.get("nb_tracks").and_then(serde_json::Value::as_u64).unwrap_or(0) >= 25))
+        .and_then(|rows| {
+            rows.iter().find(|r| {
+                r.get("nb_tracks")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0)
+                    >= 25
+            })
+        })
         .and_then(|r| r.get("id")?.as_u64());
     match id {
         Some(id) => fetch_deezer_playlist_tracks(http, id, limit).await,
@@ -1579,7 +1747,11 @@ pub async fn build_discover_feed(
             newest_each.truncate(10);
             recent = newest_each;
         }
-        debug!("Discover: {} candidate releases from {} artists", recent.len(), artists.len());
+        debug!(
+            "Discover: {} candidate releases from {} artists",
+            recent.len(),
+            artists.len()
+        );
         let cards = resolve_album_cards(spotify, cache, recent, 12, 22, &new_label_cutoff).await;
         if !cards.is_empty() {
             feed.from_artists = cards;
@@ -1600,15 +1772,28 @@ pub async fn build_discover_feed(
     let mut deezer: Vec<OutsideAlbum> = fetch_deezer_fresh_albums(http)
         .await
         .into_iter()
-        .map(|f| OutsideAlbum { artist: f.artist, title: f.album, release_date: f.release_date, art: None })
+        .map(|f| OutsideAlbum {
+            artist: f.artist,
+            title: f.album,
+            release_date: f.release_date,
+            art: None,
+        })
         .collect();
     let mut brainz = fetch_listenbrainz_fresh_albums(http).await;
-    debug!("Discover sources: apple {}, deezer {}, listenbrainz {}", apple.len(), deezer.len(), brainz.len());
+    debug!(
+        "Discover sources: apple {}, deezer {}, listenbrainz {}",
+        apple.len(),
+        deezer.len(),
+        brainz.len()
+    );
     if apple.is_empty() && deezer.is_empty() && brainz.is_empty() {
         warn!("Discover: no outside release source answered (check the network)");
     }
     for list in [&mut apple, &mut deezer, &mut brainz] {
-        list.retain(|a| a.release_date.as_str() >= global_cutoff.as_str() && a.release_date.as_str() <= today.as_str());
+        list.retain(|a| {
+            a.release_date.as_str() >= global_cutoff.as_str()
+                && a.release_date.as_str() <= today.as_str()
+        });
         list.sort_by(|a, b| b.release_date.cmp(&a.release_date));
     }
     // Popular first (Apple), then Deezer's editors, then whatever else is fresh.
@@ -1658,7 +1843,9 @@ pub async fn build_discover_feed(
             if mixes.len() >= 2 {
                 break;
             }
-            let Some(name) = artists.get((start + i) % pool_size) else { continue };
+            let Some(name) = artists.get((start + i) % pool_size) else {
+                continue;
+            };
             if let Some(m) = build_artist_mix(spotify, cache, http, name, &mut mix_seen).await {
                 mixes.push(m);
             }
@@ -1692,11 +1879,21 @@ pub async fn build_discover_feed(
         for (g, rows) in &sources {
             let resolved = resolve_many(spotify, cache, rows.clone(), want, tries).await;
             // Up to 3 songs per artist, so one act cannot take over a genre.
-            let tracks = filter_mix_tracks(resolved, 3, &mut HashSet::new(), &HashSet::new(), true, GENRE_SONGS);
+            let tracks = filter_mix_tracks(
+                resolved,
+                3,
+                &mut HashSet::new(),
+                &HashSet::new(),
+                true,
+                GENRE_SONGS,
+            );
             if tracks.len() < 8 {
                 continue;
             }
-            if built.iter().any(|m| m.id == g.id && m.tracks.len() >= tracks.len()) {
+            if built
+                .iter()
+                .any(|m| m.id == g.id && m.tracks.len() >= tracks.len())
+            {
                 continue;
             }
             built.retain(|m| m.id != g.id);
@@ -1785,7 +1982,10 @@ pub(crate) fn learn_taste(plays: &[PlayLogEntry], liked: &[Track], now: u64) -> 
         if key.is_empty() || key == "various artists" {
             return;
         }
-        artist_score.entry(key).or_insert_with(|| (name.trim().to_string(), 0.0)).1 += w;
+        artist_score
+            .entry(key)
+            .or_insert_with(|| (name.trim().to_string(), 0.0))
+            .1 += w;
     };
     for p in plays {
         let w = play_weight(p, now);
@@ -1802,9 +2002,20 @@ pub(crate) fn learn_taste(plays: &[PlayLogEntry], liked: &[Track], now: u64) -> 
     }
 
     let mut songs: Vec<(String, f32)> = song_score.into_iter().filter(|(_, s)| *s > 0.2).collect();
-    songs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
-    let mut artists: Vec<(String, f32)> = artist_score.into_values().filter(|(_, s)| *s > 0.0).collect();
-    artists.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+    songs.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let mut artists: Vec<(String, f32)> = artist_score
+        .into_values()
+        .filter(|(_, s)| *s > 0.0)
+        .collect();
+    artists.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     Taste {
         songs: songs.into_iter().map(|(id, _)| id).collect(),
         artists: artists.into_iter().map(|(name, _)| name).collect(),
@@ -1814,12 +2025,17 @@ pub(crate) fn learn_taste(plays: &[PlayLogEntry], liked: &[Track], now: u64) -> 
 /// Names of the artists Deezer lists as similar to `id`.
 async fn deezer_related_artist_names(http: &reqwest::Client, id: u64, limit: u32) -> Vec<String> {
     let limit = limit.to_string();
-    let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await else {
+    let Some(v) = deezer_get(http, &format!("/artist/{id}/related"), &[("limit", &limit)]).await
+    else {
         return Vec::new();
     };
     v.get("data")
         .and_then(serde_json::Value::as_array)
-        .map(|rows| rows.iter().filter_map(|r| r.get("name")?.as_str().map(str::to_string)).collect())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.get("name")?.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -1830,11 +2046,28 @@ const FRESH_SOUND_TTL: u64 = 6 * 3600;
 /// artists that sound like them (Deezer's similar-artists list, a different pair each day).
 /// Returns `(artist, album, release date)`; the list is kept for a few hours because it takes
 /// a dozen requests to gather and Home is rebuilt several times while the big lists fill in.
-async fn fresh_in_your_sound(cache: &Cache, http: &reqwest::Client, artists: &[String]) -> Vec<OutsideAlbum> {
-    let key = format!("taste.fresh.v1.{}", artists.iter().take(5).cloned().collect::<Vec<_>>().join("|"));
+async fn fresh_in_your_sound(
+    cache: &Cache,
+    http: &reqwest::Client,
+    artists: &[String],
+) -> Vec<OutsideAlbum> {
+    let key = format!(
+        "taste.fresh.v1.{}",
+        artists
+            .iter()
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("|")
+    );
     let to_albums = |rows: Vec<(String, String, String)>| -> Vec<OutsideAlbum> {
         rows.into_iter()
-            .map(|(artist, title, release_date)| OutsideAlbum { artist, title, release_date, art: None })
+            .map(|(artist, title, release_date)| OutsideAlbum {
+                artist,
+                title,
+                release_date,
+                art: None,
+            })
             .collect()
     };
     if let Ok(Some(item)) = cache.kv_get(&key) {
@@ -1855,7 +2088,9 @@ async fn fresh_in_your_sound(cache: &Cache, http: &reqwest::Client, artists: &[S
     // (artist name, releases to take): your own artists first, then similar ones.
     let mut wanted: Vec<(String, usize)> = artists.iter().take(5).map(|a| (a.clone(), 2)).collect();
     for name in artists.iter().take(3) {
-        let Some(id) = deezer_artist_id(http, name).await else { continue };
+        let Some(id) = deezer_artist_id(http, name).await else {
+            continue;
+        };
         let related = deezer_related_artist_names(http, id, 8).await;
         if related.is_empty() {
             continue;
@@ -1874,7 +2109,9 @@ async fn fresh_in_your_sound(cache: &Cache, http: &reqwest::Client, artists: &[S
             continue;
         }
         let mut albums = fetch_itunes_artist_albums(http, &name).await;
-        albums.retain(|a| a.release_date.as_str() <= today.as_str() && a.release_date.as_str() >= cutoff.as_str());
+        albums.retain(|a| {
+            a.release_date.as_str() <= today.as_str() && a.release_date.as_str() >= cutoff.as_str()
+        });
         for a in albums.into_iter().take(take) {
             rows.push((a.artist, a.title, a.release_date));
         }
@@ -1902,7 +2139,10 @@ async fn build_halcyon_mix(
     if plays.len() < 5 {
         return None;
     }
-    let liked: Vec<Track> = cache.get_liked_tracks(1000, 0).map(|(t, _)| t).unwrap_or_default();
+    let liked: Vec<Track> = cache
+        .get_liked_tracks(1000, 0)
+        .map(|(t, _)| t)
+        .unwrap_or_default();
     let taste = learn_taste(&plays, &liked, now);
     let played_ids: HashSet<String> = plays.iter().map(|p| p.track_id.clone()).collect();
 
@@ -1945,7 +2185,8 @@ async fn build_halcyon_mix(
     Some(MusicMix {
         id: "halcyon-mix".to_string(),
         title: "Halcyon Mix".to_string(),
-        description: "Picked from what you really play, blended with new music in your sound.".to_string(),
+        description: "Picked from what you really play, blended with new music in your sound."
+            .to_string(),
         source: "Halcyon Local".to_string(),
         tracks,
         art_url: art,
@@ -1964,7 +2205,12 @@ pub async fn build_home_feed(
 
     // Once: earlier builds remembered an empty search answer as a permanent "no match", which
     // can leave Top 100 / Top 200 stuck on the few songs matched before. Look those up again.
-    if cache.kv_get("purge.resolution-misses.v1").ok().flatten().is_none() {
+    if cache
+        .kv_get("purge.resolution-misses.v1")
+        .ok()
+        .flatten()
+        .is_none()
+    {
         match cache.purge_resolution_misses() {
             Ok(n) => tracing::info!("forgot {n} cached song misses so they are matched again"),
             Err(e) => warn!("could not forget cached song misses: {e}"),
@@ -2084,7 +2330,8 @@ pub async fn build_home_feed(
             made_for_you.push(MusicMix {
                 id: "rediscover".to_string(),
                 title: "Rediscover".to_string(),
-                description: "Favorites from your liked library waiting to be heard again.".to_string(),
+                description: "Favorites from your liked library waiting to be heard again."
+                    .to_string(),
                 source: "Halcyon Local".to_string(),
                 tracks: rediscover_tracks,
                 art_url: art,
@@ -2108,7 +2355,8 @@ pub async fn build_home_feed(
             made_for_you.push(MusicMix {
                 id: "time-of-day".to_string(),
                 title: format!("{greeting} Mix"),
-                description: "Selected songs tuned to your usual listening rhythm at this hour.".to_string(),
+                description: "Selected songs tuned to your usual listening rhythm at this hour."
+                    .to_string(),
                 source: "Halcyon Local".to_string(),
                 tracks: tod_tracks,
                 art_url: art,
@@ -2145,7 +2393,10 @@ pub async fn build_home_feed(
 
     // (d2) Mix It Up, Hidden Gems, All-Time Best: built from your own library and play log,
     // so they need no Spotify lookups and appear at once, even while Spotify rate limits us.
-    let liked_all: Vec<Track> = cache.get_liked_tracks(1000, 0).map(|(t, _)| t).unwrap_or_default();
+    let liked_all: Vec<Track> = cache
+        .get_liked_tracks(1000, 0)
+        .map(|(t, _)| t)
+        .unwrap_or_default();
     let play_counts = cache.get_play_counts().unwrap_or_default();
     // The seed changes every hour, so a refresh later in the day gives a new draw.
     let seed = now_secs() / 3600;
@@ -2159,13 +2410,21 @@ pub async fn build_home_feed(
             .into_iter()
             .filter(|t| artists_seen.insert(t.artist.to_lowercase()))
             .collect();
-        let tracks = filter_mix_tracks(one_per_artist, 1, &mut global_seen_track_ids, &recent_24h_ids, false, 20);
+        let tracks = filter_mix_tracks(
+            one_per_artist,
+            1,
+            &mut global_seen_track_ids,
+            &recent_24h_ids,
+            false,
+            20,
+        );
         if tracks.len() >= 5 {
             let art = tracks.first().and_then(|t| t.art_url.clone());
             made_for_you.push(MusicMix {
                 id: "mix-it-up".to_string(),
                 title: "Mix It Up".to_string(),
-                description: "One song each from many of your artists, drawn fresh every hour.".to_string(),
+                description: "One song each from many of your artists, drawn fresh every hour."
+                    .to_string(),
                 source: "Halcyon Local".to_string(),
                 tracks,
                 art_url: art,
@@ -2183,20 +2442,37 @@ pub async fn build_home_feed(
             .iter()
             .filter(|t| {
                 play_counts.get(&t.id).copied().unwrap_or(0) <= 1
-                    && per_artist.get(&t.artist.to_lowercase()).copied().unwrap_or(0) <= 2
+                    && per_artist
+                        .get(&t.artist.to_lowercase())
+                        .copied()
+                        .unwrap_or(0)
+                        <= 2
             })
             .cloned()
             .collect();
         shuffle(&mut gems, seed.wrapping_add(7));
         // Rarest artists first; the shuffle above decides the order among equals.
-        gems.sort_by_key(|t| per_artist.get(&t.artist.to_lowercase()).copied().unwrap_or(0));
-        let tracks = filter_mix_tracks(gems, 1, &mut global_seen_track_ids, &recent_24h_ids, false, 15);
+        gems.sort_by_key(|t| {
+            per_artist
+                .get(&t.artist.to_lowercase())
+                .copied()
+                .unwrap_or(0)
+        });
+        let tracks = filter_mix_tracks(
+            gems,
+            1,
+            &mut global_seen_track_ids,
+            &recent_24h_ids,
+            false,
+            15,
+        );
         if tracks.len() >= 5 {
             let art = tracks.first().and_then(|t| t.art_url.clone());
             made_for_you.push(MusicMix {
                 id: "hidden-gems".to_string(),
                 title: "Hidden Gems".to_string(),
-                description: "Songs you saved but barely played, by artists you rarely hear.".to_string(),
+                description: "Songs you saved but barely played, by artists you rarely hear."
+                    .to_string(),
                 source: "Halcyon Local".to_string(),
                 tracks,
                 art_url: art,
@@ -2219,7 +2495,8 @@ pub async fn build_home_feed(
             made_for_you.push(MusicMix {
                 id: "remember-the-past".to_string(),
                 title: "Remember the Past".to_string(),
-                description: "Songs you used to play on loop and have not heard in a while.".to_string(),
+                description: "Songs you used to play on loop and have not heard in a while."
+                    .to_string(),
                 source: "Halcyon Local".to_string(),
                 tracks,
                 art_url: art,
@@ -2299,7 +2576,8 @@ pub async fn build_home_feed(
             made_for_you.push(MusicMix {
                 id: "deezer-global-chart".to_string(),
                 title: "Global Hitlist".to_string(),
-                description: "Worldwide viral sensations and charting tracks, resolved to Spotify.".to_string(),
+                description: "Worldwide viral sensations and charting tracks, resolved to Spotify."
+                    .to_string(),
                 source: "Deezer".to_string(),
                 tracks: deezer_tracks,
                 art_url: art,
@@ -2316,20 +2594,42 @@ pub async fn build_home_feed(
             entries = fetch_listenbrainz_trending(http).await;
         }
         let resolved = resolve_many(spotify, cache, entries, 14, 24).await;
-        let tracks = filter_mix_tracks(resolved, 1, &mut global_seen_track_ids, &recent_24h_ids, true, 12);
+        let tracks = filter_mix_tracks(
+            resolved,
+            1,
+            &mut global_seen_track_ids,
+            &recent_24h_ids,
+            true,
+            12,
+        );
         if tracks.is_empty() {
             warn!("Hot/Trending mix is empty: no song could be matched on Spotify");
         } else {
             let art = tracks.first().and_then(|t| t.art_url.clone());
             made_for_you.push(MusicMix {
-                id: if from_deezer { "hot-new-releases" } else { "trending-week" }.to_string(),
-                title: if from_deezer { "Hot New Releases" } else { "Trending This Week" }.to_string(),
+                id: if from_deezer {
+                    "hot-new-releases"
+                } else {
+                    "trending-week"
+                }
+                .to_string(),
+                title: if from_deezer {
+                    "Hot New Releases"
+                } else {
+                    "Trending This Week"
+                }
+                .to_string(),
                 description: if from_deezer {
                     "The lead song of this week's freshest albums and singles.".to_string()
                 } else {
                     "What ListenBrainz listeners are playing most this week.".to_string()
                 },
-                source: if from_deezer { "Deezer" } else { "ListenBrainz" }.to_string(),
+                source: if from_deezer {
+                    "Deezer"
+                } else {
+                    "ListenBrainz"
+                }
+                .to_string(),
                 tracks,
                 art_url: art,
             });
@@ -2356,7 +2656,14 @@ pub async fn build_home_feed(
                 continue;
             }
             let resolved = resolve_many(spotify, cache, rows, 10, 14).await;
-            let tracks = filter_mix_tracks(resolved, 2, &mut global_seen_track_ids, &recent_24h_ids, true, 10);
+            let tracks = filter_mix_tracks(
+                resolved,
+                2,
+                &mut global_seen_track_ids,
+                &recent_24h_ids,
+                true,
+                10,
+            );
             if tracks.is_empty() {
                 continue;
             }
@@ -2388,7 +2695,10 @@ pub async fn build_home_feed(
             let description = if tracks.len() >= size {
                 format!("The {size} biggest songs of the last three months, widened to earlier months when short.")
             } else {
-                format!("The biggest songs of the moment. Filling up: {} of {size} matched so far.", tracks.len())
+                format!(
+                    "The biggest songs of the moment. Filling up: {} of {size} matched so far.",
+                    tracks.len()
+                )
             };
             let art = tracks.first().and_then(|t| t.art_url.clone());
             made_for_you.push(MusicMix {
@@ -2409,7 +2719,14 @@ pub async fn build_home_feed(
     {
         let candidates = all_time_candidates();
         let matched = resolve_many_cached(cache, &candidates, ALL_TIME_SIZE + 10);
-        let tracks = filter_mix_tracks(matched, 2, &mut HashSet::new(), &HashSet::new(), true, ALL_TIME_SIZE);
+        let tracks = filter_mix_tracks(
+            matched,
+            2,
+            &mut HashSet::new(),
+            &HashSet::new(),
+            true,
+            ALL_TIME_SIZE,
+        );
 
         if tracks.len() >= 5 {
             let art = tracks.first().and_then(|t| t.art_url.clone());
@@ -2418,7 +2735,9 @@ pub async fn build_home_feed(
             made_for_you.push(MusicMix {
                 id: "all-time-best".to_string(),
                 title: "All-Time Best".to_string(),
-                description: "The biggest songs ever: chart-toppers with billions of streams and views.".to_string(),
+                description:
+                    "The biggest songs ever: chart-toppers with billions of streams and views."
+                        .to_string(),
                 source: "Halcyon".to_string(),
                 tracks,
                 art_url: art,
@@ -2472,7 +2791,8 @@ pub async fn build_home_feed(
         if fresh_releases.len() >= 8 {
             break;
         }
-        if let Some(track) = resolve_outside_track(spotify, cache, &art_name, &rel_name, None).await {
+        if let Some(track) = resolve_outside_track(spotify, cache, &art_name, &rel_name, None).await
+        {
             fresh_releases.push(ShelfItem {
                 id: track.id.clone(),
                 title: rel_name,
@@ -2551,16 +2871,36 @@ mod tests {
     #[test]
     fn test_rank_artists_counts_plays_then_likes() {
         let song = |artist: &str, n: u32| {
-            Track::simple(format!("id{n}"), "t".into(), artist.into(), "a".into(), 1000)
+            Track::simple(
+                format!("id{n}"),
+                "t".into(),
+                artist.into(),
+                "a".into(),
+                1000,
+            )
         };
-        let liked = vec![song("Beta", 1), song("Beta", 2), song("Gamma", 3), song("Various Artists", 4)];
+        let liked = vec![
+            song("Beta", 1),
+            song("Beta", 2),
+            song("Gamma", 3),
+            song("Various Artists", 4),
+        ];
         let played = vec!["Alpha".to_string()];
-        assert_eq!(rank_artists(&played, &liked, 5), vec!["Alpha", "Beta", "Gamma"]);
+        assert_eq!(
+            rank_artists(&played, &liked, 5),
+            vec!["Alpha", "Beta", "Gamma"]
+        );
         assert_eq!(rank_artists(&played, &liked, 2), vec!["Alpha", "Beta"]);
         assert!(rank_artists(&[], &[], 5).is_empty());
     }
 
-    fn play(id: &str, artist: &str, started_at: u64, ms_played: u64, completed: bool) -> PlayLogEntry {
+    fn play(
+        id: &str,
+        artist: &str,
+        started_at: u64,
+        ms_played: u64,
+        completed: bool,
+    ) -> PlayLogEntry {
         PlayLogEntry {
             id: 0,
             track_id: id.to_string(),
@@ -2582,7 +2922,13 @@ mod tests {
             play("a", "Alpha", now - 2 * 86_400, 200_000, true),
             play("b", "Beta", now, 4_000, false), // skipped at once
         ];
-        let liked = vec![Track::simple("c".into(), "t".into(), "Gamma".into(), "x".into(), 1000)];
+        let liked = vec![Track::simple(
+            "c".into(),
+            "t".into(),
+            "Gamma".into(),
+            "x".into(),
+            1000,
+        )];
         let taste = learn_taste(&plays, &liked, now);
         // Only the song you really listened to; the skipped one and the never-played like are out.
         assert_eq!(taste.songs, vec!["a"]);
@@ -2656,11 +3002,41 @@ mod tests {
 
     #[test]
     fn test_filter_mix_tracks_diversity() {
-        let t1 = Track::simple("1".into(), "Song 1".into(), "Artist A".into(), "Alb".into(), 100);
-        let t2 = Track::simple("2".into(), "Song 2".into(), "Artist A".into(), "Alb".into(), 100);
-        let t3 = Track::simple("3".into(), "Song 3".into(), "Artist A".into(), "Alb".into(), 100);
-        let t4 = Track::simple("4".into(), "Song 4".into(), "Artist B".into(), "Alb".into(), 100);
-        let t5 = Track::simple("5".into(), "Song 5".into(), "Artist C".into(), "Alb".into(), 100);
+        let t1 = Track::simple(
+            "1".into(),
+            "Song 1".into(),
+            "Artist A".into(),
+            "Alb".into(),
+            100,
+        );
+        let t2 = Track::simple(
+            "2".into(),
+            "Song 2".into(),
+            "Artist A".into(),
+            "Alb".into(),
+            100,
+        );
+        let t3 = Track::simple(
+            "3".into(),
+            "Song 3".into(),
+            "Artist A".into(),
+            "Alb".into(),
+            100,
+        );
+        let t4 = Track::simple(
+            "4".into(),
+            "Song 4".into(),
+            "Artist B".into(),
+            "Alb".into(),
+            100,
+        );
+        let t5 = Track::simple(
+            "5".into(),
+            "Song 5".into(),
+            "Artist C".into(),
+            "Alb".into(),
+            100,
+        );
 
         let mut global_seen = HashSet::new();
         let mut recent_24h = HashSet::new();
@@ -2683,4 +3059,3 @@ mod tests {
         assert_eq!(global_seen.len(), 3);
     }
 }
-

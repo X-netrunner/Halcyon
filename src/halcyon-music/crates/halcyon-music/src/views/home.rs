@@ -21,19 +21,30 @@ pub enum HomeStatus {
     WaitingOnSpotify,
 }
 
-fn status_chip<'a, Message: 'a>(status: HomeStatus, shimmer: f32, palette: HalcyonPalette) -> Element<'a, Message> {
+fn status_chip<'a, Message: 'a>(
+    status: HomeStatus,
+    shimmer: f32,
+    palette: HalcyonPalette,
+) -> Element<'a, Message> {
     let (label, tint) = match status {
         HomeStatus::Loading => {
             let pulse = 0.55 + 0.45 * (0.5 + 0.5 * (shimmer * std::f32::consts::TAU).sin());
-            ("Getting fresh suggestions…", crate::theme::alpha(palette.accent, pulse))
+            (
+                "Getting fresh suggestions…",
+                crate::theme::alpha(palette.accent, pulse),
+            )
         }
         HomeStatus::Live => ("Live Suggestions", palette.accent),
         HomeStatus::Partial => ("More suggestions on the way", palette.text_muted),
         HomeStatus::WaitingOnSpotify => ("Spotify is busy, retrying soon", palette.text_muted),
     };
     container(
-        row![icon(Icon::Sparkles, 12.0, tint), Space::with_width(6), text(label).size(12).color(tint)]
-            .align_y(Alignment::Center),
+        row![
+            icon(Icon::Sparkles, 12.0, tint),
+            Space::with_width(6),
+            text(label).size(12).color(tint)
+        ]
+        .align_y(Alignment::Center),
     )
     .padding([6, 14])
     .style(crate::views::chip(palette))
@@ -50,7 +61,11 @@ pub enum MixAction {
 
 /// The mixes the daemon builds on a schedule (Part 6) can be refreshed and judged.
 pub fn is_generated_mix(id: &str) -> bool {
-    id.starts_with("daily-mix-") || matches!(id, "discover-weekly" | "release-radar" | "on-repeat" | "repeat-rewind" | "daylist")
+    id.starts_with("daily-mix-")
+        || matches!(
+            id,
+            "discover-weekly" | "release-radar" | "on-repeat" | "repeat-rewind" | "daylist"
+        )
 }
 
 const MIX_ACTION_H: f32 = 20.0;
@@ -58,7 +73,11 @@ const MIX_ACTION_H: f32 = 20.0;
 /// The daemon sends the full current set of generated mixes: they replace the generated mixes on
 /// Home (also ones that no longer exist, such as a Daily Mix whose cluster went away) and go in
 /// front; every other mix stays where it was.
-pub fn merge_generated(feed: &mut HomeFeed, mixes: Vec<MusicMix>, meta: Vec<halcyon_music_core::models::MixMeta>) {
+pub fn merge_generated(
+    feed: &mut HomeFeed,
+    mixes: Vec<MusicMix>,
+    meta: Vec<halcyon_music_core::models::MixMeta>,
+) {
     let mut all = mixes;
     feed.made_for_you.retain(|m| !is_generated_mix(&m.id));
     all.append(&mut feed.made_for_you);
@@ -106,7 +125,10 @@ impl HomeFilter {
         use Section::*;
         match self {
             HomeFilter::All => true,
-            HomeFilter::Music => matches!(section, LikedPin | QuickPicks | JumpBackIn | MadeForYou | Capsule),
+            HomeFilter::Music => matches!(
+                section,
+                LikedPin | QuickPicks | JumpBackIn | MadeForYou | Capsule
+            ),
             HomeFilter::New => matches!(section, Discover | Charts | NewReleases | FreshReleases),
         }
     }
@@ -122,20 +144,28 @@ fn filter_chips<'a, Message: Clone + 'static>(
     for f in HomeFilter::ALL {
         let chosen = f == current;
         r = r.push(
-            button(text(f.label()).size(13).color(if chosen { palette.on_accent() } else { palette.text }))
-                .padding([6, 16])
-                .on_press(on_filter(f))
-                .style(move |_t, s| button::Style {
-                    background: Some(if chosen {
-                        palette.accent_background()
-                    } else if s == button::Status::Hovered {
-                        crate::theme::alpha(palette.accent, 0.20).into()
-                    } else {
-                        crate::theme::alpha(palette.text, 0.07).into()
-                    }),
-                    border: iced::Border { radius: 999.0.into(), width: 1.0, color: crate::theme::alpha(palette.border, if chosen { 0.0 } else { 0.25 }) },
-                    ..Default::default()
+            button(text(f.label()).size(13).color(if chosen {
+                palette.on_accent()
+            } else {
+                palette.text
+            }))
+            .padding([6, 16])
+            .on_press(on_filter(f))
+            .style(move |_t, s| button::Style {
+                background: Some(if chosen {
+                    palette.accent_background()
+                } else if s == button::Status::Hovered {
+                    crate::theme::alpha(palette.accent, 0.20).into()
+                } else {
+                    crate::theme::alpha(palette.text, 0.07).into()
                 }),
+                border: iced::Border {
+                    radius: 999.0.into(),
+                    width: 1.0,
+                    color: crate::theme::alpha(palette.border, if chosen { 0.0 } else { 0.25 }),
+                },
+                ..Default::default()
+            }),
         );
     }
     r.into()
@@ -177,20 +207,30 @@ pub fn view<'a, Message: Clone + 'static>(
 
     page = page.push(
         row![
-            column![
-                text(greeting_text)
-                    .size(density.heading_size() + 10.0)
-                    .color(palette.text),
-            ]
+            column![text(greeting_text)
+                .size(density.heading_size() + 10.0)
+                .color(palette.text),]
             .spacing(4),
             Space::with_width(Length::Fill),
             // Status of the suggestions, with a refresh button next to it.
             status_chip(status, shimmer, palette),
             Space::with_width(8),
-            button(icon(Icon::Refresh, 14.0, if status == HomeStatus::Loading { palette.text_muted } else { palette.accent }))
-                .on_press_maybe(if status == HomeStatus::Loading { None } else { Some(on_refresh.clone()) })
-                .padding(8)
-                .style(crate::views::ghost(palette)),
+            button(icon(
+                Icon::Refresh,
+                14.0,
+                if status == HomeStatus::Loading {
+                    palette.text_muted
+                } else {
+                    palette.accent
+                }
+            ))
+            .on_press_maybe(if status == HomeStatus::Loading {
+                None
+            } else {
+                Some(on_refresh.clone())
+            })
+            .padding(8)
+            .style(crate::views::ghost(palette)),
         ]
         .align_y(Alignment::Center),
     );
@@ -203,7 +243,12 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // Liked Songs is a playlist that is always pinned to the top of Home.
     if filter.shows(Section::LikedPin) {
-        page = page.push(view_liked_pin(liked_tracks, palette, on_play_context, on_navigate));
+        page = page.push(view_liked_pin(
+            liked_tracks,
+            palette,
+            on_play_context,
+            on_navigate,
+        ));
     }
 
     // Nothing has arrived yet: show grey placeholders instead of a blank page.
@@ -241,8 +286,16 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 4. Made For You: mixes built from your own library and listening
-    let personal: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source == "Halcyon Local").collect();
-    let outside: Vec<&MusicMix> = feed.made_for_you.iter().filter(|m| m.source != "Halcyon Local").collect();
+    let personal: Vec<&MusicMix> = feed
+        .made_for_you
+        .iter()
+        .filter(|m| m.source == "Halcyon Local")
+        .collect();
+    let outside: Vec<&MusicMix> = feed
+        .made_for_you
+        .iter()
+        .filter(|m| m.source != "Halcyon Local")
+        .collect();
     if filter.shows(Section::MadeForYou) && !personal.is_empty() {
         page = page.push(view_made_for_you_mixes(
             personal,
@@ -280,11 +333,15 @@ pub fn view<'a, Message: Clone + 'static>(
             progress,
             clock,
         ));
-    } else if filter.shows(Section::Discover) && (!feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty()) {
+    } else if filter.shows(Section::Discover)
+        && (!feed.made_for_you.is_empty() || !feed.jump_back_in.is_empty())
+    {
         // Nothing from outside yet: say so, so the gap does not look like a bug.
         let note = match status {
             HomeStatus::Loading => "Looking for new and popular music…",
-            HomeStatus::WaitingOnSpotify => "Spotify is busy. Discover will fill in on its own shortly.",
+            HomeStatus::WaitingOnSpotify => {
+                "Spotify is busy. Discover will fill in on its own shortly."
+            }
             _ => "New and popular music will show up here as soon as it has loaded.",
         };
         if !has_discover {
@@ -346,7 +403,11 @@ pub fn view<'a, Message: Clone + 'static>(
     }
 
     // 8. Your Capsule Preview Card
-    if let Some(capsule) = feed.capsule_preview.as_ref().filter(|_| filter.shows(Section::Capsule)) {
+    if let Some(capsule) = feed
+        .capsule_preview
+        .as_ref()
+        .filter(|_| filter.shows(Section::Capsule))
+    {
         page = page.push(view_capsule_card(capsule, palette, on_navigate));
     }
 
@@ -433,7 +494,13 @@ pub fn view_shelf<'a, Message: Clone + 'static>(
     page = page.push(greeting_row(feed, palette, density, loading, on_refresh));
 
     if with_hero {
-        page = page.push(dock_hero(liked, palette, on_play_context, on_navigate, on_shuffle_liked));
+        page = page.push(dock_hero(
+            liked,
+            palette,
+            on_play_context,
+            on_navigate,
+            on_shuffle_liked,
+        ));
     }
 
     if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
@@ -467,9 +534,15 @@ fn greeting_row<'a, Message: Clone + 'a>(
     loading: bool,
     on_refresh: Message,
 ) -> Element<'a, Message> {
-    let greeting = if feed.greeting.is_empty() { "Welcome to Halcyon Music" } else { &feed.greeting };
+    let greeting = if feed.greeting.is_empty() {
+        "Welcome to Halcyon Music"
+    } else {
+        &feed.greeting
+    };
     row![
-        text(greeting).size(density.heading_size() + 10.0).color(palette.text),
+        text(greeting)
+            .size(density.heading_size() + 10.0)
+            .color(palette.text),
         Space::with_width(Length::Fill),
         button(icon(Icon::Refresh, 14.0, palette.text_muted))
             .on_press_maybe((!loading).then_some(on_refresh))
@@ -504,12 +577,21 @@ pub fn view_panel<'a, Message: Clone + 'static>(
 ) -> Element<'a, Message> {
     let mut page = column![].spacing(28).padding([16, 24]);
     page = page.push(greeting_row(feed, palette, density, loading, on_refresh));
-    page = page.push(dock_hero(liked, palette, on_play_context, on_navigate, on_shuffle_liked));
+    page = page.push(dock_hero(
+        liked,
+        palette,
+        on_play_context,
+        on_navigate,
+        on_shuffle_liked,
+    ));
 
     if !crate::views::up_next::is_empty(player) {
         page = page.push(crate::views::up_next::list(player, palette));
     } else {
-        if feed.quick_picks.is_empty() && feed.jump_back_in.is_empty() && feed.made_for_you.is_empty() {
+        if feed.quick_picks.is_empty()
+            && feed.jump_back_in.is_empty()
+            && feed.made_for_you.is_empty()
+        {
             page = page.push(view_skeleton(palette, shimmer));
         }
         if !feed.jump_back_in.is_empty() {
@@ -545,11 +627,19 @@ fn round_button<'a, Message: Clone + 'a>(
 ) -> Element<'a, Message> {
     let px = DOCK_HERO_BUTTON;
     button(
-        container(icon(glyph, 18.0, if filled { palette.on_accent() } else { palette.text }))
-            .width(px)
-            .height(px)
-            .center_x(px)
-            .center_y(px),
+        container(icon(
+            glyph,
+            18.0,
+            if filled {
+                palette.on_accent()
+            } else {
+                palette.text
+            },
+        ))
+        .width(px)
+        .height(px)
+        .center_x(px)
+        .center_y(px),
     )
     .padding(0)
     .on_press(msg)
@@ -561,7 +651,10 @@ fn round_button<'a, Message: Clone + 'a>(
         } else {
             crate::theme::alpha(palette.text, 0.08).into()
         }),
-        border: iced::Border { radius: (px / 2.0).into(), ..Default::default() },
+        border: iced::Border {
+            radius: (px / 2.0).into(),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .into()
@@ -582,13 +675,23 @@ fn dock_hero<'a, Message: Clone + 'static>(
         .center_y(DOCK_HERO_COVER)
         .style(move |_t| container::Style {
             background: Some(tint.into()),
-            border: iced::Border { radius: crate::theme::radius::HERO.into(), ..Default::default() },
+            border: iced::Border {
+                radius: crate::theme::radius::HERO.into(),
+                ..Default::default()
+            },
             ..Default::default()
         });
     let open = on_navigate(NavPage::Liked);
-    let cover_btn = button(cover).padding(0).on_press(open.clone()).style(|_t, _s| button::Style::default());
+    let cover_btn = button(cover)
+        .padding(0)
+        .on_press(open.clone())
+        .style(|_t, _s| button::Style::default());
 
-    let count = if liked.is_empty() { String::new() } else { format!("{} songs", liked.len()) };
+    let count = if liked.is_empty() {
+        String::new()
+    } else {
+        format!("{} songs", liked.len())
+    };
     let title_btn = button(
         column![
             text("Liked Songs").size(22).color(palette.text),
@@ -601,7 +704,11 @@ fn dock_hero<'a, Message: Clone + 'static>(
     .style(|_t, _s| button::Style::default());
 
     // Before the songs have loaded, play just opens the page, as the Classic card does.
-    let play_msg = if liked.is_empty() { open } else { on_play_context(liked.to_vec(), 0) };
+    let play_msg = if liked.is_empty() {
+        open
+    } else {
+        on_play_context(liked.to_vec(), 0)
+    };
     let buttons = row![
         round_button(Icon::Play, true, palette, play_msg),
         round_button(Icon::Shuffle, false, palette, on_shuffle_liked),
@@ -666,7 +773,10 @@ fn view_liked_pin<'a, Message: Clone + 'static>(
     .on_press(play_msg)
     .style(move |_t, s| button::Style {
         background: Some(palette.accent_background()),
-        border: iced::Border { radius: 23.0.into(), ..Default::default() },
+        border: iced::Border {
+            radius: 23.0.into(),
+            ..Default::default()
+        },
         shadow: if s == button::Status::Hovered {
             palette.glow_shadow(0.55, 26.0)
         } else {
@@ -698,10 +808,22 @@ fn view_liked_pin<'a, Message: Clone + 'static>(
 fn view_skeleton<'a, Message: 'a>(palette: HalcyonPalette, shimmer: f32) -> Element<'a, Message> {
     // One slow breath: 0.45 -> 0.8 -> 0.45 opacity over the phase.
     let pulse = 0.45 + 0.35 * (0.5 + 0.5 * (shimmer * std::f32::consts::TAU).sin());
-    fn block<'a, Message: 'a>(w: Length, h: f32, radius: f32, palette: HalcyonPalette, pulse: f32) -> Element<'a, Message> {
+    fn block<'a, Message: 'a>(
+        w: Length,
+        h: f32,
+        radius: f32,
+        palette: HalcyonPalette,
+        pulse: f32,
+    ) -> Element<'a, Message> {
         container(Space::new(w, h))
             .style(move |_t| container::Style {
-                background: Some(iced::Color { a: pulse, ..palette.surface_variant }.into()),
+                background: Some(
+                    iced::Color {
+                        a: pulse,
+                        ..palette.surface_variant
+                    }
+                    .into(),
+                ),
                 border: iced::Border {
                     radius: radius.into(),
                     ..Default::default()
@@ -732,9 +854,14 @@ fn view_skeleton<'a, Message: 'a>(palette: HalcyonPalette, shimmer: f32) -> Elem
         );
     }
 
-    column![tiles, Space::with_height(8), block(Length::Fixed(160.0), 18.0, 4.0, palette, pulse), cards]
-        .spacing(14)
-        .into()
+    column![
+        tiles,
+        Space::with_height(8),
+        block(Length::Fixed(160.0), 18.0, 4.0, palette, pulse),
+        cards
+    ]
+    .spacing(14)
+    .into()
 }
 
 /// Quick Picks Grid: 2 rows of 3-4 tiles.
@@ -787,7 +914,15 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
 
             let body_btn = button(
                 row![
-                    crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Small, 52.0, 12.0, Icon::Music, &item.title, palette),
+                    crate::art::cover(
+                        item.art_url.as_deref(),
+                        halcyon_music_core::art::ArtSize::Small,
+                        52.0,
+                        12.0,
+                        Icon::Music,
+                        &item.title,
+                        palette
+                    ),
                     Space::with_width(12),
                     column![
                         text(super::ellipsize(&item.title, 30))
@@ -817,7 +952,10 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             .on_press(play_msg)
             .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
-                border: iced::Border { radius: 15.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 15.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
 
@@ -827,7 +965,10 @@ fn view_quick_picks<'a, Message: Clone + 'static>(
             .width(Length::FillPortion(1))
             .style(move |_t| container::Style {
                 background: Some(palette.card_background()),
-                border: iced::Border { radius: 18.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 18.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
 
@@ -894,14 +1035,26 @@ fn view_shelf_with<'a, Message: Clone + 'static>(
         let card_btn = button(
             column![
                 // Artwork card
-                crate::art::cover(item.art_url.as_deref(), halcyon_music_core::art::ArtSize::Medium, 140.0, 14.0, Icon::Music, &item.title, palette),
+                crate::art::cover(
+                    item.art_url.as_deref(),
+                    halcyon_music_core::art::ArtSize::Medium,
+                    140.0,
+                    14.0,
+                    Icon::Music,
+                    &item.title,
+                    palette
+                ),
                 Space::with_height(8),
                 text(super::ellipsize(&item.title, 17))
                     .size(13)
                     .color(palette.text),
-                text(if compact { String::new() } else { super::ellipsize(&item.subtitle, 20) })
-                    .size(11)
-                    .color(palette.text_muted),
+                text(if compact {
+                    String::new()
+                } else {
+                    super::ellipsize(&item.subtitle, 20)
+                })
+                .size(11)
+                .color(palette.text_muted),
             ]
             .width(140),
         )
@@ -917,7 +1070,11 @@ fn view_shelf_with<'a, Message: Clone + 'static>(
         })
         .style(move |_t, s| button::Style {
             background: Some(
-                if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
+                if s == button::Status::Hovered {
+                    crate::theme::mix(palette.surface, palette.accent, 0.16)
+                } else {
+                    crate::theme::alpha(palette.surface, 0.62)
+                }
                 .into(),
             ),
             border: iced::Border {
@@ -940,7 +1097,10 @@ fn view_shelf_with<'a, Message: Clone + 'static>(
             .on_press(on_play_playlist(item.id.clone()))
             .style(move |_t, _s| button::Style {
                 background: Some(palette.accent_background()),
-                border: iced::Border { radius: 17.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 17.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
             // Not a stacked overlay (those are not clipped by the scroll area and can draw over
@@ -950,7 +1110,12 @@ fn view_shelf_with<'a, Message: Clone + 'static>(
                 container(play_btn)
                     .width(Length::Fixed(156.0))
                     .align_x(iced::alignment::Horizontal::Right)
-                    .padding(iced::Padding { top: 6.0, right: 8.0, bottom: 0.0, left: 0.0 }),
+                    .padding(iced::Padding {
+                        top: 6.0,
+                        right: 8.0,
+                        bottom: 0.0,
+                        left: 0.0
+                    }),
             ]);
         } else {
             cards_row = cards_row.push(card_btn);
@@ -991,7 +1156,11 @@ fn slide_at(clock: f32, index: usize, count: usize) -> (usize, f32) {
     let t = (clock + index as f32 * SLIDE_STAGGER).max(0.0);
     let step = (t / step_len).floor();
     let within = t - step * step_len;
-    let fade = if within > SLIDE_HOLD { ((within - SLIDE_HOLD) / SLIDE_FADE).clamp(0.0, 1.0) } else { 0.0 };
+    let fade = if within > SLIDE_HOLD {
+        ((within - SLIDE_HOLD) / SLIDE_FADE).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     // Ease in and out so the change is soft at both ends.
     let fade = fade * fade * (3.0 - 2.0 * fade);
     ((step as usize) % count, fade)
@@ -1000,8 +1169,14 @@ fn slide_at(clock: f32, index: usize, count: usize) -> (usize, f32) {
 /// The two shelves Home draws, in the order the cards appear (the same split `view` makes).
 fn shelves(feed: &HomeFeed) -> [Vec<&MusicMix>; 2] {
     [
-        feed.made_for_you.iter().filter(|m| m.source == "Halcyon Local").collect(),
-        feed.made_for_you.iter().filter(|m| m.source != "Halcyon Local").collect(),
+        feed.made_for_you
+            .iter()
+            .filter(|m| m.source == "Halcyon Local")
+            .collect(),
+        feed.made_for_you
+            .iter()
+            .filter(|m| m.source != "Halcyon Local")
+            .collect(),
     ]
 }
 
@@ -1035,15 +1210,34 @@ fn mix_cover<'a, Message: 'a>(
     let covers = crate::art::unique_covers(mix, MIX_SLIDES);
     let size = halcyon_music_core::art::ArtSize::Medium;
     let Some(&first) = covers.first() else {
-        return crate::art::cover(mix.art_url.as_deref(), size, px, RADIUS, Icon::Music, &mix.title, palette);
+        return crate::art::cover(
+            mix.art_url.as_deref(),
+            size,
+            px,
+            RADIUS,
+            Icon::Music,
+            &mix.title,
+            palette,
+        );
     };
     let (now, fade) = slide_at(clock, index, covers.len());
     let current = covers.get(now).copied().unwrap_or(first);
-    let base = crate::art::cover(Some(current), size, px, RADIUS, Icon::Music, &mix.title, palette);
+    let base = crate::art::cover(
+        Some(current),
+        size,
+        px,
+        RADIUS,
+        Icon::Music,
+        &mix.title,
+        palette,
+    );
     if fade <= 0.0 {
         return base;
     }
-    let next = covers.get((now + 1) % covers.len()).copied().unwrap_or(first);
+    let next = covers
+        .get((now + 1) % covers.len())
+        .copied()
+        .unwrap_or(first);
     match crate::art::cover_overlay(next, size, px, RADIUS, fade) {
         Some(over) => crate::views::crossfade::Crossfade::new(base, over).into(),
         None => base,
@@ -1087,17 +1281,23 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             .padding(0)
             .on_press(on_open_mix(mix.id.clone()))
             .style(crate::views::ghost(palette));
-        let title_btn = button(text(super::ellipsize(&mix.title, 18)).size(14).color(palette.text))
-            .padding(0)
-            .on_press(on_open_mix(mix.id.clone()))
-            .style(|_t, _s| button::Style::default());
+        let title_btn = button(
+            text(super::ellipsize(&mix.title, 18))
+                .size(14)
+                .color(palette.text),
+        )
+        .padding(0)
+        .on_press(on_open_mix(mix.id.clone()))
+        .style(|_t, _s| button::Style::default());
         // The card has room for about 30 characters of the description (its words from the LLM
         // layer, when on). The whole sentence is one hover away, so nothing is lost and the card
         // never changes size.
         let title_el: Element<'a, Message> = if mix.description.chars().count() > 30 {
             iced::widget::tooltip(
                 title_btn,
-                container(text(mix.description.clone()).size(12).color(palette.text)).padding(8).max_width(240),
+                container(text(mix.description.clone()).size(12).color(palette.text))
+                    .padding(8)
+                    .max_width(240),
                 iced::widget::tooltip::Position::Top,
             )
             .gap(6)
@@ -1122,17 +1322,33 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
         .style(move |_t, status| {
             let hot = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
-                background: Some(Color { a: if hot { 0.78 } else { 0.55 }, ..Color::BLACK }.into()),
+                background: Some(
+                    Color {
+                        a: if hot { 0.78 } else { 0.55 },
+                        ..Color::BLACK
+                    }
+                    .into(),
+                ),
                 border: iced::Border {
-                    color: Color { a: 0.28, ..Color::WHITE },
+                    color: Color {
+                        a: 0.28,
+                        ..Color::WHITE
+                    },
                     width: 1.0,
                     radius: 15.0.into(),
                 },
                 ..Default::default()
             }
         });
-        let play_btn = crate::views::play_orb(Icon::Play, 34.0, palette, Some(on_play_mix(tracks, mix.title.clone())));
-        let actions = row![save_btn, play_btn].spacing(6).align_y(Alignment::Center);
+        let play_btn = crate::views::play_orb(
+            Icon::Play,
+            34.0,
+            palette,
+            Some(on_play_mix(tracks, mix.title.clone())),
+        );
+        let actions = row![save_btn, play_btn]
+            .spacing(6)
+            .align_y(Alignment::Center);
 
         let strip = row![info, Space::with_width(Length::Fill), actions]
             .align_y(Alignment::Start)
@@ -1147,10 +1363,14 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
                 .style(crate::views::ghost(palette))
         };
         let judge: Element<'a, Message> = if is_generated_mix(&mix.id) {
-            row![small("Refresh", MixAction::Refresh), small("Less like this", MixAction::LessLikeThis), small("Not my taste", MixAction::NotMyTaste)]
-                .spacing(2)
-                .height(Length::Fixed(MIX_ACTION_H))
-                .into()
+            row![
+                small("Refresh", MixAction::Refresh),
+                small("Less like this", MixAction::LessLikeThis),
+                small("Not my taste", MixAction::NotMyTaste)
+            ]
+            .spacing(2)
+            .height(Length::Fixed(MIX_ACTION_H))
+            .into()
         } else {
             Space::with_height(MIX_ACTION_H).into()
         };
@@ -1160,7 +1380,10 @@ fn view_made_for_you_mixes<'a, Message: Clone + 'static>(
             .width(MIX_W)
             .style(move |_t| container::Style {
                 background: Some(crate::theme::alpha(palette.surface, 0.55).into()),
-                border: iced::Border { radius: 24.0.into(), ..Default::default() },
+                border: iced::Border {
+                    radius: 24.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
 
@@ -1195,10 +1418,7 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
         .as_ref()
         .map(|t| t.title.as_str())
         .unwrap_or("None");
-    let top_artist = capsule
-        .top_artist
-        .as_deref()
-        .unwrap_or("Various Artists");
+    let top_artist = capsule.top_artist.as_deref().unwrap_or("Various Artists");
 
     container(
         row![
@@ -1233,7 +1453,9 @@ fn view_capsule_card<'a, Message: Clone + 'static>(
                         .color(palette.text_muted),
                     text(" • Top song: ").size(12).color(palette.text_muted),
                     text(top_song_title).size(12).color(palette.text),
-                    text(format!(" by {top_artist}")).size(12).color(palette.text_muted),
+                    text(format!(" by {top_artist}"))
+                        .size(12)
+                        .color(palette.text_muted),
                 ],
             ]
             .width(Length::Fill),
@@ -1275,7 +1497,9 @@ mod slideshow_tests {
     #[test]
     fn covers_advance_one_after_another_and_wrap() {
         let step = SLIDE_HOLD + SLIDE_FADE;
-        let seen: Vec<usize> = (0..6).map(|k| slide_at(k as f32 * step + 0.1, 0, 4).0).collect();
+        let seen: Vec<usize> = (0..6)
+            .map(|k| slide_at(k as f32 * step + 0.1, 0, 4).0)
+            .collect();
         assert_eq!(seen, vec![0, 1, 2, 3, 0, 1]);
     }
 
@@ -1298,23 +1522,58 @@ mod part6_tests {
     use super::*;
 
     fn mix(id: &str, source: &str) -> MusicMix {
-        MusicMix { id: id.into(), title: id.into(), description: String::new(), source: source.into(), tracks: Vec::new(), art_url: None }
+        MusicMix {
+            id: id.into(),
+            title: id.into(),
+            description: String::new(),
+            source: source.into(),
+            tracks: Vec::new(),
+            art_url: None,
+        }
     }
 
     #[test]
     fn generated_mixes_replace_the_old_ones_and_lead_the_shelf() {
         let mut feed = HomeFeed {
-            made_for_you: vec![mix("on-repeat", "Halcyon Local"), mix("hidden-gems", "Halcyon Local"), mix("daily-mix-4", "Halcyon Local"), mix("deezer-global-chart", "Deezer")],
+            made_for_you: vec![
+                mix("on-repeat", "Halcyon Local"),
+                mix("hidden-gems", "Halcyon Local"),
+                mix("daily-mix-4", "Halcyon Local"),
+                mix("deezer-global-chart", "Deezer"),
+            ],
             ..Default::default()
         };
-        merge_generated(&mut feed, vec![mix("daily-mix-1", "Halcyon Local"), mix("on-repeat", "Halcyon Local")], Vec::new());
+        merge_generated(
+            &mut feed,
+            vec![
+                mix("daily-mix-1", "Halcyon Local"),
+                mix("on-repeat", "Halcyon Local"),
+            ],
+            Vec::new(),
+        );
         let ids: Vec<&str> = feed.made_for_you.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["daily-mix-1", "on-repeat", "hidden-gems", "deezer-global-chart"], "a vanished Daily Mix is gone, other mixes stay");
+        assert_eq!(
+            ids,
+            vec![
+                "daily-mix-1",
+                "on-repeat",
+                "hidden-gems",
+                "deezer-global-chart"
+            ],
+            "a vanished Daily Mix is gone, other mixes stay"
+        );
     }
 
     #[test]
     fn only_scheduled_mixes_get_the_judging_buttons() {
-        for id in ["daily-mix-2", "discover-weekly", "release-radar", "on-repeat", "repeat-rewind", "daylist"] {
+        for id in [
+            "daily-mix-2",
+            "discover-weekly",
+            "release-radar",
+            "on-repeat",
+            "repeat-rewind",
+            "daylist",
+        ] {
             assert!(is_generated_mix(id), "{id}");
         }
         for id in ["hidden-gems", "liked-songs", "halcyon-mix", "top-100"] {
@@ -1350,8 +1609,14 @@ mod filter_tests {
             let (m, n) = (HomeFilter::Music.shows(s), HomeFilter::New.shows(s));
             assert!(m ^ n, "{s:?} must belong to exactly one of Music and New");
         }
-        assert!(HomeFilter::Music.shows(Section::MadeForYou) && !HomeFilter::Music.shows(Section::Charts));
-        assert!(HomeFilter::New.shows(Section::NewReleases) && !HomeFilter::New.shows(Section::LikedPin));
+        assert!(
+            HomeFilter::Music.shows(Section::MadeForYou)
+                && !HomeFilter::Music.shows(Section::Charts)
+        );
+        assert!(
+            HomeFilter::New.shows(Section::NewReleases)
+                && !HomeFilter::New.shows(Section::LikedPin)
+        );
     }
 
     #[test]
@@ -1390,7 +1655,13 @@ mod dock_home_tests {
         };
         build(&feed, &[], false);
         build(&feed, &[], true);
-        let songs = vec![Track::simple("a".into(), "A".into(), "X".into(), "Y".into(), 1000)];
+        let songs = vec![Track::simple(
+            "a".into(),
+            "A".into(),
+            "X".into(),
+            "Y".into(),
+            1000,
+        )];
         build(&feed, &songs, false);
         // With a Recent shelf: a playlist (round play button under it) and an album.
         let mut full = HomeFeed::default();
@@ -1411,8 +1682,17 @@ mod dock_home_tests {
     #[test]
     fn a_compact_shelf_builds() {
         let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
-        let _: Element<'_, ()> =
-            view_shelf_with(true, "Recent", "", &[], palette, |_| (), |_, _| (), |_| (), |_| ());
+        let _: Element<'_, ()> = view_shelf_with(
+            true,
+            "Recent",
+            "",
+            &[],
+            palette,
+            |_| (),
+            |_, _| (),
+            |_| (),
+            |_| (),
+        );
     }
 
     #[test]
@@ -1420,7 +1700,15 @@ mod dock_home_tests {
         use halcyon_music_core::state::PlayerState;
         let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
         let songs: Vec<Track> = (0..4)
-            .map(|i| Track::simple(format!("t{i}"), format!("Song {i}"), "X".into(), "Y".into(), 1000))
+            .map(|i| {
+                Track::simple(
+                    format!("t{i}"),
+                    format!("Song {i}"),
+                    "X".into(),
+                    "Y".into(),
+                    1000,
+                )
+            })
             .collect();
         let mut feed = HomeFeed::default();
         feed.jump_back_in.push(ShelfItem {

@@ -15,10 +15,14 @@ use tracing::{info, warn};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnStatus {
     Connecting,
-    Connected { daemon_version: String },
+    Connected {
+        daemon_version: String,
+    },
     /// Daemon was not running; we started it ourselves.
     SpawnedDaemon,
-    Reconnecting { attempt: u32 },
+    Reconnecting {
+        attempt: u32,
+    },
     Failed(String),
 }
 
@@ -74,7 +78,10 @@ pub fn connect() -> DaemonClient {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
     });
-    DaemonClient { events: ev_rx, commands: cmd_tx }
+    DaemonClient {
+        events: ev_rx,
+        commands: cmd_tx,
+    }
 }
 
 /// How the daemon came to be running.
@@ -131,7 +138,9 @@ async fn connect_and_pump(
 
     // Say hello and ask for a snapshot.
     for body in [CommandBody::Hello, CommandBody::GetState] {
-        writer.write_all(&protocol::encode_line(&protocol::command(body))?).await?;
+        writer
+            .write_all(&protocol::encode_line(&protocol::command(body))?)
+            .await?;
     }
 
     loop {

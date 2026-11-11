@@ -21,14 +21,14 @@ const MAX_UPLOAD_SIZE: usize = 10 * 1024 * 1024; // 10 MB upload cap
 // Limits that keep a flood of connections or spoofed packets from turning the decoy into a problem of its own.
 const BAN_SECONDS: u64 = 600;
 const BAN_COMMENT: &str = "recon-deceiver-ban";
-const MAX_ACTIVE_BANS: usize = 256;          // ufw rules this daemon may have open at once
-const MAX_CONNECTIONS: usize = 256;          // decoy connections handled at once (one thread each)
-const MAX_COUNTER_SCANS: usize = 3;          // nmap counter-scans running at once
-const MAX_DNS_REPLIES_PER_SEC: u32 = 50;     // decoy DNS answers per second, all sources together
-const LOGS_DIR: &str = "/var/log/halcyon";   // root-owned (see sysmode init_logs_dir)
-const MAX_TRACKED_HOSTS: usize = 4096;       // size cap of every per-address map
-// Addresses that are never banned or counter-scanned, besides the default gateway, the DNS servers and this machine's own
-// addresses (read from the system, refreshed every minute). One address per line, '#' starts a comment.
+const MAX_ACTIVE_BANS: usize = 256; // ufw rules this daemon may have open at once
+const MAX_CONNECTIONS: usize = 256; // decoy connections handled at once (one thread each)
+const MAX_COUNTER_SCANS: usize = 3; // nmap counter-scans running at once
+const MAX_DNS_REPLIES_PER_SEC: u32 = 50; // decoy DNS answers per second, all sources together
+const LOGS_DIR: &str = "/var/log/halcyon"; // root-owned (see sysmode init_logs_dir)
+const MAX_TRACKED_HOSTS: usize = 4096; // size cap of every per-address map
+                                       // Addresses that are never banned or counter-scanned, besides the default gateway, the DNS servers and this machine's own
+                                       // addresses (read from the system, refreshed every minute). One address per line, '#' starts a comment.
 const ALLOW_FILE: &str = "/etc/recon-deceiver.allow";
 // Active counter-scanning (nmap against whoever probed the decoys) is OFF unless asked for. It touches hosts that are not yours:
 // an attacker's address is often a hacked machine, a proxy or a VPN exit, and unauthorised scanning is illegal in many places.
@@ -47,7 +47,16 @@ fn in_stealth_mode() -> bool {
 
 /// Read on every use (it is only asked when an attacker shows up), so switching it needs no restart.
 fn counter_scan_enabled() -> bool {
-    let on = |v: &str| matches!(v.trim().trim_matches('"').trim_matches('\'').to_lowercase().as_str(), "1" | "on" | "yes" | "true");
+    let on = |v: &str| {
+        matches!(
+            v.trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_lowercase()
+                .as_str(),
+            "1" | "on" | "yes" | "true"
+        )
+    };
     if let Ok(v) = std::env::var("RECON_COUNTER_SCAN") {
         if on(&v) {
             return true;
@@ -154,7 +163,10 @@ fn sys_user() -> String {
             }
         }
     }
-    std::env::var("LOGNAME").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "root".to_string())
+    std::env::var("LOGNAME")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "root".to_string())
 }
 
 #[allow(dead_code)] // the logs moved to /var/log/halcyon; kept for the SYS_HOME setting
@@ -265,7 +277,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
 
     let title_clean = title.replace('\0', "");
     let msg_clean = message.replace('\0', "");
-    cmd.args(["-u", urgency, "-i", icon, "--", &title_clean, &msg_clean]);      // "--": text sent by an attacker that starts with "-" is not an option
+    cmd.args(["-u", urgency, "-i", icon, "--", &title_clean, &msg_clean]); // "--": text sent by an attacker that starts with "-" is not an option
     thread::spawn(move || {
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();
@@ -412,7 +424,9 @@ fn ufw_unban(ip: Option<&str>) {
     };
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     for n in ufw_ban_rule_numbers(&text, ip) {
-        let _ = Command::new("ufw").args(["--force", "delete", &n.to_string()]).output();
+        let _ = Command::new("ufw")
+            .args(["--force", "delete", &n.to_string()])
+            .output();
     }
 }
 
@@ -435,13 +449,28 @@ fn ban_command(aifw: Option<&str>, ip: &str) -> (String, Vec<String>) {
     match aifw {
         Some(bin) => (
             bin.to_string(),
-            vec!["ban".into(), ip.into(), "--minutes".into(), (BAN_SECONDS / 60).max(1).to_string()],
+            vec![
+                "ban".into(),
+                ip.into(),
+                "--minutes".into(),
+                (BAN_SECONDS / 60).max(1).to_string(),
+            ],
         ),
         None => (
             "ufw".into(),
-            ["insert", "1", "deny", "from", ip, "to", "any", "comment", BAN_COMMENT]
-                .map(String::from)
-                .to_vec(),
+            [
+                "insert",
+                "1",
+                "deny",
+                "from",
+                ip,
+                "to",
+                "any",
+                "comment",
+                BAN_COMMENT,
+            ]
+            .map(String::from)
+            .to_vec(),
         ),
     }
 }
@@ -467,7 +496,11 @@ fn start_unban_reaper(state: AppState) {
         for ip in due {
             state.log_event(&format!("[INFO] Unbanning IP {}...", ip));
             ufw_unban(Some(&ip));
-            state.banned_ips.lock().unwrap_or_else(|e| e.into_inner()).remove(&ip);
+            state
+                .banned_ips
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&ip);
         }
     });
 }
@@ -566,7 +599,11 @@ impl AppState {
             .map(|o| o.status.success())
             .unwrap_or(false);
         if !added {
-            let which = if aifw.is_some() { "ai-firewall" } else { "ufw (is it installed and active?)" };
+            let which = if aifw.is_some() {
+                "ai-firewall"
+            } else {
+                "ufw (is it installed and active?)"
+            };
             self.log_event(&format!("[ERROR] {} could not ban {}", which, ip));
             lock(&self.banned_ips).remove(ip);
             return;
@@ -577,8 +614,10 @@ impl AppState {
             ip, BAN_SECONDS
         ));
         self.send_ban_notification(ip);
-        lock(&self.unban_queue)
-            .push_back((Instant::now() + Duration::from_secs(BAN_SECONDS), ip.to_string()));
+        lock(&self.unban_queue).push_back((
+            Instant::now() + Duration::from_secs(BAN_SECONDS),
+            ip.to_string(),
+        ));
     }
 
     fn scan_attacker(&self, ip: &str) {
@@ -637,7 +676,8 @@ impl AppState {
                 Ok(output) if output.status.success() => {
                     let out_str = String::from_utf8_lossy(&output.stdout).to_string();
                     let scan_log = format!("{}/attacker-scans.log", state_clone.logs_dir);
-                    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&scan_log) {
+                    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&scan_log)
+                    {
                         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
                         let _ = writeln!(
                             f,
@@ -709,17 +749,48 @@ fn skip_scan_target(ip: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 const TELNET_USERNAMES: &[&str] = &[
-    "ubuntu", "admin", "root", "backup", "deploy", "webadmin", "sysadmin",
-    "support", "operator", "user", "test", "postgres", "mysql", "git",
-    "ftp", "nobody", "guest", "default", "server", "office",
+    "ubuntu", "admin", "root", "backup", "deploy", "webadmin", "sysadmin", "support", "operator",
+    "user", "test", "postgres", "mysql", "git", "ftp", "nobody", "guest", "default", "server",
+    "office",
 ];
 
 const TELNET_PASSWORD_WORDS: &[&str] = &[
-    "Summer", "Winter", "Spring", "Autumn", "Shadow", "Dragon", "Monkey",
-    "Tiger", "Eagle", "Wolf", "Delta", "Matrix", "Quantum", "Solar", "Nova",
-    "Phantom", "Falcon", "Coffee", "Mango", "Bluebird", "Chocolate",
-    "Welcome", "Letmein", "Admin", "Server", "Linux", "Backup", "Secure",
-    "Temp", "Guest", "Test", "Sunshine", "Thunder", "Fire", "Ice", "Star",
+    "Summer",
+    "Winter",
+    "Spring",
+    "Autumn",
+    "Shadow",
+    "Dragon",
+    "Monkey",
+    "Tiger",
+    "Eagle",
+    "Wolf",
+    "Delta",
+    "Matrix",
+    "Quantum",
+    "Solar",
+    "Nova",
+    "Phantom",
+    "Falcon",
+    "Coffee",
+    "Mango",
+    "Bluebird",
+    "Chocolate",
+    "Welcome",
+    "Letmein",
+    "Admin",
+    "Server",
+    "Linux",
+    "Backup",
+    "Secure",
+    "Temp",
+    "Guest",
+    "Test",
+    "Sunshine",
+    "Thunder",
+    "Fire",
+    "Ice",
+    "Star",
 ];
 
 fn generate_telnet_credentials() -> (String, String) {
@@ -732,7 +803,9 @@ fn generate_telnet_credentials() -> (String, String) {
         user.push_str(&rng.gen_range(1..100).to_string());
     }
 
-    let word = *TELNET_PASSWORD_WORDS.choose(&mut rng).expect("non-empty list");
+    let word = *TELNET_PASSWORD_WORDS
+        .choose(&mut rng)
+        .expect("non-empty list");
     let years = ["2024", "2025", "2026"];
     let year = years.choose(&mut rng).expect("non-empty list");
     let suffixes = ["", "", "1", "2", "123", "!", "@", "#", "!", "123", "456"];
@@ -749,8 +822,8 @@ fn sandbox_fs() -> HashMap<&'static str, Vec<&'static str>> {
     m.insert(
         "/",
         vec![
-            "bin", "boot", "dev", "etc", "home", "lib", "media", "mnt", "opt", "proc",
-            "root", "run", "sbin", "srv", "sys", "tmp", "usr", "var",
+            "bin", "boot", "dev", "etc", "home", "lib", "media", "mnt", "opt", "proc", "root",
+            "run", "sbin", "srv", "sys", "tmp", "usr", "var",
         ],
     );
     m.insert("/root", vec![]);
@@ -771,7 +844,14 @@ fn sandbox_fs() -> HashMap<&'static str, Vec<&'static str>> {
     );
     m.insert(
         "/etc",
-        vec!["passwd", "shadow", "hostname", "hosts", "crontab", "resolv.conf"],
+        vec![
+            "passwd",
+            "shadow",
+            "hostname",
+            "hosts",
+            "crontab",
+            "resolv.conf",
+        ],
     );
     m.insert("/var", vec!["www", "log", "backups"]);
     m.insert("/var/www", vec!["html"]);
@@ -919,7 +999,10 @@ fn fake_backup_tar() -> Vec<u8> {
     {
         let mut tf = tar_builder(&mut tar_buf);
         tf.add("backup/config.php", b"<?php\ndefine('DB_HOST', 'localhost');\ndefine('DB_USER', 'sys_admin');\ndefine('DB_PASS', 'UB_Admin_P@ss_2026_Secure');\ndefine('DB_NAME', 'system_config');\n?>\n");
-        tf.add("backup/credentials.txt", b"# Stored credentials\nvpn_primary netadmin 7nQz!Pw2$KvR9xLm\n");
+        tf.add(
+            "backup/credentials.txt",
+            b"# Stored credentials\nvpn_primary netadmin 7nQz!Pw2$KvR9xLm\n",
+        );
         tf.add("backup/README.txt", b"Automated daily backup set.\n");
     }
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
@@ -1069,18 +1152,21 @@ fn sandbox_ls(cwd: &str, detailed: bool, hostname: &str) -> String {
     for name in sorted {
         let child = sandbox_normalize(cwd, name);
         if fs_map.contains_key(child.as_str()) {
-            lines.push(format!("drwxr-xr-x  2 {} 4096 Jul  9 12:00 {}", owner, name));
+            lines.push(format!(
+                "drwxr-xr-x  2 {} 4096 Jul  9 12:00 {}",
+                owner, name
+            ));
         } else {
-            let size = files
-                .get(&child)
-                .map(|s| s.len())
-                .unwrap_or(220);
+            let size = files.get(&child).map(|s| s.len()).unwrap_or(220);
             let perm = if name.starts_with('.') || name == "id_rsa" {
                 "-rw-------"
             } else {
                 "-rw-r--r--"
             };
-            lines.push(format!("{}  1 {} {:>5} Jul  9 12:00 {}", perm, owner, size, name));
+            lines.push(format!(
+                "{}  1 {} {:>5} Jul  9 12:00 {}",
+                perm, owner, size, name
+            ));
         }
     }
     format!("{}\n", lines.join("\n"))
@@ -1132,11 +1218,7 @@ fn execute_mock_command(cmd: &str, hostname: &str) -> String {
     }
 }
 
-fn execute_sandbox_command(
-    cmd: &str,
-    cwd: &mut String,
-    state: &AppState,
-) -> String {
+fn execute_sandbox_command(cmd: &str, cwd: &mut String, state: &AppState) -> String {
     let clean_cmd = cmd.replace(['\'', '"'], "");
     let parts: Vec<&str> = clean_cmd.split_whitespace().collect();
     let base = parts.first().copied().unwrap_or("");
@@ -1279,7 +1361,10 @@ fn looks_like_protocol_probe(text: &str) -> bool {
     if PROBE_HEADER_PATTERN.is_match(text) {
         return true;
     }
-    let printable = text.chars().filter(|c| c.is_ascii_graphic() || *c == ' ').count();
+    let printable = text
+        .chars()
+        .filter(|c| c.is_ascii_graphic() || *c == ' ')
+        .count();
     if text.len() > 4 && (printable as f64 / text.len() as f64) < 0.85 {
         return true;
     }
@@ -1295,9 +1380,15 @@ const TELNET_OPT_TERMTYPE: u8 = 0x18;
 
 fn telnet_negotiate(stream: &mut TcpStream) {
     let handshake = [
-        TELNET_IAC, TELNET_WILL, TELNET_OPT_ECHO,
-        TELNET_IAC, TELNET_WILL, TELNET_OPT_SUPPRESS_GA,
-        TELNET_IAC, TELNET_DO, TELNET_OPT_TERMTYPE,
+        TELNET_IAC,
+        TELNET_WILL,
+        TELNET_OPT_ECHO,
+        TELNET_IAC,
+        TELNET_WILL,
+        TELNET_OPT_SUPPRESS_GA,
+        TELNET_IAC,
+        TELNET_DO,
+        TELNET_OPT_TERMTYPE,
     ];
     let _ = stream.write_all(&handshake);
     let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
@@ -1320,7 +1411,11 @@ fn prune_dir(dir: &str, max_files: usize, max_bytes: u64) {
     for e in rd.flatten() {
         if let Ok(m) = e.metadata() {
             if m.is_file() {
-                files.push((m.modified().unwrap_or(std::time::UNIX_EPOCH), m.len(), e.path()));
+                files.push((
+                    m.modified().unwrap_or(std::time::UNIX_EPOCH),
+                    m.len(),
+                    e.path(),
+                ));
             }
         }
     }
@@ -1372,7 +1467,8 @@ fn handle_telnet(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let ip = addr.ip().to_string();
     state.log_event(&format!(
         "[INFO] TELNET DECOY CONNECTED: Source IP {}:{}. Tarpit Engaged.",
-        ip, addr.port()
+        ip,
+        addr.port()
     ));
     state.send_notification(&ip, "23 (Telnet Tarpit)");
 
@@ -1460,7 +1556,8 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let ip = addr.ip().to_string();
     state.log_event(&format!(
         "[INFO] FTP DECOY CONNECTED: Source IP {}:{}. Tarpit Engaged.",
-        ip, addr.port()
+        ip,
+        addr.port()
     ));
     state.send_notification(&ip, "21 (FTP Tarpit)");
 
@@ -1473,7 +1570,9 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let mut pasv_listener: Option<TcpListener> = None;
     let mut port_endpoint: Option<SocketAddr> = None;
 
-    let Ok(cloned) = stream.try_clone() else { return; };
+    let Ok(cloned) = stream.try_clone() else {
+        return;
+    };
     let mut reader = BufReader::new(cloned);
     let mut line = String::new();
 
@@ -1496,7 +1595,8 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
         match cmd.as_str() {
             "USER" => {
                 user = args;
-                let _ = stream.write_all(format!("331 Password required for {}\r\n", user).as_bytes());
+                let _ =
+                    stream.write_all(format!("331 Password required for {}\r\n", user).as_bytes());
             }
             "PASS" => {
                 state.log_event(&format!(
@@ -1513,7 +1613,8 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 let _ = stream.write_all(b"211-Features:\r\n EPRT\r\n EPSV\r\n MDTM\r\n MLST type*;size*;modify*;\r\n MLSD\r\n PASV\r\n REST STREAM\r\n SIZE\r\n SITE\r\n211 End\r\n");
             }
             "PWD" => {
-                let _ = stream.write_all(format!("257 \"{}\" is current directory\r\n", cwd).as_bytes());
+                let _ = stream
+                    .write_all(format!("257 \"{}\" is current directory\r\n", cwd).as_bytes());
             }
             "TYPE" | "STRU" | "MODE" | "ALLO" => {
                 let _ = stream.write_all(b"200 Command okay.\r\n");
@@ -1542,13 +1643,17 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 if let Ok(listener) = TcpListener::bind("0.0.0.0:0") {
                     if let Ok(local_addr) = listener.local_addr() {
                         let port = local_addr.port();
-                        let my_ip = stream.local_addr().map(|a| a.ip()).unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+                        let my_ip = stream
+                            .local_addr()
+                            .map(|a| a.ip())
+                            .unwrap_or(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
                         let ip_str = my_ip.to_string().replace('.', ",");
                         let p1 = port >> 8;
                         let p2 = port & 0xff;
                         pasv_listener = Some(listener);
                         let _ = stream.write_all(
-                            format!("227 Entering Passive Mode ({},{},{})\r\n", ip_str, p1, p2).as_bytes(),
+                            format!("227 Entering Passive Mode ({},{},{})\r\n", ip_str, p1, p2)
+                                .as_bytes(),
                         );
                     }
                 } else {
@@ -1561,7 +1666,8 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                         let port = local_addr.port();
                         pasv_listener = Some(listener);
                         let _ = stream.write_all(
-                            format!("229 Entering Extended Passive Mode (|||{}|)\r\n", port).as_bytes(),
+                            format!("229 Entering Extended Passive Mode (|||{}|)\r\n", port)
+                                .as_bytes(),
                         );
                     }
                 } else {
@@ -1637,27 +1743,54 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 if let Some(ds) = data_sock {
                     let _ = ds.set_read_timeout(Some(Duration::from_secs(15)));
                     let mut payload = Vec::new();
-                    let _ = ds.take((MAX_UPLOAD_SIZE + 1) as u64).read_to_end(&mut payload);
-                    if payload.len() > MAX_UPLOAD_SIZE { payload.truncate(MAX_UPLOAD_SIZE); }
+                    let _ = ds
+                        .take((MAX_UPLOAD_SIZE + 1) as u64)
+                        .read_to_end(&mut payload);
+                    if payload.len() > MAX_UPLOAD_SIZE {
+                        payload.truncate(MAX_UPLOAD_SIZE);
+                    }
                     if !payload.is_empty() {
                         let upload_dir = format!("{}/attacker-uploads", state.logs_dir);
                         let _ = fs::create_dir_all(&upload_dir);
                         prune_dir(&upload_dir, 99, 190 * 1024 * 1024); // at most 100 captures / about 200 MB: the oldest go first
-                        let fname = Path::new(&args).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_else(|| "unknown".to_string());
-                        let save_path = format!("{}/{}_{}_{}", upload_dir, Local::now().format("%Y%m%d_%H%M%S"), ip, fname);
+                        let fname = Path::new(&args)
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let save_path = format!(
+                            "{}/{}_{}_{}",
+                            upload_dir,
+                            Local::now().format("%Y%m%d_%H%M%S"),
+                            ip,
+                            fname
+                        );
                         let _ = fs::write(&save_path, &payload);
 
                         state.log_event(&format!(
                             "[ALERT] ATTACKER PAYLOAD CAPTURED: {} uploaded {} ({} bytes) -> {}",
-                            ip, args, payload.len(), save_path
+                            ip,
+                            args,
+                            payload.len(),
+                            save_path
                         ));
-                        state.send_notification(&ip, &format!("FTP STOR: attacker payload {} captured", args));
+                        state.send_notification(
+                            &ip,
+                            &format!("FTP STOR: attacker payload {} captured", args),
+                        );
 
-                        if fname.ends_with(".php") || fname.ends_with(".phtml") || fname.ends_with(".php5") {
+                        if fname.ends_with(".php")
+                            || fname.ends_with(".phtml")
+                            || fname.ends_with(".php5")
+                        {
                             let mut shells = lock(&state.uploaded_webshells);
-                            if shells.len() >= 256 { shells.clear(); }
+                            if shells.len() >= 256 {
+                                shells.clear();
+                            }
                             shells.insert(fname.clone(), format!("(ftp-uploaded {})", save_path));
-                            state.log_event(&format!("[INFO] FTP-uploaded PHP registered as live webshell: {}", fname));
+                            state.log_event(&format!(
+                                "[INFO] FTP-uploaded PHP registered as live webshell: {}",
+                                fname
+                            ));
                         }
                     }
                     let _ = stream.write_all(b"226 Transfer complete.\r\n");
@@ -1678,14 +1811,20 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
             }
             "CPFR" => {
                 current_cpfr = Some(args.clone());
-                state.log_event(&format!("[ALERT] EXPLOIT ATTEMPT: FTP mod_copy CPFR from {} for file: {}", ip, args));
-                let _ = stream.write_all(b"350 File or directory exists, ready for destination name\r\n");
+                state.log_event(&format!(
+                    "[ALERT] EXPLOIT ATTEMPT: FTP mod_copy CPFR from {} for file: {}",
+                    ip, args
+                ));
+                let _ = stream
+                    .write_all(b"350 File or directory exists, ready for destination name\r\n");
             }
             "CPTO" => {
                 if let Some(ref cpfr) = current_cpfr {
                     let filename = args.rsplit('/').next().unwrap_or("shell.php").to_string();
                     let mut shells = lock(&state.uploaded_webshells);
-                            if shells.len() >= 256 { shells.clear(); }
+                    if shells.len() >= 256 {
+                        shells.clear();
+                    }
                     shells.insert(filename.clone(), cpfr.clone());
                     state.log_event(&format!(
                         "[ALERT] EXPLOIT SUCCESSFUL: FTP mod_copy CPTO from {} to path: {} (registered webshell: {})",
@@ -1700,13 +1839,25 @@ fn handle_ftp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 if let Some((site_cmd, site_args)) = args.split_once(' ') {
                     if site_cmd.eq_ignore_ascii_case("CPFR") {
                         current_cpfr = Some(site_args.trim().to_string());
-                        state.log_event(&format!("[ALERT] EXPLOIT ATTEMPT: FTP mod_copy CPFR from {} for file: {}", ip, site_args));
-                        let _ = stream.write_all(b"350 File or directory exists, ready for destination name\r\n");
+                        state.log_event(&format!(
+                            "[ALERT] EXPLOIT ATTEMPT: FTP mod_copy CPFR from {} for file: {}",
+                            ip, site_args
+                        ));
+                        let _ = stream.write_all(
+                            b"350 File or directory exists, ready for destination name\r\n",
+                        );
                     } else if site_cmd.eq_ignore_ascii_case("CPTO") {
                         if let Some(ref cpfr) = current_cpfr {
-                            let filename = site_args.trim().rsplit('/').next().unwrap_or("shell.php").to_string();
+                            let filename = site_args
+                                .trim()
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("shell.php")
+                                .to_string();
                             let mut shells = lock(&state.uploaded_webshells);
-                            if shells.len() >= 256 { shells.clear(); }
+                            if shells.len() >= 256 {
+                                shells.clear();
+                            }
                             shells.insert(filename.clone(), cpfr.clone());
                             state.log_event(&format!(
                                 "[ALERT] EXPLOIT SUCCESSFUL: FTP mod_copy CPTO from {} to path: {} (registered webshell: {})",
@@ -1742,7 +1893,8 @@ fn handle_ssh(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let ip = addr.ip().to_string();
     state.log_event(&format!(
         "[INFO] SSH DECOY CONNECTED: Source IP {}:{}. Tarpit Engaged.",
-        ip, addr.port()
+        ip,
+        addr.port()
     ));
     state.send_notification(&ip, "22 (SSH Tarpit)");
 
@@ -1774,7 +1926,11 @@ fn handle_ssh(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
 
 fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let ip = addr.ip().to_string();
-    state.log_event(&format!("[INFO] HTTP DECOY CONNECTED: Source IP {}:{}", ip, addr.port()));
+    state.log_event(&format!(
+        "[INFO] HTTP DECOY CONNECTED: Source IP {}:{}",
+        ip,
+        addr.port()
+    ));
     state.send_notification(&ip, "80 (HTTP)");
 
     let mut buf = [0u8; 4096];
@@ -1818,7 +1974,11 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
             }
         }
 
-        let cmd = params.get("cmd").or(params.get("c")).or(params.get("shell")).or(params.get("exec"));
+        let cmd = params
+            .get("cmd")
+            .or(params.get("c"))
+            .or(params.get("shell"))
+            .or(params.get("exec"));
         if let Some(command) = cmd {
             state.log_event(&format!(
                 "[ALERT] EXPLOIT BACKDOOR EXECUTED: Source IP {} executed cmd=\"{}\" on webshell {}",
@@ -1854,8 +2014,16 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     }
 
     if route == "/infrastructure_passwords.txt" {
-        state.log_event(&format!("[ALERT] HONEY-TOKEN TRIP: {} downloaded /infrastructure_passwords.txt", ip));
-        run_notify_send("Honey-Token Tripped", &format!("Host {} downloaded /infrastructure_passwords.txt!", ip), "critical", "security-high");
+        state.log_event(&format!(
+            "[ALERT] HONEY-TOKEN TRIP: {} downloaded /infrastructure_passwords.txt",
+            ip
+        ));
+        run_notify_send(
+            "Honey-Token Tripped",
+            &format!("Host {} downloaded /infrastructure_passwords.txt!", ip),
+            "critical",
+            "security-high",
+        );
         let content = "# Ubuntu Server Infrastructure Configuration\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\nproduction_db_host=db.ubuntu-internal.net\nproduction_db_user=sys_admin\nproduction_db_pass=UB_Admin_P@ss_2026_Secure\n";
         let resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1866,8 +2034,16 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     }
 
     if route == "/network_backup.sql" {
-        state.log_event(&format!("[ALERT] HONEY-TOKEN TRIP: {} downloaded /network_backup.sql", ip));
-        run_notify_send("Honey-Token Tripped", &format!("Host {} downloaded /network_backup.sql!", ip), "critical", "security-high");
+        state.log_event(&format!(
+            "[ALERT] HONEY-TOKEN TRIP: {} downloaded /network_backup.sql",
+            ip
+        ));
+        run_notify_send(
+            "Honey-Token Tripped",
+            &format!("Host {} downloaded /network_backup.sql!", ip),
+            "critical",
+            "security-high",
+        );
         let content = "-- Ubuntu Server Decoy Database Dump\nCREATE TABLE `users` (`username` varchar(50), `password` varchar(255));\nINSERT INTO `users` VALUES ('admin','pbkdf2_sha256$260000$yX8wQ1sFp9Z0$L2qN3oP4q5r6s7t8u9v0w1x2y3z4A5B6C7D8E9F0g1h=');\n";
         let resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/sql\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1891,14 +2067,18 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
                 }
             }
         }
-        state.log_event(&format!("[ALERT] CREDENTIALS HARVESTED (HTTP Cockpit) from {}: Username={}, Password={}", ip, u, p));
+        state.log_event(&format!(
+            "[ALERT] CREDENTIALS HARVESTED (HTTP Cockpit) from {}: Username={}, Password={}",
+            ip, u, p
+        ));
         state.send_credential_notification(&ip, "Ubuntu Cockpit Portal", &u, &p);
         let resp = b"HTTP/1.1 302 Found\r\nLocation: /admin/dashboard.html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         let _ = stream.write_all(resp);
         return;
     }
 
-    if method == "GET" && ["/admin/dashboard.html", "/admin/dashboard", "/admin/"].contains(&route) {
+    if method == "GET" && ["/admin/dashboard.html", "/admin/dashboard", "/admin/"].contains(&route)
+    {
         let html = format!(
             "<!DOCTYPE html><html><head><title>Cockpit System Console - {}</title>\
              <style>body{{font-family:sans-serif;background:#0b0c10;color:#c5c6c7;padding:20px;}}\
@@ -1916,7 +2096,17 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
         return;
     }
 
-    if method == "GET" && ["", "/", "/index.html", "/index.htm", "/login", "/login.html"].contains(&route) {
+    if method == "GET"
+        && [
+            "",
+            "/",
+            "/index.html",
+            "/index.htm",
+            "/login",
+            "/login.html",
+        ]
+        .contains(&route)
+    {
         let html = format!(
             "<!DOCTYPE html><html><head><title>Cockpit Console Login</title>\
              <style>body{{background:#0b0c10;color:#66fcf1;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}}\
@@ -1938,16 +2128,23 @@ fn handle_http(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     }
 
     if method == "GET" && route == "/logout" {
-        let resp = b"HTTP/1.1 302 Found\r\nLocation: /\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let resp =
+            b"HTTP/1.1 302 Found\r\nLocation: /\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         let _ = stream.write_all(resp);
         return;
     }
 
     if SUSPICIOUS_PATH_PATTERN.is_match(route) || route.contains("..") || route.len() > 60 {
-        state.log_event(&format!("[ALERT] Directory brute-force detected from {} requesting: {}", ip, first_line));
+        state.log_event(&format!(
+            "[ALERT] Directory brute-force detected from {} requesting: {}",
+            ip, first_line
+        ));
         thread::sleep(Duration::from_secs(1));
     } else {
-        state.log_event(&format!("[INFO] Generic HTTP request from {}: {}", ip, first_line));
+        state.log_event(&format!(
+            "[INFO] Generic HTTP request from {}: {}",
+            ip, first_line
+        ));
     }
 
     let body = format!(
@@ -1968,7 +2165,8 @@ fn handle_smtp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let ip = addr.ip().to_string();
     state.log_event(&format!(
         "[INFO] SMTP DECOY CONNECTED: Source IP {}:{}. Tarpit Engaged.",
-        ip, addr.port()
+        ip,
+        addr.port()
     ));
     state.send_notification(&ip, "25 (SMTP Tarpit)");
 
@@ -1976,7 +2174,9 @@ fn handle_smtp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
     let _ = stream.write_all(greeting.as_bytes());
     let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
 
-    let Ok(cloned) = stream.try_clone() else { return; };
+    let Ok(cloned) = stream.try_clone() else {
+        return;
+    };
     let mut reader = BufReader::new(cloned);
     let mut line = String::new();
 
@@ -1986,7 +2186,11 @@ fn handle_smtp(mut stream: TcpStream, addr: SocketAddr, state: &AppState) {
         }
         let trimmed = line.trim();
         state.log_event(&format!("[SMTP] Command from {}: {}", ip, trimmed));
-        let cmd = trimmed.split_whitespace().next().unwrap_or("").to_uppercase();
+        let cmd = trimmed
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_uppercase();
 
         match cmd.as_str() {
             "EHLO" => {
@@ -2050,7 +2254,9 @@ fn handle_generic(mut stream: TcpStream, port: u16, addr: SocketAddr, state: &Ap
     let ip = addr.ip().to_string();
     state.log_event(&format!(
         "[INFO] RECON DETECTED: Source IP {}:{} connected to spoofed Port {}",
-        ip, addr.port(), port
+        ip,
+        addr.port(),
+        port
     ));
     state.send_notification(&ip, &port.to_string());
 
@@ -2063,15 +2269,17 @@ fn handle_generic(mut stream: TcpStream, port: u16, addr: SocketAddr, state: &Ap
         if n >= 8 && &first[4..8] == b"\xffSMB" {
             state.log_event(&format!(
                 "    - Received probe payload from {} on Port {}: {:?}",
-                ip, port, &first[..n.min(100)]
+                ip,
+                port,
+                &first[..n.min(100)]
             ));
             let smb_resp: &[u8] = &[
-                0x00, 0x00, 0x00, 0x55, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x00, 0x00, 0x00, 0x00,
-                0x18, 0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0xe0, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x03,
-                0x00, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0xfd, 0xe3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x4c, 0x4d, 0x31, 0x2e, 0x32, 0x00,
+                0x00, 0x00, 0x00, 0x55, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x00, 0x00, 0x00, 0x00, 0x18,
+                0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0xe0, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x03, 0x00, 0x01, 0x00,
+                0x10, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfd, 0xe3, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x4d, 0x31,
+                0x2e, 0x32, 0x00,
             ];
             let _ = stream.write_all(smb_resp);
         } else {
@@ -2079,16 +2287,19 @@ fn handle_generic(mut stream: TcpStream, port: u16, addr: SocketAddr, state: &Ap
         }
     } else if port == 3306 {
         let mysql_banner: &[u8] = &[
-            0x0a, b'5', b'.', b'5', b'.', b'5', b'4', b'-', b'l', b'o', b'g', 0x00,
-            0x09, 0x9a, 0x00, 0x00, 0x2a, 0x4a, 0x36, 0x75, 0x4a, 0x3f, 0x5a, 0x34, 0x00,
-            0xff, 0xff, 0x21, 0x02, 0x00, 0xff, 0x7f, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x4e, 0x33, 0x79, 0x2b, 0x49, 0x35, 0x6f,
-            0x54, 0x77, 0x4e, 0x72, 0x00, b'm', b'y', b's', b'q', b'l', b'_', b'n', b'a',
-            b't', b'i', b'v', b'e', b'_', b'p', b'a', b's', b's', b'w', b'o', b'r', b'd', 0x00,
+            0x0a, b'5', b'.', b'5', b'.', b'5', b'4', b'-', b'l', b'o', b'g', 0x00, 0x09, 0x9a,
+            0x00, 0x00, 0x2a, 0x4a, 0x36, 0x75, 0x4a, 0x3f, 0x5a, 0x34, 0x00, 0xff, 0xff, 0x21,
+            0x02, 0x00, 0xff, 0x7f, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x32, 0x4e, 0x33, 0x79, 0x2b, 0x49, 0x35, 0x6f, 0x54, 0x77, 0x4e, 0x72, 0x00,
+            b'm', b'y', b's', b'q', b'l', b'_', b'n', b'a', b't', b'i', b'v', b'e', b'_', b'p',
+            b'a', b's', b's', b'w', b'o', b'r', b'd', 0x00,
         ];
         let _ = stream.write_all(mysql_banner);
     } else if port == 3389 {
-        let rdp_banner: &[u8] = &[0x03, 0x00, 0x00, 0x13, 0x0e, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00];
+        let rdp_banner: &[u8] = &[
+            0x03, 0x00, 0x00, 0x13, 0x0e, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08,
+            0x00, 0x03, 0x00, 0x00, 0x00,
+        ];
         let _ = stream.write_all(rdp_banner);
     } else if port == 8080 {
         let nginx_banner = b"HTTP/1.1 200 OK\r\nServer: nginx/1.18.0 (Ubuntu)\r\nConnection: close\r\n\r\n<html><body><h1>It works!</h1></body></html>\r\n";
@@ -2105,7 +2316,9 @@ fn handle_generic(mut stream: TcpStream, port: u16, addr: SocketAddr, state: &Ap
             Ok(n) => {
                 state.log_event(&format!(
                     "    - Received probe payload from {} on Port {}: {:?}",
-                    ip, port, &buf[..n.min(100)]
+                    ip,
+                    port,
+                    &buf[..n.min(100)]
                 ));
             }
             Err(_) => {
@@ -2199,7 +2412,10 @@ fn start_dns_listener(state: AppState) {
     let socket = match UdpSocket::bind("0.0.0.0:53") {
         Ok(s) => s,
         Err(e) => {
-            state.log_event(&format!("[ERROR] Failed to bind DNS listener on UDP Port 53: {}", e));
+            state.log_event(&format!(
+                "[ERROR] Failed to bind DNS listener on UDP Port 53: {}",
+                e
+            ));
             return;
         }
     };
@@ -2249,11 +2465,17 @@ fn start_listener(port: u16, state: AppState) {
     let listener = match TcpListener::bind(format!("0.0.0.0:{}", port)) {
         Ok(l) => l,
         Err(e) => {
-            state.log_event(&format!("[ERROR] Failed to bind listener on Port {}: {}", port, e));
+            state.log_event(&format!(
+                "[ERROR] Failed to bind listener on Port {}: {}",
+                port, e
+            ));
             return;
         }
     };
-    state.log_event(&format!("[*] Started deception honeypot listener on Port {}", port));
+    state.log_event(&format!(
+        "[*] Started deception honeypot listener on Port {}",
+        port
+    ));
 
     for stream in listener.incoming() {
         match stream {
@@ -2318,7 +2540,12 @@ fn main() {
     if let Some(parent) = Path::new(&cred_file).parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let cred_open = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&cred_file);
+    let cred_open = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&cred_file);
     if let Ok(mut f) = cred_open {
         let _ = writeln!(
             f,
@@ -2395,7 +2622,10 @@ mod tests {
     #[test]
     fn test_sandbox_normalize() {
         assert_eq!(sandbox_normalize("/home/ubuntu", ""), "/home/ubuntu");
-        assert_eq!(sandbox_normalize("/home/ubuntu", "notes.txt"), "/home/ubuntu/notes.txt");
+        assert_eq!(
+            sandbox_normalize("/home/ubuntu", "notes.txt"),
+            "/home/ubuntu/notes.txt"
+        );
         assert_eq!(sandbox_normalize("/home/ubuntu", ".."), "/home");
         assert_eq!(sandbox_normalize("/home/ubuntu", "/var/www"), "/var/www");
         assert_eq!(sandbox_normalize("/home/ubuntu", "~"), "/home/ubuntu");
@@ -2421,9 +2651,8 @@ mod tests {
             0x00, 0x00, // ANCOUNT
             0x00, 0x00, // NSCOUNT
             0x00, 0x00, // ARCOUNT
-            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
-            0x03, b'c', b'o', b'm',
-            0x00,       // End of name
+            0x07, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0x03, b'c', b'o', b'm',
+            0x00, // End of name
             0x00, 0x01, // Type A
             0x00, 0x01, // Class IN
         ];
@@ -2438,10 +2667,14 @@ mod tests {
 
     #[test]
     fn test_default_gateway_parse() {
-        let table = "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+        let table =
+            "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
                      wlan0\t00000000\t0100A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n\
                      wlan0\t0000A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
-        assert_eq!(parse_default_gateways(table), vec!["192.168.0.1".to_string()]);
+        assert_eq!(
+            parse_default_gateways(table),
+            vec!["192.168.0.1".to_string()]
+        );
     }
 
     #[test]

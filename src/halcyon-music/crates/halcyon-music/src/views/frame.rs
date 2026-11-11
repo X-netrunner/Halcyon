@@ -15,8 +15,11 @@
 
 use crate::layout::LayoutKind;
 use crate::views::now_playing_bar::BarOptions;
+use crate::views::{
+    dock, library_sidebar, player_panel, queue_column, queue_drawer, side_panel, sidebar, tabs,
+    titlebar,
+};
 use crate::visualizer::MiniPlacement;
-use crate::views::{dock, library_sidebar, player_panel, queue_column, queue_drawer, side_panel, sidebar, tabs, titlebar};
 use iced::widget::{column, row, stack};
 use iced::{Element, Length};
 
@@ -41,15 +44,19 @@ pub fn queue_is_column(layout: LayoutKind, window_width: f32) -> bool {
 /// Whether the Queue / Lyrics panel is a permanent column on the right (Library list). Below the
 /// same width as the queue column it goes, and the queue button opens the drawer.
 pub fn has_side_panel(layout: LayoutKind, window_width: f32) -> bool {
-    matches!(arrangement_for(layout), LayoutKind::LibraryList) && window_width >= QUEUE_COLUMN_MIN_WIDTH
+    matches!(arrangement_for(layout), LayoutKind::LibraryList)
+        && window_width >= QUEUE_COLUMN_MIN_WIDTH
 }
 
 /// How the player bar is drawn in a layout. Classic gets exactly today's bar.
 pub fn bar_options(layout: LayoutKind, window_width: f32) -> BarOptions {
     match arrangement_for(layout) {
-        LayoutKind::TopTabs | LayoutKind::LibraryList => {
-            BarOptions { times_below: true, show_volume: show_volume(layout, window_width), mini: None, calm: true }
-        }
+        LayoutKind::TopTabs | LayoutKind::LibraryList => BarOptions {
+            times_below: true,
+            show_volume: show_volume(layout, window_width),
+            mini: None,
+            calm: true,
+        },
         _ => BarOptions::CLASSIC,
     }
 }
@@ -157,7 +164,10 @@ pub fn account_menu_place(layout: LayoutKind, window_width: f32) -> MenuPlace {
             top: titlebar::HEIGHT + space::SM + AVATAR_SIZE + space::SM,
         },
         // Under the tabs row (the circle is at its left end).
-        LayoutKind::TopTabs => MenuPlace::Below { left: space::LG, top: top_height(layout) + space::SM },
+        LayoutKind::TopTabs => MenuPlace::Below {
+            left: space::LG,
+            top: top_height(layout) + space::SM,
+        },
         // Above the circle at the left end of the dock, clear of the pill.
         LayoutKind::Dock => MenuPlace::Above {
             left: dock::account_left(window_width),
@@ -206,7 +216,12 @@ pub fn left_width(layout: LayoutKind, sidebar_progress: f32) -> f32 {
 
 /// Width of the right column right now. `drawer_progress` is the queue drawer's open amount
 /// (0.0 closed, 1.0 open). While the drawer is open or moving it takes the column's place.
-pub fn right_width(layout: LayoutKind, window_width: f32, drawer_progress: f32, drawer_open: bool) -> f32 {
+pub fn right_width(
+    layout: LayoutKind,
+    window_width: f32,
+    drawer_progress: f32,
+    drawer_open: bool,
+) -> f32 {
     // The dock's drawer lies over the page and takes no room from it.
     if queue_overlays_page(layout) {
         return 0.0;
@@ -263,7 +278,9 @@ pub fn arrange<'a, M: 'a>(layout: LayoutKind, slots: Slots<'a, M>) -> Element<'a
 /// Top tabs: title bar, the tabs row (in the `nav` slot), then page | queue column, then the
 /// player bar. No sidebar.
 fn top_tabs<'a, M: 'a>(slots: Slots<'a, M>) -> Element<'a, M> {
-    let main_row = row![slots.page, slots.queue].width(Length::Fill).height(Length::Fill);
+    let main_row = row![slots.page, slots.queue]
+        .width(Length::Fill)
+        .height(Length::Fill);
     column![slots.titlebar, slots.nav, main_row, slots.player]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -274,7 +291,9 @@ fn top_tabs<'a, M: 'a>(slots: Slots<'a, M>) -> Element<'a, M> {
 /// laid over the page's right edge (the `queue` slot is drawn on top of the page, and is empty
 /// while the drawer is shut). No sidebar and no tabs row: the pages are in the dock.
 fn dock_layout<'a, M: 'a>(slots: Slots<'a, M>) -> Element<'a, M> {
-    let page_area = stack![slots.page, slots.queue].width(Length::Fill).height(Length::Fill);
+    let page_area = stack![slots.page, slots.queue]
+        .width(Length::Fill)
+        .height(Length::Fill);
     column![slots.titlebar, page_area, slots.player]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -286,9 +305,16 @@ fn dock_layout<'a, M: 'a>(slots: Slots<'a, M>) -> Element<'a, M> {
 /// laid over the page's right edge, so the page keeps its width. The `nav` slot is not used: the
 /// pages are tabs inside the page card.
 fn panel_layout<'a, M: 'a>(slots: Slots<'a, M>) -> Element<'a, M> {
-    let page_area = stack![slots.page, slots.queue].width(Length::Fill).height(Length::Fill);
-    let main_row = row![slots.player, page_area].width(Length::Fill).height(Length::Fill);
-    column![slots.titlebar, main_row].width(Length::Fill).height(Length::Fill).into()
+    let page_area = stack![slots.page, slots.queue]
+        .width(Length::Fill)
+        .height(Length::Fill);
+    let main_row = row![slots.player, page_area]
+        .width(Length::Fill)
+        .height(Length::Fill);
+    column![slots.titlebar, main_row]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 /// Today's arrangement: title bar on top, then sidebar | page | queue, then the player bar.
@@ -320,7 +346,10 @@ mod tests {
     #[test]
     fn every_layout_gets_an_arrangement_that_is_drawn() {
         for l in LayoutKind::ALL {
-            assert!(arrangement_for(l).is_drawn(), "{l:?} has no drawn arrangement");
+            assert!(
+                arrangement_for(l).is_drawn(),
+                "{l:?} has no drawn arrangement"
+            );
         }
     }
 
@@ -350,9 +379,18 @@ mod tests {
 
     #[test]
     fn library_list_widths_follow_the_sidebar_and_the_panel() {
-        assert_eq!(left_width(LayoutKind::LibraryList, 0.0), library_sidebar::WIDTH);
-        assert_eq!(left_width(LayoutKind::LibraryList, 1.0), library_sidebar::WIDTH);
-        assert_eq!(right_width(LayoutKind::LibraryList, 1200.0, 0.0, false), side_panel::WIDTH);
+        assert_eq!(
+            left_width(LayoutKind::LibraryList, 0.0),
+            library_sidebar::WIDTH
+        );
+        assert_eq!(
+            left_width(LayoutKind::LibraryList, 1.0),
+            library_sidebar::WIDTH
+        );
+        assert_eq!(
+            right_width(LayoutKind::LibraryList, 1200.0, 0.0, false),
+            side_panel::WIDTH
+        );
         assert_eq!(right_width(LayoutKind::LibraryList, 960.0, 0.0, false), 0.0);
         assert_eq!(
             right_width(LayoutKind::LibraryList, 1200.0, 1.0, true),
@@ -362,8 +400,14 @@ mod tests {
 
     #[test]
     fn library_list_has_the_same_bar_as_top_tabs() {
-        assert_eq!(bar_options(LayoutKind::LibraryList, 1300.0), bar_options(LayoutKind::TopTabs, 1300.0));
-        assert_eq!(bar_options(LayoutKind::LibraryList, 1000.0), bar_options(LayoutKind::TopTabs, 1000.0));
+        assert_eq!(
+            bar_options(LayoutKind::LibraryList, 1300.0),
+            bar_options(LayoutKind::TopTabs, 1300.0)
+        );
+        assert_eq!(
+            bar_options(LayoutKind::LibraryList, 1000.0),
+            bar_options(LayoutKind::TopTabs, 1000.0)
+        );
         assert!(!show_volume(LayoutKind::LibraryList, 1099.0));
         assert!(show_volume(LayoutKind::LibraryList, 1100.0));
     }
@@ -379,7 +423,10 @@ mod tests {
         }
         match account_menu_place(LayoutKind::TopTabs, 1200.0) {
             MenuPlace::Below { top, .. } => {
-                assert_eq!(top, top_height(LayoutKind::TopTabs) + crate::theme::space::SM)
+                assert_eq!(
+                    top,
+                    top_height(LayoutKind::TopTabs) + crate::theme::space::SM
+                )
             }
             other => panic!("Top tabs: {other:?}"),
         }
@@ -387,7 +434,13 @@ mod tests {
             MenuPlace::Below { left, top } => {
                 assert_eq!(left, player_panel::PAD);
                 // Under the circle: the panel's top padding, the circle, and a gap.
-                assert_eq!(top, titlebar::HEIGHT + crate::theme::space::SM + crate::views::account::AVATAR_SIZE + crate::theme::space::SM);
+                assert_eq!(
+                    top,
+                    titlebar::HEIGHT
+                        + crate::theme::space::SM
+                        + crate::views::account::AVATAR_SIZE
+                        + crate::theme::space::SM
+                );
             }
             other => panic!("Player panel: {other:?}"),
         }
@@ -405,7 +458,10 @@ mod tests {
         for w in [960.0, 1280.0, 2560.0] {
             assert_eq!(
                 account_menu_place(LayoutKind::Dock, w),
-                MenuPlace::Above { left: dock::account_left(w), bottom: dock::STRIP_HEIGHT }
+                MenuPlace::Above {
+                    left: dock::account_left(w),
+                    bottom: dock::STRIP_HEIGHT
+                }
             );
         }
     }
@@ -423,7 +479,11 @@ mod tests {
         assert_eq!(right_width(l, 1200.0, 0.5, true), 0.0);
         assert_eq!(right_width(l, 960.0, 0.0, false), 0.0);
         assert!(queue_overlays_page(l));
-        for other in [LayoutKind::Classic, LayoutKind::TopTabs, LayoutKind::LibraryList] {
+        for other in [
+            LayoutKind::Classic,
+            LayoutKind::TopTabs,
+            LayoutKind::LibraryList,
+        ] {
             assert!(!queue_overlays_page(other));
         }
     }
@@ -453,13 +513,21 @@ mod tests {
     fn the_player_panel_hides_the_volume_below_1100_and_has_no_bar_options_of_its_own() {
         assert!(!show_volume(LayoutKind::PlayerPanel, 1099.0));
         assert!(show_volume(LayoutKind::PlayerPanel, 1100.0));
-        assert_eq!(bar_options(LayoutKind::PlayerPanel, 1300.0), BarOptions::CLASSIC);
+        assert_eq!(
+            bar_options(LayoutKind::PlayerPanel, 1300.0),
+            BarOptions::CLASSIC
+        );
     }
 
     #[test]
     fn only_the_dock_has_a_page_margin_at_the_left() {
         assert_eq!(page_margins(LayoutKind::Dock, 12.0), (12.0, 12.0));
-        for other in [LayoutKind::Classic, LayoutKind::TopTabs, LayoutKind::PlayerPanel, LayoutKind::LibraryList] {
+        for other in [
+            LayoutKind::Classic,
+            LayoutKind::TopTabs,
+            LayoutKind::PlayerPanel,
+            LayoutKind::LibraryList,
+        ] {
             assert_eq!(page_margins(other, 12.0), (0.0, 12.0));
         }
     }
@@ -490,7 +558,10 @@ mod tests {
     #[test]
     fn right_width_is_the_column_the_drawer_or_nothing() {
         // Top tabs, wide window, drawer shut: the compact column.
-        assert_eq!(right_width(LayoutKind::TopTabs, 1200.0, 0.0, false), queue_column::WIDTH);
+        assert_eq!(
+            right_width(LayoutKind::TopTabs, 1200.0, 0.0, false),
+            queue_column::WIDTH
+        );
         // Narrow window, drawer shut: nothing.
         assert_eq!(right_width(LayoutKind::TopTabs, 960.0, 0.0, false), 0.0);
         // Drawer open: its full width replaces the column.
@@ -508,8 +579,14 @@ mod tests {
     #[test]
     fn left_width_is_zero_without_a_sidebar() {
         assert_eq!(left_width(LayoutKind::TopTabs, 1.0), 0.0);
-        assert_eq!(left_width(LayoutKind::Classic, 0.0), sidebar::SIDEBAR_COLLAPSED_WIDTH);
-        assert_eq!(left_width(LayoutKind::Classic, 1.0), sidebar::SIDEBAR_EXPANDED_WIDTH);
+        assert_eq!(
+            left_width(LayoutKind::Classic, 0.0),
+            sidebar::SIDEBAR_COLLAPSED_WIDTH
+        );
+        assert_eq!(
+            left_width(LayoutKind::Classic, 1.0),
+            sidebar::SIDEBAR_EXPANDED_WIDTH
+        );
     }
 
     #[test]
@@ -530,12 +607,25 @@ mod tests {
     #[test]
     fn each_layout_has_its_own_place_for_the_mini_visualizer_and_classic_has_none() {
         assert_eq!(mini_placement(LayoutKind::Classic), None);
-        assert_eq!(mini_placement(LayoutKind::TopTabs), Some(MiniPlacement::Bar));
-        assert_eq!(mini_placement(LayoutKind::LibraryList), Some(MiniPlacement::Bar));
+        assert_eq!(
+            mini_placement(LayoutKind::TopTabs),
+            Some(MiniPlacement::Bar)
+        );
+        assert_eq!(
+            mini_placement(LayoutKind::LibraryList),
+            Some(MiniPlacement::Bar)
+        );
         assert_eq!(mini_placement(LayoutKind::Dock), Some(MiniPlacement::Dock));
-        assert_eq!(mini_placement(LayoutKind::PlayerPanel), Some(MiniPlacement::Panel));
+        assert_eq!(
+            mini_placement(LayoutKind::PlayerPanel),
+            Some(MiniPlacement::Panel)
+        );
         for l in LayoutKind::ALL {
-            assert_eq!(mini_placement(l).is_none(), l == LayoutKind::Classic, "{l:?}");
+            assert_eq!(
+                mini_placement(l).is_none(),
+                l == LayoutKind::Classic,
+                "{l:?}"
+            );
         }
     }
 
@@ -543,7 +633,11 @@ mod tests {
     fn only_top_tabs_and_library_list_use_the_shelf_home_and_only_top_tabs_has_the_hero() {
         assert_eq!(shelf_home(LayoutKind::TopTabs), Some(true));
         assert_eq!(shelf_home(LayoutKind::LibraryList), Some(false));
-        for l in [LayoutKind::Classic, LayoutKind::Dock, LayoutKind::PlayerPanel] {
+        for l in [
+            LayoutKind::Classic,
+            LayoutKind::Dock,
+            LayoutKind::PlayerPanel,
+        ] {
             assert_eq!(shelf_home(l), None, "{l:?}");
         }
     }
@@ -559,7 +653,10 @@ mod tests {
     #[test]
     fn top_height_is_the_title_bar_plus_the_row_under_it() {
         assert_eq!(top_height(LayoutKind::Classic), titlebar::HEIGHT);
-        assert_eq!(top_height(LayoutKind::TopTabs), titlebar::HEIGHT + tabs::HEIGHT);
+        assert_eq!(
+            top_height(LayoutKind::TopTabs),
+            titlebar::HEIGHT + tabs::HEIGHT
+        );
     }
 
     #[test]

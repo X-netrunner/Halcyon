@@ -61,7 +61,10 @@ fn test_sqlite_query_time_budget_50k_tracks() {
 
     // 2. Measure indexed lookup time by primary key: Budget < 5ms
     let start_lookup = Instant::now();
-    let track = cache.get_track("track_049999").expect("get").expect("exists");
+    let track = cache
+        .get_track("track_049999")
+        .expect("get")
+        .expect("exists");
     let elapsed_lookup = start_lookup.elapsed();
 
     assert_eq!(track.id, "track_049999");
@@ -118,7 +121,9 @@ fn test_image_cache_lru_budget_enforcement() {
     );
 
     // Most recent images (e.g. 19) must be retained
-    let p19 = cache.get_image("http://cdn.spotify.com/art_19.jpg").expect("get 19");
+    let p19 = cache
+        .get_image("http://cdn.spotify.com/art_19.jpg")
+        .expect("get 19");
     assert!(p19.is_some(), "Latest image should be in cache");
 }
 

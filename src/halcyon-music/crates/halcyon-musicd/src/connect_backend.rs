@@ -11,8 +11,8 @@
 
 use crate::audio::{describe_engine_start_error, describe_failure, FailureCause};
 use crate::backend::{
-    adopt_foreign, apply_edit, event_to_edit, is_free_account_error, reconcile,
-    track_id_from_uri, ConnectTransport, DeviceEvent, Mirror, RunEnd, RunError, TransportCmd,
+    adopt_foreign, apply_edit, event_to_edit, is_free_account_error, reconcile, track_id_from_uri,
+    ConnectTransport, DeviceEvent, Mirror, RunEnd, RunError, TransportCmd,
 };
 use crate::cache::Cache;
 use crate::connect::{
@@ -61,7 +61,12 @@ impl ConnectTransport for SpircTransport {
         let fail = |e: librespot_core::error::Error| e.to_string();
         match cmd {
             TransportCmd::Activate => s.activate().map_err(fail), // VERIFY
-            TransportCmd::Load { uris, index, start_playing, position_ms } => {
+            TransportCmd::Load {
+                uris,
+                index,
+                start_playing,
+                position_ms,
+            } => {
                 // VERIFY: field names of LoadRequestOptions and the PlayingTrack variant.
                 let options = LoadRequestOptions {
                     start_playing: *start_playing,
@@ -69,7 +74,8 @@ impl ConnectTransport for SpircTransport {
                     playing_track: Some(PlayingTrack::Index(u32::try_from(*index).unwrap_or(0))),
                     ..Default::default()
                 };
-                s.load(LoadRequest::from_tracks(uris.clone(), options)).map_err(fail)
+                s.load(LoadRequest::from_tracks(uris.clone(), options))
+                    .map_err(fail)
             }
             TransportCmd::Play => s.play().map_err(fail),
             TransportCmd::Pause => s.pause().map_err(fail),
@@ -100,26 +106,46 @@ fn id_of(uri: &SpotifyUri) -> Option<String> {
 /// Only events whose shape is already used by compiled code in `audio.rs` and `connect.rs`.
 fn map_player_event(event: PlayerEvent) -> Option<DeviceEvent> {
     match event {
-        PlayerEvent::Playing { track_id, position_ms, .. } => Some(DeviceEvent::Playing {
+        PlayerEvent::Playing {
+            track_id,
+            position_ms,
+            ..
+        } => Some(DeviceEvent::Playing {
             track_id: id_of(&track_id)?,
             position_ms: u64::from(position_ms),
         }),
-        PlayerEvent::Paused { track_id, position_ms, .. } => Some(DeviceEvent::Paused {
+        PlayerEvent::Paused {
+            track_id,
+            position_ms,
+            ..
+        } => Some(DeviceEvent::Paused {
             track_id: id_of(&track_id)?,
             position_ms: u64::from(position_ms),
         }),
-        PlayerEvent::PositionChanged { track_id, position_ms, .. }
-        | PlayerEvent::PositionCorrection { track_id, position_ms, .. }
-        | PlayerEvent::Seeked { track_id, position_ms, .. } => Some(DeviceEvent::Position {
-            track_id: id_of(&track_id)?,
-            position_ms: u64::from(position_ms),
-        }),
-        PlayerEvent::EndOfTrack { track_id, .. } => {
-            Some(DeviceEvent::EndOfTrack { track_id: id_of(&track_id)? })
+        PlayerEvent::PositionChanged {
+            track_id,
+            position_ms,
+            ..
         }
-        PlayerEvent::Unavailable { track_id, .. } => {
-            Some(DeviceEvent::Unavailable { track_id: id_of(&track_id)? })
+        | PlayerEvent::PositionCorrection {
+            track_id,
+            position_ms,
+            ..
         }
+        | PlayerEvent::Seeked {
+            track_id,
+            position_ms,
+            ..
+        } => Some(DeviceEvent::Position {
+            track_id: id_of(&track_id)?,
+            position_ms: u64::from(position_ms),
+        }),
+        PlayerEvent::EndOfTrack { track_id, .. } => Some(DeviceEvent::EndOfTrack {
+            track_id: id_of(&track_id)?,
+        }),
+        PlayerEvent::Unavailable { track_id, .. } => Some(DeviceEvent::Unavailable {
+            track_id: id_of(&track_id)?,
+        }),
         PlayerEvent::Stopped { .. } => Some(DeviceEvent::Stopped),
         PlayerEvent::VolumeChanged { volume } => Some(DeviceEvent::Volume(volume)),
         _ => None,
@@ -236,7 +262,9 @@ impl PlayLog {
             track.duration_ms,
             true,
         ) {
-            Ok(_) => info!(track_id = %track.id, completed = true, "recorded play in local play log"),
+            Ok(_) => {
+                info!(track_id = %track.id, completed = true, "recorded play in local play log")
+            }
             Err(e) => warn!("failed to write play log: {e}"),
         }
         self.track_id = None;
@@ -262,12 +290,17 @@ impl LyricTracker {
             self.last_track = Some(track_id.to_string());
             self.last_idx = None;
         }
-        let Ok(Some(Some(lrc))) = cache.get_lyrics(track_id) else { return };
+        let Ok(Some(Some(lrc))) = cache.get_lyrics(track_id) else {
+            return;
+        };
         if !lrc.synced || lrc.lines.is_empty() {
             return;
         }
         let offset = cache.get_lyric_offset(track_id).unwrap_or(lrc.offset_ms);
-        let eff = i64::try_from(pos_ms).unwrap_or(i64::MAX).saturating_add(offset).max(0) as u64;
+        let eff = i64::try_from(pos_ms)
+            .unwrap_or(i64::MAX)
+            .saturating_add(offset)
+            .max(0) as u64;
         let active = lrc.lines.iter().rposition(|l| eff >= l.start_ms);
         if active != self.last_idx {
             self.last_idx = active;
@@ -320,7 +353,10 @@ pub async fn run_once(
         .ok_or_else(|| RunError::Failed("No audio backend found".to_string()))?;
     let bus = crate::tap::audio_bus().clone();
     let sink_builder = move || -> Box<dyn audio_backend::Sink> {
-        Box::new(crate::tap::TapSink::new(sink_fn(None, AudioFormat::F32), bus))
+        Box::new(crate::tap::TapSink::new(
+            sink_fn(None, AudioFormat::F32),
+            bus,
+        ))
     };
     let ls_player = LsPlayer::new(
         player_config(&state),
@@ -339,7 +375,8 @@ pub async fn run_once(
 
     // Spirc::new connects the session itself, so it must not be connected before this call.
     info!(device = %name, "registering as a Spotify Connect device");
-    let (spirc, task) = match Spirc::new(config, session.clone(), creds, ls_player, mixer.clone()).await
+    let (spirc, task) = match Spirc::new(config, session.clone(), creds, ls_player, mixer.clone())
+        .await
     {
         Ok(pair) => pair,
         Err(e) => {
@@ -353,7 +390,9 @@ pub async fn run_once(
                 return Err(RunError::Unsupported(text));
             }
             report_start_failure(&player, &events, &text).await;
-            return Err(RunError::Failed(format!("could not start Spotify Connect: {text}")));
+            return Err(RunError::Failed(format!(
+                "could not start Spotify Connect: {text}"
+            )));
         }
     };
     let mut task = tokio::spawn(task);
@@ -365,7 +404,9 @@ pub async fn run_once(
     }) {
         warn!("could not write the connect status file: {e}");
     }
-    let _ = events.send(protocol::event(EventBody::ConnectDevice { name: Some(name.clone()) }));
+    let _ = events.send(protocol::event(EventBody::ConnectDevice {
+        name: Some(name.clone()),
+    }));
     info!(device = %name, "registered; waiting for the phone or the GUI");
 
     let mut transport = SpircTransport { spirc };
@@ -442,7 +483,10 @@ async fn on_device_event(
     }
 
     if let Some(id) = edit.unavailable.as_deref() {
-        debug!(track_id = id, "Spotify has no playable version of this track");
+        debug!(
+            track_id = id,
+            "Spotify has no playable version of this track"
+        );
         let _ = events.send(protocol::event(EventBody::PlaybackFailed {
             reason: describe_failure(FailureCause::TrackUnavailable).to_string(),
             consecutive_failures: 0,
@@ -467,12 +511,17 @@ async fn on_device_event(
 
     let after = player.snapshot().await;
     if view_changed {
-        let _ = events.send(protocol::event(EventBody::State { state: after.clone() }));
+        let _ = events.send(protocol::event(EventBody::State {
+            state: after.clone(),
+        }));
     }
 
     if let (Some(pos), Some(track)) = (edit.position_ms, after.track.as_ref()) {
         let force = view_changed
-            || matches!(event, DeviceEvent::Playing { .. } | DeviceEvent::Paused { .. });
+            || matches!(
+                event,
+                DeviceEvent::Playing { .. } | DeviceEvent::Paused { .. }
+            );
         if force || last_progress.elapsed() >= PROGRESS_EVERY {
             let _ = events.send(protocol::event(EventBody::Progress {
                 position_ms: pos.min(track.duration_ms),

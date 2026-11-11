@@ -59,11 +59,26 @@ struct Check {
 }
 
 fn check(name: &'static str, status: Status, detail: impl Into<String>) -> Check {
-    Check { name, status, detail: detail.into(), hint: None }
+    Check {
+        name,
+        status,
+        detail: detail.into(),
+        hint: None,
+    }
 }
 
-fn check_hint(name: &'static str, status: Status, detail: impl Into<String>, hint: impl Into<String>) -> Check {
-    Check { name, status, detail: detail.into(), hint: Some(hint.into()) }
+fn check_hint(
+    name: &'static str,
+    status: Status,
+    detail: impl Into<String>,
+    hint: impl Into<String>,
+) -> Check {
+    Check {
+        name,
+        status,
+        detail: detail.into(),
+        hint: Some(hint.into()),
+    }
 }
 
 pub fn run() -> anyhow::Result<ExitCode> {
@@ -113,7 +128,11 @@ pub fn run() -> anyhow::Result<ExitCode> {
         println!("All checks passed.");
     }
 
-    Ok(if fail > 0 { ExitCode::FAILURE } else { ExitCode::SUCCESS })
+    Ok(if fail > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 fn check_runtime_dir() -> Check {
@@ -122,7 +141,11 @@ fn check_runtime_dir() -> Check {
         Ok(()) => {
             let probe = socket_dir.join(".doctor-probe");
             match std::fs::File::create(&probe).and_then(|_| std::fs::remove_file(&probe)) {
-                Ok(()) => check("runtime dir", Status::Pass, format!("{} is writable", socket_dir.display())),
+                Ok(()) => check(
+                    "runtime dir",
+                    Status::Pass,
+                    format!("{} is writable", socket_dir.display()),
+                ),
                 Err(e) => check_hint(
                     "runtime dir",
                     Status::Fail,
@@ -148,7 +171,9 @@ enum DaemonProbe {
     /// The socket exists and accepts connections but nothing answered in time.
     Silent,
     /// The daemon answered; `version` is what its `Hello` said (if the first line was one).
-    Answers { version: Option<String> },
+    Answers {
+        version: Option<String>,
+    },
 }
 
 impl DaemonProbe {
@@ -178,7 +203,9 @@ fn probe_daemon() -> DaemonProbe {
     if !(write_ok && read_ok && !line.trim().is_empty()) {
         return DaemonProbe::Silent;
     }
-    DaemonProbe::Answers { version: hello_version(line.trim().as_bytes()) }
+    DaemonProbe::Answers {
+        version: hello_version(line.trim().as_bytes()),
+    }
 }
 
 /// The daemon version from a `Hello` line, `None` for anything else.
@@ -245,7 +272,11 @@ fn running_processes(name: &str) -> Vec<RunningProcess> {
     };
     let mut out = Vec::new();
     for entry in dir.flatten() {
-        let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<u32>().ok())
+        else {
             continue;
         };
         if pid == own_pid {
@@ -270,7 +301,11 @@ fn running_processes(name: &str) -> Vec<RunningProcess> {
 }
 
 fn pid_list(procs: &[RunningProcess]) -> String {
-    procs.iter().map(|p| p.pid.to_string()).collect::<Vec<_>>().join(", ")
+    procs
+        .iter()
+        .map(|p| p.pid.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Judge the list of running daemons. Pure, so it can be tested.
@@ -316,12 +351,16 @@ fn check_daemon_process(probe: &DaemonProbe) -> Check {
 /// Compare the version the running daemon reported with this binary's version. Pure.
 fn judge_daemon_version(probe: &DaemonProbe, installed: &str) -> Check {
     match probe {
-        DaemonProbe::Answers { version: Some(running) } if running == installed => check(
+        DaemonProbe::Answers {
+            version: Some(running),
+        } if running == installed => check(
             "daemon version",
             Status::Pass,
             format!("running daemon is {running}, same as the installed one"),
         ),
-        DaemonProbe::Answers { version: Some(running) } => check_hint(
+        DaemonProbe::Answers {
+            version: Some(running),
+        } => check_hint(
             "daemon version",
             Status::Fail,
             format!("running daemon is {running} but the installed one is {installed}"),
@@ -332,7 +371,11 @@ fn judge_daemon_version(probe: &DaemonProbe, installed: &str) -> Check {
             Status::Warn,
             "the daemon answered but did not report its version",
         ),
-        _ => check("daemon version", Status::Info, "not tested: the daemon is not answering (see above)"),
+        _ => check(
+            "daemon version",
+            Status::Info,
+            "not tested: the daemon is not answering (see above)",
+        ),
     }
 }
 
@@ -359,7 +402,9 @@ fn installed_gui() -> Option<PathBuf> {
         return Some(next_to_us);
     }
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join("halcyon-music")).find(|p| p.is_file())
+    std::env::split_paths(&path)
+        .map(|d| d.join("halcyon-music"))
+        .find(|p| p.is_file())
 }
 
 fn read_gui_version(path: &Path) -> GuiVersion {
@@ -476,7 +521,15 @@ fn check_systemd_unit(daemon: &DaemonProbe) -> Check {
         );
     }
     // systemctl available?
-    let has_systemctl = ProcCommand::new("systemctl").arg("--user").arg("--no-pager").arg("is-enabled").arg("halcyon-musicd.service").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok();
+    let has_systemctl = ProcCommand::new("systemctl")
+        .arg("--user")
+        .arg("--no-pager")
+        .arg("is-enabled")
+        .arg("halcyon-musicd.service")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok();
     if !has_systemctl {
         return check(
             "systemd unit",
@@ -509,7 +562,11 @@ fn check_systemd_unit(daemon: &DaemonProbe) -> Check {
                 )
             }
         }
-        Err(e) => check("systemd unit", Status::Warn, format!("could not query systemd: {e}")),
+        Err(e) => check(
+            "systemd unit",
+            Status::Warn,
+            format!("could not query systemd: {e}"),
+        ),
     }
 }
 
@@ -565,7 +622,9 @@ fn read_saved_account() -> Option<crate::api::AccountInfo> {
     if !db_path.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     let json: String = conn
         .query_row(
             "SELECT value FROM kv WHERE key = ?1",
@@ -607,9 +666,11 @@ fn judge_account_name(account: Option<&crate::api::AccountInfo>) -> Check {
 fn judge_connect_device(view: crate::connect::DoctorView) -> Check {
     use crate::connect::DoctorView;
     match view {
-        DoctorView::Registered { name } => {
-            check("connect device", Status::Pass, format!("registered as {name}"))
-        }
+        DoctorView::Registered { name } => check(
+            "connect device",
+            Status::Pass,
+            format!("registered as {name}"),
+        ),
         DoctorView::Stale { name } => check_hint(
             "connect device",
             Status::Warn,
@@ -640,7 +701,9 @@ fn judge_connect_device(view: crate::connect::DoctorView) -> Check {
 
 fn check_connect_device() -> Check {
     let status = crate::connect::read_status();
-    let alive = status.as_ref().is_some_and(|s| crate::connect::pid_alive(s.pid));
+    let alive = status
+        .as_ref()
+        .is_some_and(|s| crate::connect::pid_alive(s.pid));
     judge_connect_device(crate::connect::doctor_view(
         status.as_ref(),
         alive,
@@ -660,7 +723,9 @@ fn read_saved_llm_settings() -> Option<crate::llm::LlmSettings> {
     if !db_path.exists() {
         return None;
     }
-    let conn = rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let conn =
+        rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .ok()?;
     let json: String = conn
         .query_row(
             "SELECT value FROM kv WHERE key = ?1",
@@ -668,7 +733,9 @@ fn read_saved_llm_settings() -> Option<crate::llm::LlmSettings> {
             |row| row.get(0),
         )
         .ok()?;
-    serde_json::from_str::<crate::llm::LlmSettings>(&json).ok().map(|s| s.normalised())
+    serde_json::from_str::<crate::llm::LlmSettings>(&json)
+        .ok()
+        .map(|s| s.normalised())
 }
 
 /// "model": is the model Smart suggestions would use there? The built-in model is downloaded the
@@ -690,7 +757,10 @@ fn judge_model(
         return check(
             "model",
             Status::Info,
-            format!("Smart suggestions use Ollama ({}); the built-in model is not used", s.model),
+            format!(
+                "Smart suggestions use Ollama ({}); the built-in model is not used",
+                s.model
+            ),
         );
     }
     if !engine {
@@ -701,20 +771,35 @@ fn judge_model(
             "switch to Ollama in Settings, or rebuild with: cargo build --release -p halcyon-musicd --features local-llm",
         );
     }
-    let fetch = format!("Settings > Smart suggestions > Download, or: halcyon-musicd --model-fetch {}", s.local_model);
+    let fetch = format!(
+        "Settings > Smart suggestions > Download, or: halcyon-musicd --model-fetch {}",
+        s.local_model
+    );
     match disk {
         Some(d) if d.installed => {
-            let how = if d.verified.is_empty() { "not checked" } else { d.verified.as_str() };
+            let how = if d.verified.is_empty() {
+                "not checked"
+            } else {
+                d.verified.as_str()
+            };
             check(
                 "model",
                 Status::Pass,
-                format!("{} is on disk ({} MB, checked: {how})", s.local_model, d.size / 1_000_000),
+                format!(
+                    "{} is on disk ({} MB, checked: {how})",
+                    s.local_model,
+                    d.size / 1_000_000
+                ),
             )
         }
         Some(d) if d.partial > 0 => check_hint(
             "model",
             Status::Warn,
-            format!("{} is half downloaded ({} MB so far)", s.local_model, d.partial / 1_000_000),
+            format!(
+                "{} is half downloaded ({} MB so far)",
+                s.local_model,
+                d.partial / 1_000_000
+            ),
             format!("finish it: {fetch}"),
         ),
         _ => check_hint(
@@ -732,7 +817,11 @@ fn check_model() -> Check {
         .as_ref()
         .and_then(|s| crate::llm::models::find(&s.local_model))
         .map(|spec| crate::llm::models::disk_status(&crate::llm::models::models_dir(), spec.file));
-    judge_model(settings.as_ref(), crate::llm::local::engine_available(), disk.as_ref())
+    judge_model(
+        settings.as_ref(),
+        crate::llm::local::engine_available(),
+        disk.as_ref(),
+    )
 }
 
 fn check_cache() -> Check {
@@ -748,11 +837,10 @@ fn check_cache() -> Check {
 
     match rusqlite::Connection::open(&db_path) {
         Ok(conn) => {
-            let res: Result<String, _> = conn.query_row("PRAGMA quick_check;", [], |row| row.get(0));
+            let res: Result<String, _> =
+                conn.query_row("PRAGMA quick_check;", [], |row| row.get(0));
             match res {
-                Ok(status) if status == "ok" => {
-                    check("cache", Status::Pass, "SQLite cache intact")
-                }
+                Ok(status) if status == "ok" => check("cache", Status::Pass, "SQLite cache intact"),
                 Ok(other) => check_hint(
                     "cache",
                     Status::Warn,
@@ -786,7 +874,8 @@ fn usable_streaming_token(token: &StreamingToken) -> Option<&LibrespotToken> {
     }
 }
 
-const SIGN_IN_HINT: &str = "open Halcyon Music and press Sign in with Spotify, or run: halcyon-musicd --login";
+const SIGN_IN_HINT: &str =
+    "open Halcyon Music and press Sign in with Spotify, or run: halcyon-musicd --login";
 
 /// The streaming token is present and fresh. Never prints or renews the token.
 fn check_streaming_token(token: &StreamingToken) -> Check {
@@ -835,7 +924,10 @@ fn check_streaming_token(token: &StreamingToken) -> Check {
 enum SessionProbe {
     Works,
     /// `connect` failed. `free` is true when the error text names a Free or Premium account.
-    ConnectFailed { free: bool, text: String },
+    ConnectFailed {
+        free: bool,
+        text: String,
+    },
     /// Connected, but the sign-in check (the same login5 request a track load makes) failed.
     LoginFailed(FailureCause),
 }
@@ -873,7 +965,10 @@ fn judge_session(result: Option<SessionProbe>) -> Check {
         None => check_hint(
             "spotify session",
             Status::Fail,
-            format!("no answer from Spotify within {} s", SESSION_TIMEOUT.as_secs()),
+            format!(
+                "no answer from Spotify within {} s",
+                SESSION_TIMEOUT.as_secs()
+            ),
             "check your connection (and any VPN or firewall), then run --doctor again",
         ),
         Some(SessionProbe::Works) => check(
@@ -925,7 +1020,10 @@ fn check_session(token: &StreamingToken) -> Check {
         );
     };
     let access_token = t.access_token.clone();
-    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             return check(
@@ -936,7 +1034,9 @@ fn check_session(token: &StreamingToken) -> Check {
         }
     };
     let result = runtime
-        .block_on(async { tokio::time::timeout(SESSION_TIMEOUT, probe_session(access_token)).await })
+        .block_on(async {
+            tokio::time::timeout(SESSION_TIMEOUT, probe_session(access_token)).await
+        })
         .ok();
     judge_session(result)
 }
@@ -965,7 +1065,11 @@ fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
 fn judge_audio_sink(result: Option<Result<(), String>>) -> Check {
     const HINT: &str = "start PipeWire (systemctl --user start pipewire pipewire-pulse wireplumber) and check `wpctl status`; if the daemon is playing on a bare ALSA device, stop it for this test: systemctl --user stop halcyon-musicd";
     match result {
-        Some(Ok(())) => check("audio output", Status::Pass, "the default audio output opened"),
+        Some(Ok(())) => check(
+            "audio output",
+            Status::Pass,
+            "the default audio output opened",
+        ),
         Some(Err(why)) => check_hint(
             "audio output",
             Status::Fail,
@@ -975,7 +1079,10 @@ fn judge_audio_sink(result: Option<Result<(), String>>) -> Check {
         None => check_hint(
             "audio output",
             Status::Fail,
-            format!("opening the audio output did not finish within {} s", SINK_TIMEOUT.as_secs()),
+            format!(
+                "opening the audio output did not finish within {} s",
+                SINK_TIMEOUT.as_secs()
+            ),
             HINT,
         ),
     }
@@ -1050,7 +1157,11 @@ fn judge_browsing(
 }
 
 fn check_browsing_sign_in(streaming: &StreamingToken) -> Check {
-    judge_browsing(crate::auth_mode::initial(), streaming, &token_store::load_token())
+    judge_browsing(
+        crate::auth_mode::initial(),
+        streaming,
+        &token_store::load_token(),
+    )
 }
 
 fn check_endpoint_probes() -> Vec<Check> {
@@ -1080,7 +1191,11 @@ fn check_endpoint_probes() -> Vec<Check> {
         if let Some(p) = probe_map.get(name) {
             match p.status {
                 ProbeStatus::Available => {
-                    out.push(check("endpoint probe", Status::Pass, format!("{name:<20} AVAILABLE")));
+                    out.push(check(
+                        "endpoint probe",
+                        Status::Pass,
+                        format!("{name:<20} AVAILABLE"),
+                    ));
                 }
                 ProbeStatus::Unavailable { code } => {
                     out.push(check(
@@ -1110,7 +1225,9 @@ fn check_endpoint_probes() -> Vec<Check> {
 }
 
 fn dirs_home() -> std::path::PathBuf {
-    std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| Path::new("/tmp").to_path_buf())
+    std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| Path::new("/tmp").to_path_buf())
 }
 
 /// Resolve with a short internal timeout so a broken DNS cannot hang doctor.
@@ -1125,7 +1242,11 @@ impl ToSocketAddrsBest for &str {
         self.to_socket_addrs()
             .ok()
             .and_then(|mut it| it.next())
-            .unwrap_or_else(|| "127.0.0.1:1".parse().unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 1))))
+            .unwrap_or_else(|| {
+                "127.0.0.1:1"
+                    .parse()
+                    .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], 1)))
+            })
     }
 }
 
@@ -1179,10 +1300,15 @@ mod tests {
     fn daemon_process_verdicts() {
         assert_eq!(judge_daemon_processes(&[], false).status, Status::Info);
         assert_eq!(judge_daemon_processes(&[], true).status, Status::Info);
-        assert_eq!(judge_daemon_processes(&[proc(10, false)], true).status, Status::Pass);
+        assert_eq!(
+            judge_daemon_processes(&[proc(10, false)], true).status,
+            Status::Pass
+        );
         let stale = judge_daemon_processes(&[proc(10, true)], true);
         assert_eq!(stale.status, Status::Fail);
-        assert!(stale.hint.is_some_and(|h| h.contains("restart halcyon-musicd")));
+        assert!(stale
+            .hint
+            .is_some_and(|h| h.contains("restart halcyon-musicd")));
         let two = judge_daemon_processes(&[proc(10, false), proc(11, true)], true);
         assert_eq!(two.status, Status::Fail);
         assert!(two.detail.contains("10, 11"));
@@ -1204,9 +1330,13 @@ mod tests {
 
     #[test]
     fn daemon_version_verdicts() {
-        let same = DaemonProbe::Answers { version: Some("0.2.0".into()) };
+        let same = DaemonProbe::Answers {
+            version: Some("0.2.0".into()),
+        };
         assert_eq!(judge_daemon_version(&same, "0.2.0").status, Status::Pass);
-        let old = DaemonProbe::Answers { version: Some("0.1.0".into()) };
+        let old = DaemonProbe::Answers {
+            version: Some("0.1.0".into()),
+        };
         let c = judge_daemon_version(&old, "0.2.0");
         assert_eq!(c.status, Status::Fail);
         assert!(c.detail.contains("0.1.0") && c.detail.contains("0.2.0"));
@@ -1214,12 +1344,18 @@ mod tests {
             judge_daemon_version(&DaemonProbe::Answers { version: None }, "0.2.0").status,
             Status::Warn
         );
-        assert_eq!(judge_daemon_version(&DaemonProbe::NoSocket, "0.2.0").status, Status::Info);
+        assert_eq!(
+            judge_daemon_version(&DaemonProbe::NoSocket, "0.2.0").status,
+            Status::Info
+        );
     }
 
     #[test]
     fn version_line_parsing() {
-        assert_eq!(parse_version_line("halcyon-music 0.2.0\n"), Some("0.2.0".to_string()));
+        assert_eq!(
+            parse_version_line("halcyon-music 0.2.0\n"),
+            Some("0.2.0".to_string())
+        );
         assert_eq!(parse_version_line(""), None);
         assert_eq!(parse_version_line("usage: halcyon-music"), None);
     }
@@ -1235,7 +1371,10 @@ mod tests {
             judge_gui_version(Some(GuiVersion::Found("0.1.0".into())), "0.2.0").status,
             Status::Fail
         );
-        assert_eq!(judge_gui_version(Some(GuiVersion::TimedOut), "0.2.0").status, Status::Fail);
+        assert_eq!(
+            judge_gui_version(Some(GuiVersion::TimedOut), "0.2.0").status,
+            Status::Fail
+        );
         assert_eq!(
             judge_gui_version(Some(GuiVersion::Failed("boom".into())), "0.2.0").status,
             Status::Warn
@@ -1282,23 +1421,40 @@ mod tests {
 
     #[test]
     fn session_verdicts() {
-        assert_eq!(judge_session(Some(SessionProbe::Works)).status, Status::Pass);
+        assert_eq!(
+            judge_session(Some(SessionProbe::Works)).status,
+            Status::Pass
+        );
         assert_eq!(judge_session(None).status, Status::Fail);
 
-        let free = judge_session(Some(SessionProbe::ConnectFailed { free: true, text: "x".into() }));
+        let free = judge_session(Some(SessionProbe::ConnectFailed {
+            free: true,
+            text: "x".into(),
+        }));
         assert_eq!(free.status, Status::Fail);
         assert!(free.detail.contains("Free"));
 
-        let other = judge_session(Some(SessionProbe::ConnectFailed { free: false, text: "boom\nsecond line".into() }));
+        let other = judge_session(Some(SessionProbe::ConnectFailed {
+            free: false,
+            text: "boom\nsecond line".into(),
+        }));
         assert_eq!(other.status, Status::Fail);
         assert!(other.detail.contains("boom") && !other.detail.contains("second line"));
 
-        let rejected = judge_session(Some(SessionProbe::LoginFailed(FailureCause::CredentialsRejected)));
+        let rejected = judge_session(Some(SessionProbe::LoginFailed(
+            FailureCause::CredentialsRejected,
+        )));
         assert_eq!(rejected.status, Status::Fail);
         assert!(rejected.detail.contains("INVALID_CREDENTIALS"));
 
-        assert_eq!(judge_session(Some(SessionProbe::LoginFailed(FailureCause::Network))).status, Status::Fail);
-        assert_eq!(judge_session(Some(SessionProbe::LoginFailed(FailureCause::Other))).status, Status::Fail);
+        assert_eq!(
+            judge_session(Some(SessionProbe::LoginFailed(FailureCause::Network))).status,
+            Status::Fail
+        );
+        assert_eq!(
+            judge_session(Some(SessionProbe::LoginFailed(FailureCause::Other))).status,
+            Status::Fail
+        );
     }
 
     #[test]
@@ -1334,11 +1490,20 @@ mod tests {
         let none: StreamingToken = Ok(None);
         let no_own: Result<Option<TokenData>, String> = Ok(None);
 
-        assert_eq!(judge_browsing(AuthMode::Librespot, &good, &no_own).status, Status::Pass);
+        assert_eq!(
+            judge_browsing(AuthMode::Librespot, &good, &no_own).status,
+            Status::Pass
+        );
         // The streaming check already fails; browsing does not repeat the FAIL.
-        assert_eq!(judge_browsing(AuthMode::Librespot, &none, &no_own).status, Status::Info);
+        assert_eq!(
+            judge_browsing(AuthMode::Librespot, &none, &no_own).status,
+            Status::Info
+        );
 
-        assert_eq!(judge_browsing(AuthMode::OwnClientId, &good, &no_own).status, Status::Fail);
+        assert_eq!(
+            judge_browsing(AuthMode::OwnClientId, &good, &no_own).status,
+            Status::Fail
+        );
         let live: Result<Option<TokenData>, String> = Ok(Some(own_token(3600)));
         let c = judge_browsing(AuthMode::OwnClientId, &good, &live);
         assert_eq!(c.status, Status::Pass);
@@ -1348,7 +1513,10 @@ mod tests {
         assert_eq!(c.status, Status::Warn);
         no_secrets(&c);
         let broken: Result<Option<TokenData>, String> = Err("keyring locked".into());
-        assert_eq!(judge_browsing(AuthMode::OwnClientId, &good, &broken).status, Status::Fail);
+        assert_eq!(
+            judge_browsing(AuthMode::OwnClientId, &good, &broken).status,
+            Status::Fail
+        );
     }
 
     #[test]
@@ -1361,11 +1529,19 @@ mod tests {
     #[test]
     fn connect_device_check_levels() {
         use crate::connect::DoctorView;
-        let pass = judge_connect_device(DoctorView::Registered { name: "Halcyon (x)".into() });
+        let pass = judge_connect_device(DoctorView::Registered {
+            name: "Halcyon (x)".into(),
+        });
         assert_eq!(pass.status, Status::Pass);
         assert!(pass.detail.contains("Halcyon (x)"));
-        assert_eq!(judge_connect_device(DoctorView::Stale { name: "n".into() }).status, Status::Warn);
-        assert_eq!(judge_connect_device(DoctorView::Off { compiled: false }).status, Status::Info);
+        assert_eq!(
+            judge_connect_device(DoctorView::Stale { name: "n".into() }).status,
+            Status::Warn
+        );
+        assert_eq!(
+            judge_connect_device(DoctorView::Off { compiled: false }).status,
+            Status::Info
+        );
         let missing = judge_connect_device(DoctorView::RequestedNotRegistered { compiled: false });
         assert_eq!(missing.status, Status::Warn);
         assert!(missing.hint.unwrap().contains("--features connect"));
@@ -1388,7 +1564,10 @@ mod tests {
         let warn = judge_account_name(Some(&acc(None, Some("ada123"))));
         assert_eq!(warn.status, Status::Warn);
         assert!(warn.detail.contains("ada123"));
-        assert_eq!(judge_account_name(Some(&acc(Some("  "), None))).status, Status::Info);
+        assert_eq!(
+            judge_account_name(Some(&acc(Some("  "), None))).status,
+            Status::Info
+        );
         assert_eq!(judge_account_name(None).status, Status::Info);
     }
 
@@ -1396,17 +1575,40 @@ mod tests {
     fn model_check_levels() {
         use crate::llm::models::DiskStatus;
         use crate::llm::LlmSettings;
-        let on = LlmSettings { enabled: true, ..LlmSettings::default() };
-        let on_ollama = LlmSettings { enabled: true, backend: "ollama".into(), ..LlmSettings::default() };
-        let on_disk = DiskStatus { installed: true, size: 400_000_000, partial: 0, verified: "server".into() };
-        let half = DiskStatus { installed: false, size: 0, partial: 120_000_000, verified: String::new() };
+        let on = LlmSettings {
+            enabled: true,
+            ..LlmSettings::default()
+        };
+        let on_ollama = LlmSettings {
+            enabled: true,
+            backend: "ollama".into(),
+            ..LlmSettings::default()
+        };
+        let on_disk = DiskStatus {
+            installed: true,
+            size: 400_000_000,
+            partial: 0,
+            verified: "server".into(),
+        };
+        let half = DiskStatus {
+            installed: false,
+            size: 0,
+            partial: 120_000_000,
+            verified: String::new(),
+        };
         let none = DiskStatus::default();
 
         // Off, or nothing saved yet: nothing is needed, so never a problem.
         assert_eq!(judge_model(None, true, None).status, Status::Info);
-        assert_eq!(judge_model(Some(&LlmSettings::default()), true, None).status, Status::Info);
+        assert_eq!(
+            judge_model(Some(&LlmSettings::default()), true, None).status,
+            Status::Info
+        );
         // Ollama: the built-in file is irrelevant.
-        assert_eq!(judge_model(Some(&on_ollama), false, Some(&none)).status, Status::Info);
+        assert_eq!(
+            judge_model(Some(&on_ollama), false, Some(&none)).status,
+            Status::Info
+        );
         // Built-in model chosen but the build cannot run it.
         let no_engine = judge_model(Some(&on), false, Some(&on_disk));
         assert_eq!(no_engine.status, Status::Warn);

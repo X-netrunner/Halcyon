@@ -59,6 +59,9 @@ pub fn run() -> i32 {
     // Fallback: IPC call to island
     let island_path = util::rice_dir().join("quickshell/island");
     let island_str = island_path.to_string_lossy().to_string();
-    let _ = util::ok("quickshell", &["ipc", "-p", &island_str, "call", "island", "supertap"]);
+    let _ = util::ok(
+        "quickshell",
+        &["ipc", "-p", &island_str, "call", "island", "supertap"],
+    );
     0
 }
