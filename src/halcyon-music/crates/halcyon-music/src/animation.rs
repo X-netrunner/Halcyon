@@ -16,25 +16,31 @@ use std::time::{Duration, Instant};
 /// these, so the whole interface moves with one rhythm.
 pub mod motion {
     /// Hover, press, small state changes.
-    pub const FAST_MS: u64 = 120;
+    pub const FAST_MS: u64 = halcyon_music_core::tokens::motion::FAST_MS;
     /// Most things: pills, toasts, the search notch, the sidebar.
-    pub const BASE_MS: u64 = 220;
+    pub const BASE_MS: u64 = halcyon_music_core::tokens::motion::BASE_MS;
     /// Page entrances and drawers.
-    pub const SLOW_MS: u64 = 420;
+    pub const SLOW_MS: u64 = halcyon_music_core::tokens::motion::SLOW_MS;
     /// A frame that takes longer than this to build or arrive is a dropped frame.
     pub const FRAME_BUDGET_MS: f32 = 16.0;
 }
 
 fn preference_file() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    std::path::Path::new(&home).join(".local/state/halcyon-music/reduce-motion")
+    halcyon_music_core::paths::state_dir().join("reduce-motion")
 }
 
-/// The saved "Reduce motion" choice (off when nothing is saved).
+fn desktop_flag() -> Option<std::path::PathBuf> {
+    halcyon_music_core::paths::state_dir()
+        .parent()
+        .map(|state| state.join("halcyon/reduce-motion"))
+}
+
+/// The saved "Reduce motion" choice, or the desktop-wide one Halcyon sets (off when neither is set).
 pub fn load_preference() -> bool {
-    std::fs::read_to_string(preference_file())
+    let own = std::fs::read_to_string(preference_file())
         .map(|v| v.trim() == "1")
-        .unwrap_or(false)
+        .unwrap_or(false);
+    own || desktop_flag().is_some_and(|f| f.exists())
 }
 
 /// Remember the choice for next launch. Failure is harmless, so it is ignored.
@@ -545,7 +551,7 @@ mod tests {
     fn tokens_are_the_three_durations_from_the_plan() {
         assert_eq!(
             (motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS),
-            (120, 220, 420)
+            (120, 180, 240)
         );
         assert_eq!(crate::theme::MAX_ANIMATION_MS, motion::SLOW_MS);
     }
