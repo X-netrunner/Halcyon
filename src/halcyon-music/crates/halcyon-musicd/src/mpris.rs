@@ -209,12 +209,7 @@ impl MprisPlayer {
         self.announce_seek(&ctxt).await;
     }
 
-    async fn set_position(
-        &self,
-        _track_id: ObjectPath<'_>,
-        position_us: i64,
-        #[zbus(signal_context)] ctxt: SignalContext<'_>,
-    ) {
+    async fn set_position(&self, _track_id: ObjectPath<'_>, position_us: i64) {
         let pos_ms = (position_us.max(0) / 1000) as u64;
         self.player
             .mutate(|s| {

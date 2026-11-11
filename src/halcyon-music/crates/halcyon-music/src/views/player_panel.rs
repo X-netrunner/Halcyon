@@ -506,9 +506,9 @@ mod tests {
 
     #[test]
     fn the_transport_fits_the_panel() {
-        const _: () = assert!(
+        assert!(
             TRANSPORT_W <= WIDTH - 2.0 * PAD,
-            "the transport does not fit"
+            "{TRANSPORT_W} does not fit"
         );
     }
 

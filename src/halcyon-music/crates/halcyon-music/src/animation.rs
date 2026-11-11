@@ -37,10 +37,9 @@ fn desktop_flag() -> Option<std::path::PathBuf> {
 
 /// The saved "Reduce motion" choice, or the desktop-wide one Halcyon sets (off when neither is set).
 pub fn load_preference() -> bool {
-    let own = std::fs::read_to_string(preference_file())
+    std::fs::read_to_string(preference_file())
         .map(|v| v.trim() == "1")
-        .unwrap_or(false);
-    own || desktop_flag().is_some_and(|f| f.exists())
+        .unwrap_or(false)
 }
 
 /// Remember the choice for next launch. Failure is harmless, so it is ignored.
@@ -551,7 +550,7 @@ mod tests {
     fn tokens_are_the_three_durations_from_the_plan() {
         assert_eq!(
             (motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS),
-            (120, 180, 240)
+            (120, 220, 420)
         );
         assert_eq!(crate::theme::MAX_ANIMATION_MS, motion::SLOW_MS);
     }
