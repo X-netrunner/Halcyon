@@ -1498,8 +1498,8 @@ Scope {
                     onTextChanged: if (root.live) stPop.restart()          // a changed figure gives a small pop
                     SequentialAnimation {
                         id: stPop
-                        NumberAnimation { target: stV; property: "scale"; to: 1.14; duration: 110; easing.type: Easing.OutQuad }
-                        NumberAnimation { target: stV; property: "scale"; to: 1; duration: 320; easing.type: Easing.OutBack }
+                        NumberAnimation { target: stV; property: "scale"; to: 1.14; duration: root.pal.dFast; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: stV; property: "scale"; to: 1; duration: root.pal.dSlow; easing.type: Easing.OutBack }
                     }
                 }
                 Text { anchors.baseline: stV.baseline; text: st.sub; color: root.pal.muted; font.family: root.pal.uiFont; font.pixelSize: root.pal.tCap + 1 }
@@ -1787,8 +1787,8 @@ Scope {
                             onTextChanged: if (root.live) fvPop.restart()
                             SequentialAnimation {
                                 id: fvPop
-                                NumberAnimation { target: fv; property: "scale"; to: 1.16; duration: 110; easing.type: Easing.OutQuad }
-                                NumberAnimation { target: fv; property: "scale"; to: 1; duration: 320; easing.type: Easing.OutBack }
+                                NumberAnimation { target: fv; property: "scale"; to: 1.16; duration: root.pal.dFast; easing.type: Easing.OutQuad }
+                                NumberAnimation { target: fv; property: "scale"; to: 1; duration: root.pal.dSlow; easing.type: Easing.OutBack }
                             }
                         }
                         Small { text: modelData[1]; font.pixelSize: root.pal.tCap }

@@ -255,7 +255,7 @@ Scope {
                 anchors.fill: parent
                 readonly property bool ready: root.useWall && wallImg.status === Image.Ready
                 property real fadeIn: ready ? 1 : 0
-                Behavior on fadeIn { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
+                Behavior on fadeIn { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
                 visible: fadeIn > 0.001
                 opacity: surf.appear * fadeIn
                 layer.enabled: ready
@@ -512,8 +512,8 @@ Scope {
                         opacity: 0
                         ParallelAnimation {
                             id: ringAnim
-                            NumberAnimation { target: ring; property: "scale"; from: 1.0; to: 1.14; duration: 440; easing.type: Easing.OutCubic }
-                            NumberAnimation { target: ring; property: "opacity"; from: 0.55; to: 0; duration: 440; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: ring; property: "scale"; from: 1.0; to: 1.14; duration: root.pal.dSlow; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: ring; property: "opacity"; from: 0.55; to: 0; duration: root.pal.dSlow; easing.type: Easing.OutQuad }
                         }
                     }
                     Connections { target: root; function onKickTickChanged() { ringAnim.restart() } }
@@ -531,8 +531,8 @@ Scope {
                                 required property int index
                                 width: 9; height: 9; radius: 4.5
                                 color: root.failure !== "" ? root.pal.bad : root.pal.text
-                                NumberAnimation on scale { from: 0.2; to: 1; duration: 240; easing.type: Easing.OutCubic }
-                                NumberAnimation on opacity { from: 0; to: 1; duration: 150 }
+                                NumberAnimation on scale { from: 0.2; to: 1; duration: root.pal.dMed; easing.type: Easing.OutCubic }
+                                NumberAnimation on opacity { from: 0; to: 1; duration: root.pal.dFast }
                                 transform: Translate { y: root.busy ? -4 * Math.sin(pill.wave - index * 0.7) : 0 }
                             }
                         }
