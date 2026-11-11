@@ -1761,7 +1761,7 @@ Scope {
                         readonly property real maxY: Math.max(0, contentHeight - height)
                         onContentYChanged: { root.scrolling = true; settleT.restart() }
                         onMovementStarted: pwheelAnim.stop()
-                        NumberAnimation { id: pwheelAnim; target: pscroll; property: "contentY"; duration: 230; easing.type: Easing.OutCubic }
+                        NumberAnimation { id: pwheelAnim; target: pscroll; property: "contentY"; duration: root.pal.dMed; easing.type: Easing.OutCubic }
                         WheelHandler {
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                             onWheel: event => {
@@ -2029,7 +2029,7 @@ Scope {
                     Timer { id: settleT; interval: 200; onTriggered: root.scrolling = false }
 
                     // mouse wheel: glide to the target instead of jumping a notch at a time
-                    NumberAnimation { id: wheelAnim; target: scroll; property: "contentY"; duration: 230; easing.type: Easing.OutCubic }
+                    NumberAnimation { id: wheelAnim; target: scroll; property: "contentY"; duration: root.pal.dMed; easing.type: Easing.OutCubic }
                     WheelHandler {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         onWheel: event => {

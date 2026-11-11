@@ -103,7 +103,7 @@ Item {
             width: lv.width
             height: root.rowH
             opacity: root.cur < 0 ? Math.max(0.08, 0.5 - 0.2 * index) : Math.max(0.1, 1 - 0.42 * d)
-            Behavior on opacity { NumberAnimation { duration: 360; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on opacity { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width
@@ -114,7 +114,7 @@ Item {
                 font.family: root.pal.uiFont
                 font.pixelSize: row.on ? 16 : 13
                 font.weight: row.on ? Font.Medium : Font.Normal
-                Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
         }
     }

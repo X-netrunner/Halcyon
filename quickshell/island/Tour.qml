@@ -266,7 +266,7 @@ Scope {
                         id: hopAnim
                         running: false
                         NumberAnimation { to: 1; duration: 90; easing.type: Easing.OutQuad }
-                        NumberAnimation { to: 0; duration: 380; easing.type: Easing.OutCubic }
+                        NumberAnimation { to: 0; duration: root.pal.dSlow; easing.type: Easing.OutCubic }
                     }
                     transform: Translate { y: -6 * card.hop }
                     property int typed: 0
