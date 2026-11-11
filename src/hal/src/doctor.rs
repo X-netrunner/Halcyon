@@ -68,7 +68,6 @@ fn find_bin(name: &str) -> Option<PathBuf> {
     path.split(':')
         .map(PathBuf::from)
         .chain([
-            crate::util::rice_dir().join("bin"),
             PathBuf::from(format!("{home}/.local/bin")),
             PathBuf::from("/usr/local/bin"),
         ])
@@ -222,7 +221,7 @@ pub fn runtime_dir(path: &Path) -> Check {
             "halcyon",
             &what,
             Level::Info,
-            "not created: no component uses the shared socket dir yet",
+            "not created yet (made on login)",
         ),
         Ok(m) if m.permissions().mode() & 0o077 != 0 => check(
             "halcyon",
