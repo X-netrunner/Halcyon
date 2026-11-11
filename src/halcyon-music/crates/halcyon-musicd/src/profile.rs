@@ -58,7 +58,12 @@ pub fn parse_profile_json(body: &str) -> SessionProfile {
         .find_map(|p| text(p))
         .filter(|u| u.starts_with("https://"));
     let username = text("/uri").and_then(|u| u.strip_prefix("spotify:user:").and_then(clean));
-    SessionProfile { username, display_name, image_url, plan: None }
+    SessionProfile {
+        username,
+        display_name,
+        image_url,
+        plan: None,
+    }
 }
 
 /// Combine what was cached with what was just learned. A fresh non-empty value wins; an empty or
@@ -69,7 +74,10 @@ pub fn merge(
     session: Option<&SessionProfile>,
     web: Option<&AccountInfo>,
 ) -> Option<AccountInfo> {
-    let pick = |fresh_a: Option<&String>, fresh_b: Option<&String>, old_v: Option<&String>| -> Option<String> {
+    let pick = |fresh_a: Option<&String>,
+                fresh_b: Option<&String>,
+                old_v: Option<&String>|
+     -> Option<String> {
         [fresh_a, fresh_b, old_v]
             .into_iter()
             .flatten()
@@ -95,12 +103,9 @@ pub fn merge(
         web.and_then(|w| w.plan.as_ref()),
         old.and_then(|o| o.plan.as_ref()),
     );
-    let id = pick(
-        web.map(|w| &w.id),
-        old.map(|o| &o.id),
-        username.as_ref(),
-    )?;
-    let looked_up = web.is_some() || session.is_some_and(|s| s.display_name.is_some() || s.image_url.is_some());
+    let id = pick(web.map(|w| &w.id), old.map(|o| &o.id), username.as_ref())?;
+    let looked_up =
+        web.is_some() || session.is_some_and(|s| s.display_name.is_some() || s.image_url.is_some());
     Some(AccountInfo {
         id,
         display_name,
@@ -113,7 +118,8 @@ pub fn merge(
 
 /// True when the account already has a name worth showing.
 pub fn has_name(a: Option<&AccountInfo>) -> bool {
-    a.and_then(|a| a.display_name.as_deref()).is_some_and(|n| !n.trim().is_empty())
+    a.and_then(|a| a.display_name.as_deref())
+        .is_some_and(|n| !n.trim().is_empty())
 }
 
 /// Resolve the account in the order described at the top of this file. `session` and `web` are
@@ -133,7 +139,10 @@ where
     WF: Future<Output = Result<AccountInfo, String>>,
 {
     let from_session = session().await.ok();
-    let session_has_name = from_session.as_ref().and_then(|s| s.display_name.as_ref()).is_some();
+    let session_has_name = from_session
+        .as_ref()
+        .and_then(|s| s.display_name.as_ref())
+        .is_some();
     let mut from_web = None;
     if !session_has_name && !has_name(old.as_ref()) && web_allowed {
         from_web = web().await.ok();
@@ -172,7 +181,10 @@ mod tests {
 
     #[test]
     fn plan_labels() {
-        assert_eq!(plan_from_attribute(Some("premium")).as_deref(), Some("Premium"));
+        assert_eq!(
+            plan_from_attribute(Some("premium")).as_deref(),
+            Some("Premium")
+        );
         assert_eq!(plan_from_attribute(Some(" Free ")).as_deref(), Some("Free"));
         assert_eq!(plan_from_attribute(Some("open")).as_deref(), Some("Free"));
         assert_eq!(plan_from_attribute(Some("family-duo")), None);
@@ -181,11 +193,15 @@ mod tests {
 
     #[test]
     fn parses_the_known_shapes_and_survives_junk() {
-        let a = parse_profile_json(r#"{"uri":"spotify:user:ada123","name":" Ada L ","image_url":"https://i.scdn.co/image/x"}"#);
+        let a = parse_profile_json(
+            r#"{"uri":"spotify:user:ada123","name":" Ada L ","image_url":"https://i.scdn.co/image/x"}"#,
+        );
         assert_eq!(a.display_name.as_deref(), Some("Ada L"));
         assert_eq!(a.image_url.as_deref(), Some("https://i.scdn.co/image/x"));
         assert_eq!(a.username.as_deref(), Some("ada123"));
-        let b = parse_profile_json(r#"{"display_name":"Ada","images":[{"url":"https://i.scdn.co/image/y"}]}"#);
+        let b = parse_profile_json(
+            r#"{"display_name":"Ada","images":[{"url":"https://i.scdn.co/image/y"}]}"#,
+        );
         assert_eq!(b.display_name.as_deref(), Some("Ada"));
         assert_eq!(b.image_url.as_deref(), Some("https://i.scdn.co/image/y"));
         // A picture over plain http is not kept; an empty name is no name.
@@ -206,7 +222,10 @@ mod tests {
         let empty = SessionProfile::default();
         let merged = merge(Some(&old), Some(&empty), None).expect("known");
         assert_eq!(merged.display_name.as_deref(), Some("Ada"));
-        assert_eq!(merged.image_url.as_deref(), Some("https://i.scdn.co/image/keep"));
+        assert_eq!(
+            merged.image_url.as_deref(),
+            Some("https://i.scdn.co/image/keep")
+        );
         assert_eq!(merged.username.as_deref(), Some("ada123"));
         assert_eq!(merged.plan.as_deref(), Some("Premium"));
         assert_eq!(merged.id, "u1");
@@ -219,14 +238,22 @@ mod tests {
     #[test]
     fn a_fresh_name_replaces_an_old_one_and_nothing_known_is_none() {
         let old = account("u1", Some("Old Name"));
-        let merged = merge(Some(&old), Some(&session_profile(Some("New Name"))), None).expect("known");
+        let merged =
+            merge(Some(&old), Some(&session_profile(Some("New Name"))), None).expect("known");
         assert_eq!(merged.display_name.as_deref(), Some("New Name"));
         assert!(merged.images_read, "the picture was looked up");
         assert_eq!(merge(None, None, None), None);
         assert_eq!(merge(None, Some(&SessionProfile::default()), None), None);
         // Only the username is known: the account exists, with no name.
-        let only_user = merge(None, Some(&SessionProfile { username: Some("ada123".into()), ..Default::default() }), None)
-            .expect("username alone is enough");
+        let only_user = merge(
+            None,
+            Some(&SessionProfile {
+                username: Some("ada123".into()),
+                ..Default::default()
+            }),
+            None,
+        )
+        .expect("username alone is enough");
         assert_eq!(only_user.id, "ada123");
         assert_eq!(only_user.display_name, None);
     }
@@ -240,7 +267,10 @@ mod tests {
         let session_calls = Arc::new(AtomicUsize::new(0));
         let web_calls = Arc::new(AtomicUsize::new(0));
         let (sc, wc) = (session_calls.clone(), web_calls.clone());
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
         let out = rt.block_on(resolve_with(
             old,
             web_allowed,
@@ -253,7 +283,11 @@ mod tests {
                 web
             },
         ));
-        (out, session_calls.load(Ordering::SeqCst), web_calls.load(Ordering::SeqCst))
+        (
+            out,
+            session_calls.load(Ordering::SeqCst),
+            web_calls.load(Ordering::SeqCst),
+        )
     }
 
     #[test]
@@ -277,10 +311,18 @@ mod tests {
             Ok(session_profile(None)),
             Ok(account("u1", Some("From Web"))),
         );
-        assert_eq!(out.expect("known").display_name.as_deref(), Some("From Web"));
+        assert_eq!(
+            out.expect("known").display_name.as_deref(),
+            Some("From Web")
+        );
         assert_eq!(w, 1);
         // Rate-limited: /me is not asked, and the username still shows.
-        let (out, _, w) = counting_resolve(None, false, Ok(session_profile(None)), Ok(account("u1", Some("X"))));
+        let (out, _, w) = counting_resolve(
+            None,
+            false,
+            Ok(session_profile(None)),
+            Ok(account("u1", Some("X"))),
+        );
         let out = out.expect("username known");
         assert_eq!(w, 0);
         assert_eq!(out.display_name, None);
@@ -290,7 +332,12 @@ mod tests {
     #[test]
     fn a_cached_name_survives_both_sources_failing() {
         let old = account("u1", Some("Ada"));
-        let (out, _, w) = counting_resolve(Some(old), true, Err("session down".into()), Err("429".into()));
+        let (out, _, w) = counting_resolve(
+            Some(old),
+            true,
+            Err("session down".into()),
+            Err("429".into()),
+        );
         assert_eq!(out.expect("cached").display_name.as_deref(), Some("Ada"));
         assert_eq!(w, 0, "a cached name means /me is not needed");
     }

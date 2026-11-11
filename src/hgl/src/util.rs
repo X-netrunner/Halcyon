@@ -46,7 +46,9 @@ pub fn covers_dir() -> PathBuf {
     data_dir().join("covers")
 }
 pub fn state_dir() -> PathBuf {
-    xdg("XDG_STATE_HOME", ".local/state").join("Halcyon").join("hgl")
+    xdg("XDG_STATE_HOME", ".local/state")
+        .join("Halcyon")
+        .join("hgl")
 }
 pub fn logs_dir() -> PathBuf {
     state_dir().join("logs")
@@ -56,7 +58,10 @@ pub fn gamemode_script() -> PathBuf {
 }
 
 pub fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 pub fn uid() -> u32 {
@@ -69,7 +74,9 @@ pub fn which(cmd: &str) -> Option<PathBuf> {
         return if p.is_file() { Some(p) } else { None };
     }
     let path = env::var_os("PATH")?;
-    env::split_paths(&path).map(|d| d.join(cmd)).find(|p| p.is_file())
+    env::split_paths(&path)
+        .map(|d| d.join(cmd))
+        .find(|p| p.is_file())
 }
 
 pub fn have(cmd: &str) -> bool {
@@ -78,7 +85,12 @@ pub fn have(cmd: &str) -> bool {
 
 /// stdout of a successful command, or None.
 pub fn out(cmd: &str, args: &[&str]) -> Option<String> {
-    let o = Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let o = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
     if o.status.success() {
         Some(String::from_utf8_lossy(&o.stdout).into_owned())
     } else {
@@ -88,7 +100,12 @@ pub fn out(cmd: &str, args: &[&str]) -> Option<String> {
 
 /// Run a command quietly with a time limit. True when it exited 0 in time.
 pub fn run_quiet(cmd: &str, args: &[&str], secs: u64) -> bool {
-    let child = Command::new(cmd).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let child = Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(_) => return false,
@@ -152,7 +169,8 @@ pub fn valid_id(s: &str) -> bool {
         && s.len() <= 80
         && !s.starts_with('.')
         && !s.starts_with('-')
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
 }
 
 pub fn valid_env_name(s: &str) -> bool {
@@ -178,8 +196,12 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
             while j < b.len() && b[j].is_ascii_digit() {
                 j += 1;
             }
-            let na = String::from_utf8_lossy(&a[si..i]).trim_start_matches('0').to_string();
-            let nb = String::from_utf8_lossy(&b[sj..j]).trim_start_matches('0').to_string();
+            let na = String::from_utf8_lossy(&a[si..i])
+                .trim_start_matches('0')
+                .to_string();
+            let nb = String::from_utf8_lossy(&b[sj..j])
+                .trim_start_matches('0')
+                .to_string();
             let ord = na.len().cmp(&nb.len()).then_with(|| na.cmp(&nb));
             if ord != Ordering::Equal {
                 return ord;
@@ -350,7 +372,10 @@ pub fn expand_home(s: &str) -> PathBuf {
 /// write Windows-style paths, Linux file systems are case-sensitive. `..` is refused.
 pub fn resolve_ci(base: &Path, rel: &str) -> Option<PathBuf> {
     let mut cur = base.to_path_buf();
-    for part in rel.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".") {
+    for part in rel
+        .split(['/', '\\'])
+        .filter(|p| !p.is_empty() && *p != ".")
+    {
         if part == ".." {
             return None;
         }
@@ -360,7 +385,10 @@ pub fn resolve_ci(base: &Path, rel: &str) -> Option<PathBuf> {
             continue;
         }
         let want = part.to_ascii_lowercase();
-        let found = fs::read_dir(&cur).ok()?.flatten().find(|e| e.file_name().to_string_lossy().to_ascii_lowercase() == want)?;
+        let found = fs::read_dir(&cur)
+            .ok()?
+            .flatten()
+            .find(|e| e.file_name().to_string_lossy().to_ascii_lowercase() == want)?;
         cur = found.path();
     }
     Some(cur)
@@ -384,7 +412,13 @@ fn header_file(h: &str) -> Option<PathBuf> {
     let dir = state_dir();
     fs::create_dir_all(&dir).ok()?;
     let p = dir.join(format!(".hdr-{}", std::process::id()));
-    let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&p).ok()?;
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&p)
+        .ok()?;
     f.write_all(format!("{h}\n").as_bytes()).ok()?;
     Some(p)
 }
@@ -425,9 +459,18 @@ mod tests {
 
     #[test]
     fn natural_order() {
-        assert_eq!(natural_cmp("GE-Proton9-27", "GE-Proton10-4"), Ordering::Less);
-        assert_eq!(natural_cmp("GE-Proton10-4", "GE-Proton10-4"), Ordering::Equal);
-        assert_eq!(natural_cmp("GE-Proton10-10", "GE-Proton10-9"), Ordering::Greater);
+        assert_eq!(
+            natural_cmp("GE-Proton9-27", "GE-Proton10-4"),
+            Ordering::Less
+        );
+        assert_eq!(
+            natural_cmp("GE-Proton10-4", "GE-Proton10-4"),
+            Ordering::Equal
+        );
+        assert_eq!(
+            natural_cmp("GE-Proton10-10", "GE-Proton10-9"),
+            Ordering::Greater
+        );
     }
 
     #[test]
@@ -442,7 +485,10 @@ mod tests {
 
     #[test]
     fn splitting() {
-        assert_eq!(shell_split("-windowed 'my file.txt' \"a b\" c\\ d"), vec!["-windowed", "my file.txt", "a b", "c d"]);
+        assert_eq!(
+            shell_split("-windowed 'my file.txt' \"a b\" c\\ d"),
+            vec!["-windowed", "my file.txt", "a b", "c d"]
+        );
         assert_eq!(shell_split("  "), Vec::<String>::new());
         assert_eq!(shell_split("\"\""), vec![""]);
     }
@@ -465,8 +511,14 @@ mod tests {
         let _ = fs::remove_dir_all(&t);
         let _ = fs::create_dir_all(t.join("bin/x64"));
         let _ = fs::write(t.join("bin/x64/game.exe"), "MZ");
-        assert_eq!(resolve_ci(&t, "Bin\\X64\\GAME.EXE"), Some(t.join("bin/x64/game.exe")));
-        assert_eq!(resolve_ci(&t, "bin/x64/game.exe"), Some(t.join("bin/x64/game.exe")));
+        assert_eq!(
+            resolve_ci(&t, "Bin\\X64\\GAME.EXE"),
+            Some(t.join("bin/x64/game.exe"))
+        );
+        assert_eq!(
+            resolve_ci(&t, "bin/x64/game.exe"),
+            Some(t.join("bin/x64/game.exe"))
+        );
         assert_eq!(resolve_ci(&t, "../etc"), None);
         assert_eq!(resolve_ci(&t, "nope/game.exe"), None);
         let _ = fs::remove_dir_all(&t);

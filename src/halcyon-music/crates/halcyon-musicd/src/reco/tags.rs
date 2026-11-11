@@ -43,7 +43,11 @@ pub fn parse_tags(v: &serde_json::Value) -> Vec<(String, f64)> {
                 .collect()
         })
         .unwrap_or_default();
-    raw.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+    raw.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     raw.truncate(MAX_TAGS);
     let top = raw.first().map_or(1.0, |t| t.1);
     raw.into_iter().map(|(n, c)| (n, c / top)).collect()
@@ -63,7 +67,10 @@ pub fn pick_hit(v: &serde_json::Value, wanted: &str) -> Option<(String, Vec<(Str
 }
 
 /// Tags for one artist. `Ok(vec![])` = the artist is there and has none (or is not found).
-pub async fn fetch_artist_tags(http: &reqwest::Client, artist: &str) -> Result<Vec<(String, f64)>, String> {
+pub async fn fetch_artist_tags(
+    http: &reqwest::Client,
+    artist: &str,
+) -> Result<Vec<(String, f64)>, String> {
     let query = format!("artist:\"{}\"", artist.replace('"', ""));
     let res = http
         .get("https://musicbrainz.org/ws/2/artist/")
@@ -100,7 +107,12 @@ pub async fn fetch_artist_tags(http: &reqwest::Client, artist: &str) -> Result<V
 }
 
 /// The artists of `wanted` that have no fresh tags in `table`, each once, at most `budget`.
-pub fn missing(table: &TagTable, tried: &HashSet<String>, wanted: &[String], budget: usize) -> Vec<String> {
+pub fn missing(
+    table: &TagTable,
+    tried: &HashSet<String>,
+    wanted: &[String],
+    budget: usize,
+) -> Vec<String> {
     let mut out = Vec::new();
     if budget == 0 {
         return out;
@@ -108,7 +120,8 @@ pub fn missing(table: &TagTable, tried: &HashSet<String>, wanted: &[String], bud
     let mut seen: HashSet<String> = HashSet::new();
     for a in wanted {
         let key = artist_key(a);
-        if key.is_empty() || table.get(&key).is_some() || tried.contains(&key) || !seen.insert(key) {
+        if key.is_empty() || table.get(&key).is_some() || tried.contains(&key) || !seen.insert(key)
+        {
             continue;
         }
         out.push(a.clone());
@@ -122,7 +135,14 @@ pub fn missing(table: &TagTable, tried: &HashSet<String>, wanted: &[String], bud
 /// Look up the tags of up to `budget` artists that the cache has not tried within 90 days, and
 /// store them (an empty answer too). Returns the artists whose tags are new. A failure of one
 /// artist stops the loop (the service is probably unhappy) and is not stored.
-pub async fn ensure_tags(cache: &Cache, http: &reqwest::Client, table: &TagTable, wanted: &[String], now: u64, budget: usize) -> Vec<String> {
+pub async fn ensure_tags(
+    cache: &Cache,
+    http: &reqwest::Client,
+    table: &TagTable,
+    wanted: &[String],
+    now: u64,
+    budget: usize,
+) -> Vec<String> {
     // Everything the cache holds fresh, including the stored empty answers.
     let tried: HashSet<String> = cache
         .all_artist_tags()
@@ -132,7 +152,10 @@ pub async fn ensure_tags(cache: &Cache, http: &reqwest::Client, table: &TagTable
         .map(|(k, _, _)| k)
         .collect();
     let mut fetched = Vec::new();
-    for (i, artist) in missing(table, &tried, wanted, budget).into_iter().enumerate() {
+    for (i, artist) in missing(table, &tried, wanted, budget)
+        .into_iter()
+        .enumerate()
+    {
         if i > 0 {
             tokio::time::sleep(PAUSE).await;
         }
@@ -161,7 +184,11 @@ mod tests {
         let t = parse_tags(&v);
         assert_eq!(t[0], ("lo-fi".to_string(), 1.0));
         assert_eq!(t[1], ("chillhop".to_string(), 0.5));
-        assert_eq!(t[2], ("jazz".to_string(), 0.25), "a tag without a count counts once");
+        assert_eq!(
+            t[2],
+            ("jazz".to_string(), 0.25),
+            "a tag without a count counts once"
+        );
         assert_eq!(t.len(), 3);
         assert!(parse_tags(&json!(null)).is_empty());
         assert!(parse_tags(&json!({"x": 1})).is_empty());
@@ -169,7 +196,9 @@ mod tests {
 
     #[test]
     fn at_most_twelve_tags_are_kept() {
-        let rows: Vec<serde_json::Value> = (0..30).map(|i| json!({"name": format!("t{i:02}"), "count": 30 - i})).collect();
+        let rows: Vec<serde_json::Value> = (0..30)
+            .map(|i| json!({"name": format!("t{i:02}"), "count": 30 - i}))
+            .collect();
         assert_eq!(parse_tags(&serde_json::Value::Array(rows)).len(), MAX_TAGS);
     }
 
@@ -192,9 +221,25 @@ mod tests {
         let mut table = TagTable::default();
         table.insert("Known", &[("rock", 1.0)]);
         let tried: HashSet<String> = ["tried before".to_string()].into_iter().collect();
-        let wanted: Vec<String> = ["Known", "Tried Before", "New One", "new  one", "Another", "Third"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(missing(&table, &tried, &wanted, 10), vec!["New One", "Another", "Third"]);
-        assert_eq!(missing(&table, &tried, &wanted, 2), vec!["New One", "Another"]);
+        let wanted: Vec<String> = [
+            "Known",
+            "Tried Before",
+            "New One",
+            "new  one",
+            "Another",
+            "Third",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            missing(&table, &tried, &wanted, 10),
+            vec!["New One", "Another", "Third"]
+        );
+        assert_eq!(
+            missing(&table, &tried, &wanted, 2),
+            vec!["New One", "Another"]
+        );
         assert!(missing(&table, &tried, &[], 5).is_empty());
         assert!(missing(&table, &tried, &wanted, 0).is_empty());
     }

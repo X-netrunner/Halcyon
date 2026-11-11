@@ -14,7 +14,6 @@
 // rewriting the audio hot path with `.get()` would add cost and noise for no safety gain.
 #![allow(clippy::indexing_slicing, clippy::chunks_exact_to_as_chunks)]
 
-
 use std::collections::VecDeque;
 use std::f32::consts::PI;
 
@@ -87,11 +86,19 @@ impl Default for Analyzer {
 impl Analyzer {
     pub fn new() -> Self {
         let n = FFT_SIZE;
-        let window = (0..n).map(|i| 0.5 - 0.5 * (2.0 * PI * i as f32 / n as f32).cos()).collect();
-        let tw_cos = (0..n / 2).map(|k| (2.0 * PI * k as f32 / n as f32).cos()).collect();
-        let tw_sin = (0..n / 2).map(|k| (2.0 * PI * k as f32 / n as f32).sin()).collect();
+        let window = (0..n)
+            .map(|i| 0.5 - 0.5 * (2.0 * PI * i as f32 / n as f32).cos())
+            .collect();
+        let tw_cos = (0..n / 2)
+            .map(|k| (2.0 * PI * k as f32 / n as f32).cos())
+            .collect();
+        let tw_sin = (0..n / 2)
+            .map(|k| (2.0 * PI * k as f32 / n as f32).sin())
+            .collect();
         let bits = n.trailing_zeros();
-        let bit_rev = (0..n).map(|i| i.reverse_bits() >> (usize::BITS - bits)).collect();
+        let bit_rev = (0..n)
+            .map(|i| i.reverse_bits() >> (usize::BITS - bits))
+            .collect();
 
         let mut band_bins = [(0.0, 0.0); BANDS];
         let mut tilt_db = [0.0; BANDS];
@@ -205,7 +212,11 @@ impl Analyzer {
 
         if !silent {
             let peak = db.iter().copied().fold(f32::MIN, f32::max);
-            self.ref_db = if peak > self.ref_db { peak } else { (self.ref_db - 0.12).max(-36.0) };
+            self.ref_db = if peak > self.ref_db {
+                peak
+            } else {
+                (self.ref_db - 0.12).max(-36.0)
+            };
             for b in 0..BANDS {
                 let level = ((db[b] - (self.ref_db - RANGE_DB)) / RANGE_DB).clamp(0.0, 1.0);
                 frame.bands[b] = (level.powf(1.2) * 255.0).round() as u8;
@@ -234,10 +245,23 @@ impl Analyzer {
         if !silent && self.flux_hist.len() >= FLUX_WARMUP {
             let n = self.flux_hist.len() as f32;
             let mean = self.flux_hist.iter().sum::<f32>() / n;
-            let var = self.flux_hist.iter().map(|f| (f - mean) * (f - mean)).sum::<f32>() / n;
+            let var = self
+                .flux_hist
+                .iter()
+                .map(|f| (f - mean) * (f - mean))
+                .sum::<f32>()
+                / n;
             let threshold = mean + 1.4 * var.sqrt() + 0.04;
-            let recent_peak = self.flux_hist.iter().copied().fold(0.0f32, f32::max).max(flux);
-            if flux > threshold && flux > self.prev_flux && self.hops_since_beat >= MIN_BEAT_GAP_HOPS {
+            let recent_peak = self
+                .flux_hist
+                .iter()
+                .copied()
+                .fold(0.0f32, f32::max)
+                .max(flux);
+            if flux > threshold
+                && flux > self.prev_flux
+                && self.hops_since_beat >= MIN_BEAT_GAP_HOPS
+            {
                 let strength = 0.35 + 0.65 * (flux / recent_peak);
                 frame.beat = (strength.clamp(0.0, 1.0) * 255.0).round().max(1.0) as u8;
                 self.hops_since_beat = 0;
@@ -304,18 +328,21 @@ mod tests {
     fn fft_puts_a_sine_in_the_right_bin() {
         // A sine exactly on bin 40 must peak there.
         let freq = 40.0 * BIN_HZ as f64;
-        let sig = stereo(
-            (0..FFT_SIZE * 2).map(|i| 0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / SAMPLE_RATE as f64).sin()),
-        );
+        let sig = stereo((0..FFT_SIZE * 2).map(|i| {
+            0.5 * (2.0 * std::f64::consts::PI * freq * i as f64 / SAMPLE_RATE as f64).sin()
+        }));
         let mut a = Analyzer::new();
         let mut out = Vec::new();
         a.push_interleaved(&sig, &mut out);
-        let (peak_bin, peak) = a
-            .mag
-            .iter()
-            .copied()
-            .enumerate()
-            .fold((0, 0.0f32), |acc, (i, m)| if m > acc.1 { (i, m) } else { acc });
+        let (peak_bin, peak) =
+            a.mag
+                .iter()
+                .copied()
+                .enumerate()
+                .fold(
+                    (0, 0.0f32),
+                    |acc, (i, m)| if m > acc.1 { (i, m) } else { acc },
+                );
         assert_eq!(peak_bin, 40);
         assert!((peak - 0.5).abs() < 0.03, "amplitude {peak}");
     }
@@ -324,7 +351,9 @@ mod tests {
     fn silence_gives_empty_frames_and_no_beats() {
         let frames = run(&vec![0.0; 2 * 44_100 * 3]);
         assert!(frames.len() > 100);
-        assert!(frames.iter().all(|f| f.beat == 0 && f.bass == 0 && f.bands.iter().all(|&b| b == 0)));
+        assert!(frames
+            .iter()
+            .all(|f| f.beat == 0 && f.bass == 0 && f.bands.iter().all(|&b| b == 0)));
     }
 
     #[test]
@@ -337,7 +366,13 @@ mod tests {
         assert!(beats <= 1, "{beats} beats on a steady tone");
         // The 1 kHz band (and not the lowest) carries the energy.
         let last = frames.last().unwrap();
-        let loudest = last.bands.iter().enumerate().max_by_key(|(_, v)| **v).unwrap().0;
+        let loudest = last
+            .bands
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, v)| **v)
+            .unwrap()
+            .0;
         assert!((12..=16).contains(&loudest), "loudest band {loudest}");
         assert!(last.bands[0] < 40);
     }
@@ -354,14 +389,26 @@ mod tests {
             .map(|(i, _)| (i + 1) as f32 * hop_s) // a frame covers the audio up to its end
             .collect();
         // 28 kicks in 14 s; the first second is warm-up.
-        assert!((20..=29).contains(&beats.len()), "found {} beats", beats.len());
+        assert!(
+            (20..=29).contains(&beats.len()),
+            "found {} beats",
+            beats.len()
+        );
         for pair in beats.windows(2) {
-            assert!(pair[1] - pair[0] >= 0.24, "two beats {:.3}s apart", pair[1] - pair[0]);
+            assert!(
+                pair[1] - pair[0] >= 0.24,
+                "two beats {:.3}s apart",
+                pair[1] - pair[0]
+            );
         }
         // Every beat after warm-up lands within 70 ms of a kick.
         for &t in beats.iter().filter(|&&t| t > 2.0) {
             let nearest = (t / 0.5).round() * 0.5;
-            assert!((t - nearest).abs() < 0.07, "beat at {t:.3}s is {:.0} ms from a kick", (t - nearest).abs() * 1000.0);
+            assert!(
+                (t - nearest).abs() < 0.07,
+                "beat at {t:.3}s is {:.0} ms from a kick",
+                (t - nearest).abs() * 1000.0
+            );
         }
     }
 

@@ -26,16 +26,40 @@ struct Sizes {
 
 fn sizes(name: &str) -> Option<Sizes> {
     match name {
-        "small" => Some(Sizes { side: 16, tree: 16, list: 38, compact: 38, icons: 75, small_toolbar: true }),
-        "medium" => Some(Sizes { side: 22, tree: 22, list: 50, compact: 50, icons: 100, small_toolbar: true }),
-        "large" => Some(Sizes { side: 24, tree: 24, list: 75, compact: 75, icons: 150, small_toolbar: false }),
+        "small" => Some(Sizes {
+            side: 16,
+            tree: 16,
+            list: 38,
+            compact: 38,
+            icons: 75,
+            small_toolbar: true,
+        }),
+        "medium" => Some(Sizes {
+            side: 22,
+            tree: 22,
+            list: 50,
+            compact: 50,
+            icons: 100,
+            small_toolbar: true,
+        }),
+        "large" => Some(Sizes {
+            side: 24,
+            tree: 24,
+            list: 75,
+            compact: 75,
+            icons: 150,
+            small_toolbar: false,
+        }),
         _ => None,
     }
 }
 
 /// xfconf-query -c thunar -p PROPERTY -n -t TYPE -s VALUE (-n creates the property when it is not there yet)
 fn xset(property: &str, ty: &str, value: &str) -> bool {
-    util::ok("xfconf-query", &["-c", "thunar", "-p", property, "-n", "-t", ty, "-s", value])
+    util::ok(
+        "xfconf-query",
+        &["-c", "thunar", "-p", property, "-n", "-t", ty, "-s", value],
+    )
 }
 
 pub fn run(args: &[String]) -> i32 {
@@ -49,7 +73,11 @@ pub fn run(args: &[String]) -> i32 {
             _ => "medium".to_string(),
         }
     };
-    let cmd = args.first().map(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("status");
+    let cmd = args
+        .first()
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("status");
     let size: String = match cmd {
         "status" => {
             println!("{}", current());
@@ -72,12 +100,36 @@ pub fn run(args: &[String]) -> i32 {
     if !util::command_exists("xfconf-query") {
         return 0;
     }
-    let applied = xset("/shortcuts-icon-size", "string", &format!("THUNAR_ICON_SIZE_{}", sz.side));
-    xset("/tree-icon-size", "string", &format!("THUNAR_ICON_SIZE_{}", sz.tree));
-    xset("/last-details-view-zoom-level", "string", &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.list));
-    xset("/last-compact-view-zoom-level", "string", &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.compact));
-    xset("/last-icon-view-zoom-level", "string", &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.icons));
-    xset("/misc-small-toolbar-icons", "bool", if sz.small_toolbar { "true" } else { "false" });
+    let applied = xset(
+        "/shortcuts-icon-size",
+        "string",
+        &format!("THUNAR_ICON_SIZE_{}", sz.side),
+    );
+    xset(
+        "/tree-icon-size",
+        "string",
+        &format!("THUNAR_ICON_SIZE_{}", sz.tree),
+    );
+    xset(
+        "/last-details-view-zoom-level",
+        "string",
+        &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.list),
+    );
+    xset(
+        "/last-compact-view-zoom-level",
+        "string",
+        &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.compact),
+    );
+    xset(
+        "/last-icon-view-zoom-level",
+        "string",
+        &format!("THUNAR_ZOOM_LEVEL_{}_PERCENT", sz.icons),
+    );
+    xset(
+        "/misc-small-toolbar-icons",
+        "bool",
+        if sz.small_toolbar { "true" } else { "false" },
+    );
     if applied {
         let _ = fs::write(&mark, format!("{}\n", VER));
     }
@@ -90,7 +142,8 @@ mod tests {
 
     #[test]
     fn the_three_sizes_and_nothing_else() {
-        let m = sizes("medium").map(|s| (s.side, s.tree, s.list, s.compact, s.icons, s.small_toolbar));
+        let m =
+            sizes("medium").map(|s| (s.side, s.tree, s.list, s.compact, s.icons, s.small_toolbar));
         assert_eq!(m, Some((22, 22, 50, 50, 100, true)));
         assert_eq!(sizes("large").map(|s| s.icons), Some(150));
         assert_eq!(sizes("small").map(|s| s.side), Some(16));

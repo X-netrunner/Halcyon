@@ -23,13 +23,23 @@ pub fn interpolate(bands: &[f32], n: usize) -> Vec<f32> {
     if n == 0 {
         return Vec::new();
     }
-    let clean = |v: f32| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+    let clean = |v: f32| {
+        if v.is_finite() {
+            v.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    };
     match bands.len() {
         0 => vec![0.0; n],
         1 => vec![clean(bands.first().copied().unwrap_or(0.0)); n],
         len => (0..n)
             .map(|i| {
-                let t = if n == 1 { 0.5 } else { i as f32 / (n - 1) as f32 };
+                let t = if n == 1 {
+                    0.5
+                } else {
+                    i as f32 / (n - 1) as f32
+                };
                 let at = t * (len - 1) as f32;
                 let lo = (at.floor() as usize).min(len - 1);
                 let hi = (lo + 1).min(len - 1);
@@ -46,7 +56,11 @@ fn mean(values: &[f32]) -> f32 {
     if values.is_empty() {
         0.0
     } else {
-        values.iter().map(|v| if v.is_finite() { *v } else { 0.0 }).sum::<f32>() / values.len() as f32
+        values
+            .iter()
+            .map(|v| if v.is_finite() { *v } else { 0.0 })
+            .sum::<f32>()
+            / values.len() as f32
     }
 }
 
@@ -92,10 +106,24 @@ pub fn aurora_point_count(width: f32) -> usize {
 /// The top line of one wave as (x, y) points in a `width` x `height` area. `bands` are the
 /// smoothed spectrum, `clock` the animation clock in seconds (0 when motion is reduced: the
 /// drift then never moves). Deterministic for the same input. Every y is inside 0 ..= height.
-pub fn aurora_points(bands: &[f32; BANDS], layer: usize, width: f32, height: f32, clock: f32) -> Vec<(f32, f32)> {
+pub fn aurora_points(
+    bands: &[f32; BANDS],
+    layer: usize,
+    width: f32,
+    height: f32,
+    clock: f32,
+) -> Vec<(f32, f32)> {
     let layer = layer.min(AURORA_LAYERS - 1);
-    let width = if width.is_finite() { width.max(1.0) } else { 1.0 };
-    let height = if height.is_finite() { height.max(1.0) } else { 1.0 };
+    let width = if width.is_finite() {
+        width.max(1.0)
+    } else {
+        1.0
+    };
+    let height = if height.is_finite() {
+        height.max(1.0)
+    } else {
+        1.0
+    };
     let clock = if clock.is_finite() { clock } else { 0.0 };
     let n = aurora_point_count(width);
     let span = width + 2.0 * AURORA_PITCH;
@@ -140,7 +168,9 @@ pub enum Seg {
 /// and the wave's points reach beyond the window so those are never seen.
 pub fn smooth_segments(points: &[(f32, f32)]) -> Vec<Seg> {
     let mut out = Vec::with_capacity(points.len());
-    let Some(&first) = points.first() else { return out };
+    let Some(&first) = points.first() else {
+        return out;
+    };
     out.push(Seg::Move(first));
     let mid = |a: (f32, f32), b: (f32, f32)| ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
     if points.len() == 1 {
@@ -151,7 +181,10 @@ pub fn smooth_segments(points: &[(f32, f32)]) -> Vec<Seg> {
     }
     for w in points.windows(3) {
         if let [_, b, c] = *w {
-            out.push(Seg::Quad { control: b, to: mid(b, c) });
+            out.push(Seg::Quad {
+                control: b,
+                to: mid(b, c),
+            });
         }
     }
     if let Some(&last) = points.last() {
@@ -198,22 +231,36 @@ pub fn silk_bar_count(width: f32) -> usize {
 /// The row is centred, spread evenly, and fades to the minimum at both ends (an envelope of
 /// `sin(position * pi) ^ 0.8`). All zero bands give the resting row: every bar at the
 /// minimum height, the same every time.
-pub fn silk_bars(bands: &[f32; BANDS], width: f32, max_height: f32, lyrics_from_x: Option<f32>) -> Vec<SilkBar> {
+pub fn silk_bars(
+    bands: &[f32; BANDS],
+    width: f32,
+    max_height: f32,
+    lyrics_from_x: Option<f32>,
+) -> Vec<SilkBar> {
     let count = silk_bar_count(width);
     if count == 0 {
         return Vec::new();
     }
-    let max_height = if max_height.is_finite() { max_height.max(SILK_MIN_HEIGHT) } else { SILK_MIN_HEIGHT };
+    let max_height = if max_height.is_finite() {
+        max_height.max(SILK_MIN_HEIGHT)
+    } else {
+        SILK_MIN_HEIGHT
+    };
     let levels = interpolate(bands, count);
     let row_width = SILK_BAR_WIDTH + SILK_PITCH * (count - 1) as f32;
     let left = (width - row_width) / 2.0;
     (0..count)
         .map(|k| {
-            let pos = if count == 1 { 0.5 } else { k as f32 / (count - 1) as f32 };
+            let pos = if count == 1 {
+                0.5
+            } else {
+                k as f32 / (count - 1) as f32
+            };
             let envelope = (pos * PI).sin().max(0.0).powf(0.8);
             let level = levels.get(k).copied().unwrap_or(0.0);
             let height = (level * envelope * max_height).clamp(SILK_MIN_HEIGHT, max_height);
-            let t = ((height - SILK_MIN_HEIGHT) / (max_height - SILK_MIN_HEIGHT).max(1.0)).clamp(0.0, 1.0);
+            let t = ((height - SILK_MIN_HEIGHT) / (max_height - SILK_MIN_HEIGHT).max(1.0))
+                .clamp(0.0, 1.0);
             let mut alpha = SILK_MIN_ALPHA + (SILK_MAX_ALPHA - SILK_MIN_ALPHA) * t;
             let x = left + SILK_PITCH * k as f32;
             if lyrics_from_x.is_some_and(|from| x + SILK_BAR_WIDTH >= from) {
@@ -255,14 +302,23 @@ pub const MINI_HIDE_BELOW_WIDTH: f32 = 1000.0;
 /// Whether the mini visualizer is drawn at all right now. It hides when full screen is open
 /// (full screen has its own), when there is no track, and, in the bar and dock layouts, below
 /// `MINI_HIDE_BELOW_WIDTH`. `placement` is `None` for Classic.
-pub fn mini_shown(placement: Option<MiniPlacement>, window_width: f32, has_track: bool, fullscreen_open: bool) -> bool {
-    let Some(placement) = placement else { return false };
+pub fn mini_shown(
+    placement: Option<MiniPlacement>,
+    window_width: f32,
+    has_track: bool,
+    fullscreen_open: bool,
+) -> bool {
+    let Some(placement) = placement else {
+        return false;
+    };
     if !has_track || fullscreen_open {
         return false;
     }
     match placement {
         MiniPlacement::Panel => true,
-        MiniPlacement::Bar | MiniPlacement::Dock => window_width.is_finite() && window_width >= MINI_HIDE_BELOW_WIDTH,
+        MiniPlacement::Bar | MiniPlacement::Dock => {
+            window_width.is_finite() && window_width >= MINI_HIDE_BELOW_WIDTH
+        }
     }
 }
 
@@ -331,10 +387,15 @@ pub fn mini_bars(bands: &[f32; BANDS], width: f32, height: f32) -> Vec<MiniBar> 
     let left = (width - row_width) / 2.0;
     (0..count)
         .map(|k| {
-            let pos = if count == 1 { 0.5 } else { k as f32 / (count - 1) as f32 };
+            let pos = if count == 1 {
+                0.5
+            } else {
+                k as f32 / (count - 1) as f32
+            };
             let envelope = MINI_END_FACTOR + (1.0 - MINI_END_FACTOR) * (pos * PI).sin().max(0.0);
             let level = levels.get(k).copied().unwrap_or(0.0);
-            let h = (MINI_MIN_HEIGHT + (max - MINI_MIN_HEIGHT) * level * envelope).clamp(MINI_MIN_HEIGHT, max);
+            let h = (MINI_MIN_HEIGHT + (max - MINI_MIN_HEIGHT) * level * envelope)
+                .clamp(MINI_MIN_HEIGHT, max);
             let t = ((h - MINI_MIN_HEIGHT) / (max - MINI_MIN_HEIGHT).max(0.001)).clamp(0.0, 1.0);
             MiniBar {
                 x: left + pitch * k as f32,
@@ -475,7 +536,10 @@ mod tests {
         let out = interpolate(&ramp(), 50);
         assert_eq!(out.first().copied(), Some(0.0));
         assert!((out.last().copied().unwrap_or(0.0) - 1.0).abs() < 1e-5);
-        assert!(out.windows(2).all(|w| w[0] <= w[1] + 1e-6), "a rising ramp stays rising");
+        assert!(
+            out.windows(2).all(|w| w[0] <= w[1] + 1e-6),
+            "a rising ramp stays rising"
+        );
     }
 
     // ----- Aurora -----
@@ -487,9 +551,13 @@ mod tests {
                 for bands in [ZERO, FULL, ramp()] {
                     let pts = aurora_points(&bands, layer, w, h, 12.3);
                     assert_eq!(pts.len(), aurora_point_count(w));
-                    assert!(pts.iter().all(|&(x, y)| x.is_finite() && y.is_finite() && (0.0..=h).contains(&y)));
+                    assert!(pts
+                        .iter()
+                        .all(|&(x, y)| x.is_finite() && y.is_finite() && (0.0..=h).contains(&y)));
                     // Spread evenly, never wider apart than the pitch, reaching past both edges.
-                    assert!(pts.windows(2).all(|p| p[1].0 - p[0].0 <= AURORA_PITCH + 1e-3));
+                    assert!(pts
+                        .windows(2)
+                        .all(|p| p[1].0 - p[0].0 <= AURORA_PITCH + 1e-3));
                     assert!(pts.first().map(|p| p.0).unwrap_or(1.0) < 0.0);
                     assert!(pts.last().map(|p| p.0).unwrap_or(0.0) > w);
                 }
@@ -512,8 +580,14 @@ mod tests {
             assert_eq!(a, b, "silence must not move with the clock");
             let baseline = 600.0 - AURORA_LAYER_OFFSET * (AURORA_LAYERS - 1 - layer) as f32;
             let tallest = a.iter().map(|p| baseline - p.1).fold(0.0_f32, f32::max);
-            assert!(tallest < aurora_max_height(layer) * 0.5, "layer {layer} rests at {tallest}");
-            assert!(tallest > 1.0, "the resting shape is a soft line, not nothing");
+            assert!(
+                tallest < aurora_max_height(layer) * 0.5,
+                "layer {layer} rests at {tallest}"
+            );
+            assert!(
+                tallest > 1.0,
+                "the resting shape is a soft line, not nothing"
+            );
         }
     }
 
@@ -526,7 +600,10 @@ mod tests {
         }
         let top = |bands: &[f32; BANDS], layer: usize| {
             let baseline = 600.0 - AURORA_LAYER_OFFSET * (AURORA_LAYERS - 1 - layer) as f32;
-            aurora_points(bands, layer, 960.0, 600.0, 0.0).iter().map(|p| baseline - p.1).fold(0.0_f32, f32::max)
+            aurora_points(bands, layer, 960.0, 600.0, 0.0)
+                .iter()
+                .map(|p| baseline - p.1)
+                .fold(0.0_f32, f32::max)
         };
         assert!(top(&low, 2) > top(&ZERO, 2) + 10.0);
         assert!(top(&low, 0) < top(&FULL, 0));
@@ -542,7 +619,12 @@ mod tests {
 
     #[test]
     fn aurora_survives_nonsense_sizes() {
-        for (w, h, c) in [(f32::NAN, 100.0, 0.0), (0.0, 0.0, f32::NAN), (-5.0, -5.0, 1.0), (f32::INFINITY, 50.0, 2.0)] {
+        for (w, h, c) in [
+            (f32::NAN, 100.0, 0.0),
+            (0.0, 0.0, f32::NAN),
+            (-5.0, -5.0, 1.0),
+            (f32::INFINITY, 50.0, 2.0),
+        ] {
             let pts = aurora_points(&FULL, 2, w, h, c);
             assert!(pts.iter().all(|&(x, y)| x.is_finite() && y.is_finite()));
         }
@@ -553,9 +635,15 @@ mod tests {
         let pts = [(0.0, 0.0), (10.0, 10.0), (20.0, 0.0), (30.0, 10.0)];
         let segs = smooth_segments(&pts);
         assert_eq!(segs.first(), Some(&Seg::Move((0.0, 0.0))));
-        let quads = segs.iter().filter(|s| matches!(s, Seg::Quad { .. })).count();
+        let quads = segs
+            .iter()
+            .filter(|s| matches!(s, Seg::Quad { .. }))
+            .count();
         assert_eq!(quads, pts.len() - 2, "one curve per inner point");
-        assert!(segs.contains(&Seg::Quad { control: (10.0, 10.0), to: (15.0, 5.0) }));
+        assert!(segs.contains(&Seg::Quad {
+            control: (10.0, 10.0),
+            to: (15.0, 5.0)
+        }));
         assert_eq!(segs.last(), Some(&Seg::Line((30.0, 10.0))));
         // Only the two end pieces are straight.
         assert_eq!(segs.iter().filter(|s| matches!(s, Seg::Line(_))).count(), 2);
@@ -583,7 +671,11 @@ mod tests {
             let last = bars.last().map(|b| b.x + SILK_BAR_WIDTH).unwrap_or(w);
             assert!(first >= SILK_MARGIN - 1e-3, "w={w} first={first}");
             assert!(last <= w - SILK_MARGIN + 1e-3, "w={w} last={last}");
-            assert!(((first) - (w - last)).abs() < 1e-3, "centred: left gap {first}, right gap {}", w - last);
+            assert!(
+                ((first) - (w - last)).abs() < 1e-3,
+                "centred: left gap {first}, right gap {}",
+                w - last
+            );
         }
     }
 
@@ -593,7 +685,11 @@ mod tests {
             for max in [3.0, 60.0, 200.0, f32::NAN] {
                 for b in silk_bars(&bands, 960.0, max, Some(480.0)) {
                     assert!(b.height.is_finite() && b.height >= SILK_MIN_HEIGHT);
-                    assert!(b.alpha.is_finite() && b.alpha >= SILK_MIN_ALPHA && b.alpha <= SILK_MAX_ALPHA);
+                    assert!(
+                        b.alpha.is_finite()
+                            && b.alpha >= SILK_MIN_ALPHA
+                            && b.alpha <= SILK_MAX_ALPHA
+                    );
                 }
             }
         }
@@ -618,8 +714,12 @@ mod tests {
         let a = silk_bars(&ZERO, 960.0, 120.0, Some(480.0));
         let b = silk_bars(&ZERO, 960.0, 120.0, Some(480.0));
         assert_eq!(a, b);
-        assert!(a.iter().all(|bar| (bar.height - SILK_MIN_HEIGHT).abs() < 1e-3));
-        assert!(a.iter().all(|bar| bar.alpha <= SILK_MIN_ALPHA + 1e-3 || bar.alpha <= SILK_LYRICS_ALPHA_CAP));
+        assert!(a
+            .iter()
+            .all(|bar| (bar.height - SILK_MIN_HEIGHT).abs() < 1e-3));
+        assert!(a
+            .iter()
+            .all(|bar| bar.alpha <= SILK_MIN_ALPHA + 1e-3 || bar.alpha <= SILK_LYRICS_ALPHA_CAP));
     }
 
     #[test]
@@ -627,9 +727,16 @@ mod tests {
         let open = silk_bars(&FULL, 960.0, 120.0, None);
         let capped = silk_bars(&FULL, 960.0, 120.0, Some(480.0));
         let loudest = |bars: &[SilkBar]| bars.iter().map(|b| b.alpha).fold(0.0_f32, f32::max);
-        assert!(loudest(&open) > SILK_LYRICS_ALPHA_CAP, "the open row reaches {}", loudest(&open));
+        assert!(
+            loudest(&open) > SILK_LYRICS_ALPHA_CAP,
+            "the open row reaches {}",
+            loudest(&open)
+        );
         for (o, c) in open.iter().zip(&capped) {
-            assert_eq!(o.height, c.height, "the cap changes colour only, never height");
+            assert_eq!(
+                o.height, c.height,
+                "the cap changes colour only, never height"
+            );
             if c.x + SILK_BAR_WIDTH >= 480.0 {
                 assert!(c.alpha <= SILK_LYRICS_ALPHA_CAP + 1e-6);
             } else {
@@ -644,20 +751,33 @@ mod tests {
     fn the_stream_is_off_when_nothing_wants_it() {
         assert!(!audio_stream_wanted(&StreamWants::NONE));
         // Full-screen open with the visualizer Off wants nothing.
-        let w = StreamWants { fullscreen_open: true, ..StreamWants::NONE };
+        let w = StreamWants {
+            fullscreen_open: true,
+            ..StreamWants::NONE
+        };
         assert!(!audio_stream_wanted(&w));
     }
 
     #[test]
     fn each_consumer_alone_turns_it_on() {
-        let drawer = StreamWants { queue_drawer_open: true, ..StreamWants::NONE };
+        let drawer = StreamWants {
+            queue_drawer_open: true,
+            ..StreamWants::NONE
+        };
         assert!(audio_stream_wanted(&drawer));
         for kind in [VisualizerKind::Aurora, VisualizerKind::Silk] {
-            let full = StreamWants { fullscreen_open: true, fullscreen_visualizer: kind, ..StreamWants::NONE };
+            let full = StreamWants {
+                fullscreen_open: true,
+                fullscreen_visualizer: kind,
+                ..StreamWants::NONE
+            };
             assert!(audio_stream_wanted(&full), "{kind:?}");
         }
         // A visualizer chosen but full-screen closed does not want it.
-        let closed = StreamWants { fullscreen_visualizer: VisualizerKind::Aurora, ..StreamWants::NONE };
+        let closed = StreamWants {
+            fullscreen_visualizer: VisualizerKind::Aurora,
+            ..StreamWants::NONE
+        };
         assert!(!audio_stream_wanted(&closed));
     }
 
@@ -670,11 +790,27 @@ mod tests {
             ..StreamWants::NONE
         };
         assert!(audio_stream_wanted(&both));
-        let drawer_closed = StreamWants { queue_drawer_open: false, ..both };
-        assert!(audio_stream_wanted(&drawer_closed), "full-screen still wants it");
-        let full_closed = StreamWants { fullscreen_open: false, ..both };
-        assert!(audio_stream_wanted(&full_closed), "the drawer still wants it");
-        let neither = StreamWants { queue_drawer_open: false, fullscreen_open: false, ..both };
+        let drawer_closed = StreamWants {
+            queue_drawer_open: false,
+            ..both
+        };
+        assert!(
+            audio_stream_wanted(&drawer_closed),
+            "full-screen still wants it"
+        );
+        let full_closed = StreamWants {
+            fullscreen_open: false,
+            ..both
+        };
+        assert!(
+            audio_stream_wanted(&full_closed),
+            "the drawer still wants it"
+        );
+        let neither = StreamWants {
+            queue_drawer_open: false,
+            fullscreen_open: false,
+            ..both
+        };
         assert!(!audio_stream_wanted(&neither));
     }
 
@@ -686,7 +822,13 @@ mod tests {
         assert_eq!(stream_change(true, false), Some(false));
         // Walk a session: drawer on, full-screen on, drawer off, full-screen off.
         let steps = [
-            (StreamWants { queue_drawer_open: true, ..StreamWants::NONE }, Some(true)),
+            (
+                StreamWants {
+                    queue_drawer_open: true,
+                    ..StreamWants::NONE
+                },
+                Some(true),
+            ),
             (
                 StreamWants {
                     queue_drawer_open: true,
@@ -732,22 +874,39 @@ mod tests {
         assert_eq!(mini_pitch(39.9), MINI_PITCH_NARROW);
         assert_eq!(mini_pitch(40.0), MINI_PITCH);
         // The sizes in the plan give those counts.
-        for (placement, count) in [(MiniPlacement::Bar, 4), (MiniPlacement::Dock, 5), (MiniPlacement::Panel, 16)] {
+        for (placement, count) in [
+            (MiniPlacement::Bar, 4),
+            (MiniPlacement::Dock, 5),
+            (MiniPlacement::Panel, 16),
+        ] {
             assert_eq!(mini_bar_count(placement.size().0), count, "{placement:?}");
         }
     }
 
     #[test]
     fn mini_heights_stay_between_the_minimum_and_the_maximum() {
-        for placement in [MiniPlacement::Bar, MiniPlacement::Dock, MiniPlacement::Panel] {
+        for placement in [
+            MiniPlacement::Bar,
+            MiniPlacement::Dock,
+            MiniPlacement::Panel,
+        ] {
             let (w, h) = placement.size();
             let max = mini_max_height(h);
             assert_eq!(max, h / 2.0 - 2.0);
             for bands in [ZERO, FULL, ramp()] {
                 for bar in mini_bars(&bands, w, h) {
-                    assert!(bar.height.is_finite() && bar.height >= MINI_MIN_HEIGHT - 1e-4, "{placement:?}");
-                    assert!(bar.height <= max + 1e-4, "{placement:?}: {} > {max}", bar.height);
-                    assert!(bar.alpha >= MINI_MIN_ALPHA - 1e-4 && bar.alpha <= MINI_MAX_ALPHA + 1e-4);
+                    assert!(
+                        bar.height.is_finite() && bar.height >= MINI_MIN_HEIGHT - 1e-4,
+                        "{placement:?}"
+                    );
+                    assert!(
+                        bar.height <= max + 1e-4,
+                        "{placement:?}: {} > {max}",
+                        bar.height
+                    );
+                    assert!(
+                        bar.alpha >= MINI_MIN_ALPHA - 1e-4 && bar.alpha <= MINI_MAX_ALPHA + 1e-4
+                    );
                 }
             }
         }
@@ -763,7 +922,10 @@ mod tests {
         let mid = bars.get(n / 2).map(|b| b.height).unwrap_or(0.0);
         let first = bars.first().map(|b| b.height).unwrap_or(f32::MAX);
         let last = bars.last().map(|b| b.height).unwrap_or(f32::MAX);
-        assert!(first < mid && last < mid, "ends {first}/{last}, middle {mid}");
+        assert!(
+            first < mid && last < mid,
+            "ends {first}/{last}, middle {mid}"
+        );
         // About 55 percent of the middle (heights above the minimum scale with the envelope).
         let max = mini_max_height(26.0);
         let share = (first - MINI_MIN_HEIGHT) / (max - MINI_MIN_HEIGHT);
@@ -772,7 +934,11 @@ mod tests {
 
     #[test]
     fn mini_bars_with_zero_bands_are_a_flat_line_and_the_same_every_time() {
-        for placement in [MiniPlacement::Bar, MiniPlacement::Dock, MiniPlacement::Panel] {
+        for placement in [
+            MiniPlacement::Bar,
+            MiniPlacement::Dock,
+            MiniPlacement::Panel,
+        ] {
             let (w, h) = placement.size();
             let a = mini_bars(&ZERO, w, h);
             assert_eq!(a, mini_bars(&ZERO, w, h));
@@ -784,20 +950,37 @@ mod tests {
 
     #[test]
     fn mini_row_is_centred_and_inside_the_area() {
-        for placement in [MiniPlacement::Bar, MiniPlacement::Dock, MiniPlacement::Panel] {
+        for placement in [
+            MiniPlacement::Bar,
+            MiniPlacement::Dock,
+            MiniPlacement::Panel,
+        ] {
             let (w, h) = placement.size();
             let bars = mini_bars(&FULL, w, h);
             let first = bars.first().map(|b| b.x).unwrap_or(-1.0);
             let last = bars.last().map(|b| b.x + MINI_BAR_WIDTH).unwrap_or(w + 1.0);
-            assert!(first >= -1e-3 && last <= w + 1e-3, "{placement:?}: {first}..{last} of {w}");
-            assert!((first - (w - last)).abs() < 1e-3, "{placement:?} is not centred");
+            assert!(
+                first >= -1e-3 && last <= w + 1e-3,
+                "{placement:?}: {first}..{last} of {w}"
+            );
+            assert!(
+                (first - (w - last)).abs() < 1e-3,
+                "{placement:?} is not centred"
+            );
         }
     }
 
     #[test]
     fn mini_bars_never_produce_nan() {
         let wild = [f32::NAN; BANDS];
-        for (w, h) in [(44.0, 22.0), (0.0, 0.0), (f32::NAN, f32::NAN), (-3.0, 5.0), (f32::INFINITY, 20.0), (150.0, 1.0)] {
+        for (w, h) in [
+            (44.0, 22.0),
+            (0.0, 0.0),
+            (f32::NAN, f32::NAN),
+            (-3.0, 5.0),
+            (f32::INFINITY, 20.0),
+            (150.0, 1.0),
+        ] {
             for bands in [ZERO, FULL, wild] {
                 for bar in mini_bars(&bands, w, h) {
                     assert!(bar.x.is_finite() && bar.height.is_finite() && bar.alpha.is_finite());
@@ -811,17 +994,30 @@ mod tests {
         let quiet = mini_bars(&ZERO, 150.0, 26.0);
         let loud = mini_bars(&FULL, 150.0, 26.0);
         assert!(loud.iter().zip(&quiet).all(|(l, q)| l.height > q.height));
-        assert_eq!(mini_bars(&ramp(), 150.0, 26.0), mini_bars(&ramp(), 150.0, 26.0));
+        assert_eq!(
+            mini_bars(&ramp(), 150.0, 26.0),
+            mini_bars(&ramp(), 150.0, 26.0)
+        );
     }
 
     // ----- Mini visualizer: where it shows -----
 
     #[test]
     fn mini_hides_without_a_place_a_track_or_when_full_screen_is_open() {
-        for p in [MiniPlacement::Bar, MiniPlacement::Dock, MiniPlacement::Panel] {
+        for p in [
+            MiniPlacement::Bar,
+            MiniPlacement::Dock,
+            MiniPlacement::Panel,
+        ] {
             assert!(mini_shown(Some(p), 1400.0, true, false), "{p:?}");
-            assert!(!mini_shown(Some(p), 1400.0, false, false), "{p:?}: no track");
-            assert!(!mini_shown(Some(p), 1400.0, true, true), "{p:?}: full screen");
+            assert!(
+                !mini_shown(Some(p), 1400.0, false, false),
+                "{p:?}: no track"
+            );
+            assert!(
+                !mini_shown(Some(p), 1400.0, true, true),
+                "{p:?}: full screen"
+            );
         }
         // Classic has no place for it.
         assert!(!mini_shown(None, 1400.0, true, false));
@@ -848,7 +1044,12 @@ mod tests {
     // ----- Mini visualizer: audio stream -----
 
     fn mini_running() -> StreamWants {
-        StreamWants { mini_on: true, mini_shown: true, playing: true, ..StreamWants::NONE }
+        StreamWants {
+            mini_on: true,
+            mini_shown: true,
+            playing: true,
+            ..StreamWants::NONE
+        }
     }
 
     #[test]
@@ -859,11 +1060,41 @@ mod tests {
     #[test]
     fn the_mini_visualizer_wants_nothing_unless_every_condition_holds() {
         let w = mini_running();
-        assert!(!audio_stream_wanted(&StreamWants { mini_on: false, ..w }), "switch Off");
-        assert!(!audio_stream_wanted(&StreamWants { mini_shown: false, ..w }), "hidden");
-        assert!(!audio_stream_wanted(&StreamWants { playing: false, ..w }), "paused");
-        assert!(!audio_stream_wanted(&StreamWants { window_visible: false, ..w }), "window not visible");
-        assert!(!audio_stream_wanted(&StreamWants { motion_allowed: false, ..w }), "motion reduced");
+        assert!(
+            !audio_stream_wanted(&StreamWants {
+                mini_on: false,
+                ..w
+            }),
+            "switch Off"
+        );
+        assert!(
+            !audio_stream_wanted(&StreamWants {
+                mini_shown: false,
+                ..w
+            }),
+            "hidden"
+        );
+        assert!(
+            !audio_stream_wanted(&StreamWants {
+                playing: false,
+                ..w
+            }),
+            "paused"
+        );
+        assert!(
+            !audio_stream_wanted(&StreamWants {
+                window_visible: false,
+                ..w
+            }),
+            "window not visible"
+        );
+        assert!(
+            !audio_stream_wanted(&StreamWants {
+                motion_allowed: false,
+                ..w
+            }),
+            "motion reduced"
+        );
         // Full screen with the visualizer Off: the mini one must not keep the stream alive.
         assert!(!audio_stream_wanted(&StreamWants {
             fullscreen_open: true,
@@ -875,36 +1106,96 @@ mod tests {
     #[test]
     fn the_mini_visualizer_hands_over_to_full_screen_and_takes_it_back() {
         let w = mini_running();
-        let full = StreamWants { fullscreen_open: true, fullscreen_visualizer: VisualizerKind::Aurora, ..w };
-        assert!(audio_stream_wanted(&full), "full screen wants it for itself");
-        assert!(!full.mini_wants(), "and the mini one does not count while it is open");
+        let full = StreamWants {
+            fullscreen_open: true,
+            fullscreen_visualizer: VisualizerKind::Aurora,
+            ..w
+        };
+        assert!(
+            audio_stream_wanted(&full),
+            "full screen wants it for itself"
+        );
+        assert!(
+            !full.mini_wants(),
+            "and the mini one does not count while it is open"
+        );
         // Leaving full screen: the mini one still wants it, so the stream stays on.
-        let back = StreamWants { fullscreen_open: false, ..full };
+        let back = StreamWants {
+            fullscreen_open: false,
+            ..full
+        };
         assert!(audio_stream_wanted(&back));
     }
 
     #[test]
     fn the_mini_visualizer_stopping_does_not_stop_the_queue_drawer() {
-        let both = StreamWants { queue_drawer_open: true, ..mini_running() };
+        let both = StreamWants {
+            queue_drawer_open: true,
+            ..mini_running()
+        };
         assert!(audio_stream_wanted(&both));
-        assert!(audio_stream_wanted(&StreamWants { mini_on: false, ..both }), "the drawer keeps it");
-        assert!(audio_stream_wanted(&StreamWants { playing: false, ..both }), "the drawer keeps it");
+        assert!(
+            audio_stream_wanted(&StreamWants {
+                mini_on: false,
+                ..both
+            }),
+            "the drawer keeps it"
+        );
+        assert!(
+            audio_stream_wanted(&StreamWants {
+                playing: false,
+                ..both
+            }),
+            "the drawer keeps it"
+        );
         // And the drawer closing leaves the mini one running.
-        assert!(audio_stream_wanted(&StreamWants { queue_drawer_open: false, ..both }));
-        assert!(!audio_stream_wanted(&StreamWants { queue_drawer_open: false, mini_on: false, ..both }));
+        assert!(audio_stream_wanted(&StreamWants {
+            queue_drawer_open: false,
+            ..both
+        }));
+        assert!(!audio_stream_wanted(&StreamWants {
+            queue_drawer_open: false,
+            mini_on: false,
+            ..both
+        }));
     }
 
     #[test]
     fn a_session_with_the_mini_visualizer_sends_the_command_only_on_changes() {
         let play = mini_running();
         let steps = [
-            (StreamWants::NONE, None),                                   // nothing yet
-            (play, Some(true)),                                          // mini on, playing
-            (StreamWants { queue_drawer_open: true, ..play }, None),     // drawer joins
-            (StreamWants { playing: false, queue_drawer_open: true, ..play }, None), // paused, drawer keeps it
-            (StreamWants { playing: false, ..play }, Some(false)),       // drawer closes: all off
-            (play, Some(true)),                                          // resumed
-            (StreamWants { mini_on: false, ..play }, Some(false)),       // switch off
+            (StreamWants::NONE, None), // nothing yet
+            (play, Some(true)),        // mini on, playing
+            (
+                StreamWants {
+                    queue_drawer_open: true,
+                    ..play
+                },
+                None,
+            ), // drawer joins
+            (
+                StreamWants {
+                    playing: false,
+                    queue_drawer_open: true,
+                    ..play
+                },
+                None,
+            ), // paused, drawer keeps it
+            (
+                StreamWants {
+                    playing: false,
+                    ..play
+                },
+                Some(false),
+            ), // drawer closes: all off
+            (play, Some(true)),        // resumed
+            (
+                StreamWants {
+                    mini_on: false,
+                    ..play
+                },
+                Some(false),
+            ), // switch off
         ];
         let mut sent = false;
         for (wants, expect) in steps {
@@ -936,10 +1227,22 @@ mod tests {
     #[test]
     fn each_thing_that_moves_starts_the_clock_while_music_plays() {
         for n in [
-            AmbientNeeds { fullscreen_open: true, ..nothing_moves() },
-            AmbientNeeds { queue_open: true, ..nothing_moves() },
-            AmbientNeeds { mini_drawn: true, ..nothing_moves() },
-            AmbientNeeds { classic_sidebar_bars: true, ..nothing_moves() },
+            AmbientNeeds {
+                fullscreen_open: true,
+                ..nothing_moves()
+            },
+            AmbientNeeds {
+                queue_open: true,
+                ..nothing_moves()
+            },
+            AmbientNeeds {
+                mini_drawn: true,
+                ..nothing_moves()
+            },
+            AmbientNeeds {
+                classic_sidebar_bars: true,
+                ..nothing_moves()
+            },
         ] {
             assert!(ambient_tick_wanted(&n), "{n:?}");
         }
@@ -955,8 +1258,17 @@ mod tests {
             ..nothing_moves()
         };
         assert!(ambient_tick_wanted(&busy));
-        assert!(!ambient_tick_wanted(&AmbientNeeds { playing: false, ..busy }));
-        assert!(!ambient_tick_wanted(&AmbientNeeds { motion_allowed: false, ..busy }));
-        assert!(!ambient_tick_wanted(&AmbientNeeds { window_visible: false, ..busy }));
+        assert!(!ambient_tick_wanted(&AmbientNeeds {
+            playing: false,
+            ..busy
+        }));
+        assert!(!ambient_tick_wanted(&AmbientNeeds {
+            motion_allowed: false,
+            ..busy
+        }));
+        assert!(!ambient_tick_wanted(&AmbientNeeds {
+            window_visible: false,
+            ..busy
+        }));
     }
 }

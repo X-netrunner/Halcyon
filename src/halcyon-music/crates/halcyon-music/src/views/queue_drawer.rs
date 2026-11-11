@@ -5,8 +5,8 @@
 
 use crate::icons::{icon, Icon};
 use crate::theme::{self, format_duration, HalcyonPalette};
-use halcyon_music_core::state::PlayerState;
 use crate::viz::VizFrame;
+use halcyon_music_core::state::PlayerState;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
@@ -29,8 +29,16 @@ pub fn view<'a, Message: Clone + 'static>(
 ) -> Element<'a, Message> {
     // Calm (the four new layouts): the accent is kept for the play button, the progress fill, the
     // tab underline and the star, so the artist and the "Not this" tag are muted text instead.
-    let artist_colour = if calm { palette.text_muted } else { palette.accent };
-    let tag_colour = if calm { palette.text_muted } else { palette.accent };
+    let artist_colour = if calm {
+        palette.text_muted
+    } else {
+        palette.accent
+    };
+    let tag_colour = if calm {
+        palette.text_muted
+    } else {
+        palette.accent
+    };
     let upcoming: Vec<(usize, &halcyon_music_core::Track)> = state
         .queue
         .iter()
@@ -47,12 +55,22 @@ pub fn view<'a, Message: Clone + 'static>(
             .style(crate::views::ghost(palette)),
     ]
     .align_y(Alignment::Center)
-    .padding(iced::Padding { top: 16.0, right: 14.0, bottom: 4.0, left: 24.0 });
+    .padding(iced::Padding {
+        top: 16.0,
+        right: 14.0,
+        bottom: 4.0,
+        left: 24.0,
+    });
 
     let mut list = column![]
         .spacing(2)
         .width(Length::Fill)
-        .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 28.0, left: 12.0 });
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 12.0,
+            bottom: 28.0,
+            left: 12.0,
+        });
 
     // Now playing: the cover swells on each beat inside ripples, in a halo of its own
     // colour. No frame around it.
@@ -69,7 +87,10 @@ pub fn view<'a, Message: Clone + 'static>(
             palette,
         ))
         .style(move |_t| container::Style {
-            border: iced::Border { radius: 28.0.into(), ..Default::default() },
+            border: iced::Border {
+                radius: 28.0.into(),
+                ..Default::default()
+            },
             shadow: iced::Shadow {
                 color: theme::alpha(palette.glow, 0.26 + 0.22 * glow),
                 offset: iced::Vector::new(0.0, 6.0),
@@ -94,15 +115,24 @@ pub fn view<'a, Message: Clone + 'static>(
                 column![
                     art,
                     Space::with_height(4),
-                    text(super::ellipsize(&cur.title, 28)).size(16).color(palette.text),
-                    text(super::ellipsize(&cur.artist, 34)).size(13).color(artist_colour),
+                    text(super::ellipsize(&cur.title, 28))
+                        .size(16)
+                        .color(palette.text),
+                    text(super::ellipsize(&cur.artist, 34))
+                        .size(13)
+                        .color(artist_colour),
                 ]
                 .spacing(2)
                 .align_x(Alignment::Center),
             )
             .width(Length::Fill)
             .center_x(Length::Fill)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 18.0, left: 0.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 18.0,
+                left: 0.0,
+            }),
         );
     }
 
@@ -113,7 +143,9 @@ pub fn view<'a, Message: Clone + 'static>(
                     icon(Icon::Queue, 26.0, theme::alpha(palette.text_muted, 0.6)),
                     Space::with_height(10),
                     text("Nothing queued").size(14).color(palette.text),
-                    text("Songs you add will wait here.").size(12).color(palette.text_muted),
+                    text("Songs you add will wait here.")
+                        .size(12)
+                        .color(palette.text_muted),
                 ]
                 .spacing(2)
                 .align_x(Alignment::Center),
@@ -124,10 +156,14 @@ pub fn view<'a, Message: Clone + 'static>(
         );
     } else {
         for (n, (idx, track)) in upcoming.into_iter().enumerate() {
-            let rm = button(icon(Icon::Close, 12.0, theme::alpha(palette.text_muted, 0.55)))
-                .on_press(on_dequeue(idx))
-                .padding(6)
-                .style(crate::views::ghost(palette));
+            let rm = button(icon(
+                Icon::Close,
+                12.0,
+                theme::alpha(palette.text_muted, 0.55),
+            ))
+            .on_press(on_dequeue(idx))
+            .padding(6)
+            .style(crate::views::ghost(palette));
             // Part 6, Smart Shuffle: a song Halcyon added is tagged, with a "Not this" button.
             let is_suggestion = suggested.contains(&track.id);
             let tag: Element<'a, Message> = if is_suggestion {
@@ -140,9 +176,13 @@ pub fn view<'a, Message: Clone + 'static>(
                 Space::with_width(0).into()
             };
             let line = row![
-                container(text(format!("{}", n + 1)).size(11).color(theme::alpha(palette.text_muted, 0.7)))
-                    .width(20)
-                    .center_x(20),
+                container(
+                    text(format!("{}", n + 1))
+                        .size(11)
+                        .color(theme::alpha(palette.text_muted, 0.7))
+                )
+                .width(20)
+                .center_x(20),
                 crate::art::cover(
                     track.art_url.as_deref(),
                     halcyon_music_core::art::ArtSize::Small,
@@ -154,13 +194,19 @@ pub fn view<'a, Message: Clone + 'static>(
                 ),
                 Space::with_width(12),
                 column![
-                    text(super::ellipsize(&track.title, 28)).size(13).color(palette.text),
-                    text(super::ellipsize(&track.artist, 32)).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&track.title, 28))
+                        .size(13)
+                        .color(palette.text),
+                    text(super::ellipsize(&track.artist, 32))
+                        .size(11)
+                        .color(palette.text_muted),
                     tag,
                 ]
                 .spacing(2)
                 .width(Length::Fill),
-                text(format_duration(track.duration_ms)).size(11).color(theme::alpha(palette.text_muted, 0.8)),
+                text(format_duration(track.duration_ms))
+                    .size(11)
+                    .color(theme::alpha(palette.text_muted, 0.8)),
                 rm,
             ]
             .align_y(Alignment::Center)
@@ -176,7 +222,10 @@ pub fn view<'a, Message: Clone + 'static>(
             header,
             scrollable(list)
                 .direction(scrollable::Direction::Vertical(
-                    scrollable::Scrollbar::new().width(0).scroller_width(0).margin(0),
+                    scrollable::Scrollbar::new()
+                        .width(0)
+                        .scroller_width(0)
+                        .margin(0),
                 ))
                 .height(Length::Fill)
                 .width(Length::Fill),

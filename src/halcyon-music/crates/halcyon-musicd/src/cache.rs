@@ -68,7 +68,8 @@ impl Cache {
             Err(e) => {
                 warn!("failed to open SQLite cache: {e}. Moving aside and retrying.");
                 Self::move_aside_corrupt_db(db_path);
-                Connection::open(db_path).map_err(|e| format!("unable to open clean SQLite: {e}"))?
+                Connection::open(db_path)
+                    .map_err(|e| format!("unable to open clean SQLite: {e}"))?
             }
         };
 
@@ -251,7 +252,8 @@ impl Cache {
                 offset_ms INTEGER NOT NULL
             );
             "#,
-        ).map_err(|e| format!("schema init failed: {e}"))?;
+        )
+        .map_err(|e| format!("schema init failed: {e}"))?;
 
         Ok(())
     }
@@ -316,7 +318,9 @@ impl Cache {
             .map_err(|e| e.to_string())?;
 
         match res {
-            Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+            Some(json) => serde_json::from_str(&json)
+                .map(Some)
+                .map_err(|e| e.to_string()),
             None => Ok(None),
         }
     }
@@ -389,7 +393,11 @@ impl Cache {
         Ok(())
     }
 
-    pub fn get_playlists(&self, limit: usize, offset: usize) -> Result<(Vec<Playlist>, usize), String> {
+    pub fn get_playlists(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Playlist>, usize), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         let total: usize = conn
@@ -426,7 +434,9 @@ impl Cache {
             )
             .ok();
         let Some(json) = json else { return Ok(()) };
-        let Ok(mut pl) = serde_json::from_str::<Playlist>(&json) else { return Ok(()) };
+        let Ok(mut pl) = serde_json::from_str::<Playlist>(&json) else {
+            return Ok(());
+        };
         if pl.total_tracks as usize >= total {
             return Ok(());
         }
@@ -642,11 +652,20 @@ impl Cache {
     }
 
     /// One fetched page of Liked Songs, stored in place.
-    pub fn set_liked_tracks_page(&self, tracks: &[Track], offset: usize, total: usize) -> Result<(), String> {
+    pub fn set_liked_tracks_page(
+        &self,
+        tracks: &[Track],
+        offset: usize,
+        total: usize,
+    ) -> Result<(), String> {
         self.set_playlist_tracks_page(Self::LIKED_PLAYLIST_ID, tracks, offset, total)
     }
 
-    pub fn get_liked_tracks(&self, limit: usize, offset: usize) -> Result<(Vec<Track>, usize), String> {
+    pub fn get_liked_tracks(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<Track>, usize), String> {
         self.get_playlist_tracks(Self::LIKED_PLAYLIST_ID, limit, offset)
     }
 
@@ -715,7 +734,9 @@ impl Cache {
         let now = now_secs();
 
         // Write file atomically (temp + sync + rename)
-        let tmp_path = self.image_dir.join(format!(".{hash}.{}.tmp", std::process::id()));
+        let tmp_path = self
+            .image_dir
+            .join(format!(".{hash}.{}.tmp", std::process::id()));
         let mut f = OpenOptions::new()
             .write(true)
             .create(true)
@@ -798,10 +819,14 @@ impl Cache {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         let total_size: u64 = conn
-            .query_row("SELECT COALESCE(SUM(size_bytes), 0) FROM images", [], |row| {
-                let s: i64 = row.get(0)?;
-                Ok(s.max(0) as u64)
-            })
+            .query_row(
+                "SELECT COALESCE(SUM(size_bytes), 0) FROM images",
+                [],
+                |row| {
+                    let s: i64 = row.get(0)?;
+                    Ok(s.max(0) as u64)
+                },
+            )
             .unwrap_or(0);
 
         if total_size <= self.image_cap_bytes {
@@ -986,7 +1011,12 @@ impl Cache {
     }
 
     /// Remember the tags of an artist (`artist_key` as made by `taste::artist_key`).
-    pub fn put_artist_tags(&self, artist_key: &str, tags: &[(String, f64)], now: u64) -> Result<(), String> {
+    pub fn put_artist_tags(
+        &self,
+        artist_key: &str,
+        tags: &[(String, f64)],
+        now: u64,
+    ) -> Result<(), String> {
         let json = serde_json::to_string(tags).map_err(|e| e.to_string())?;
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
@@ -1003,7 +1033,9 @@ impl Cache {
     pub fn all_artist_tags(&self) -> Result<Vec<(String, Vec<(String, f64)>, u64)>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT artist_key, tags_json, fetched_at FROM artist_tags ORDER BY artist_key")
+            .prepare(
+                "SELECT artist_key, tags_json, fetched_at FROM artist_tags ORDER BY artist_key",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
@@ -1036,7 +1068,14 @@ impl Cache {
         conn.execute(
             "INSERT INTO skip_log (track_id, title, artist, album, started_at, ms_played) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![track_id, title, artist, album, started_at as i64, ms_played as i64],
+            params![
+                track_id,
+                title,
+                artist,
+                album,
+                started_at as i64,
+                ms_played as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok(conn.last_insert_rowid())
@@ -1110,7 +1149,10 @@ impl Cache {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let now = now_secs();
         let (id, json_str) = match track {
-            Some(t) => (Some(t.id.as_str()), Some(serde_json::to_string(t).map_err(|e| e.to_string())?)),
+            Some(t) => (
+                Some(t.id.as_str()),
+                Some(serde_json::to_string(t).map_err(|e| e.to_string())?),
+            ),
             None => (None, None),
         };
 
@@ -1134,8 +1176,11 @@ impl Cache {
     /// Returns how many misses were dropped.
     pub fn purge_resolution_misses(&self) -> Result<usize, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM resolved_tracks WHERE spotify_track_id IS NULL", [])
-            .map_err(|e| e.to_string())
+        conn.execute(
+            "DELETE FROM resolved_tracks WHERE spotify_track_id IS NULL",
+            [],
+        )
+        .map_err(|e| e.to_string())
     }
 
     // --- Tier 3 Local Mix Generation from Play Log ---
@@ -1175,7 +1220,13 @@ impl Cache {
                         return Ok(track);
                     }
                 }
-                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                Ok(Track::simple(
+                    track_id,
+                    title,
+                    artist,
+                    album,
+                    ms_played.max(0) as u64,
+                ))
             })
             .map_err(|e| e.to_string())?;
 
@@ -1213,7 +1264,13 @@ impl Cache {
                         return Ok(track);
                     }
                 }
-                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                Ok(Track::simple(
+                    track_id,
+                    title,
+                    artist,
+                    album,
+                    ms_played.max(0) as u64,
+                ))
             })
             .map_err(|e| e.to_string())?;
 
@@ -1249,7 +1306,13 @@ impl Cache {
                         return Ok(track);
                     }
                 }
-                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                Ok(Track::simple(
+                    track_id,
+                    title,
+                    artist,
+                    album,
+                    ms_played.max(0) as u64,
+                ))
             })
             .map_err(|e| e.to_string())?;
 
@@ -1308,7 +1371,11 @@ impl Cache {
     }
 
     /// "Time-of-day mix": Tracks played around the current hour of day (+/- 2 hours).
-    pub fn get_time_of_day_tracks(&self, current_hour: u32, limit: usize) -> Result<Vec<Track>, String> {
+    pub fn get_time_of_day_tracks(
+        &self,
+        current_hour: u32,
+        limit: usize,
+    ) -> Result<Vec<Track>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         let mut stmt = conn
@@ -1349,8 +1416,9 @@ impl Cache {
             seen.insert(track_id.clone());
 
             let track = if let Some(json_str) = data_json {
-                serde_json::from_str::<Track>(&json_str)
-                    .unwrap_or_else(|_| Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                serde_json::from_str::<Track>(&json_str).unwrap_or_else(|_| {
+                    Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
+                })
             } else {
                 Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
             };
@@ -1367,7 +1435,11 @@ impl Cache {
     }
 
     /// Top played artists in the last `days` days.
-    pub fn get_top_artists_in_period(&self, days: u32, limit: usize) -> Result<Vec<String>, String> {
+    pub fn get_top_artists_in_period(
+        &self,
+        days: u32,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let cutoff = now_secs().saturating_sub((days as u64) * 86_400);
 
@@ -1423,11 +1495,15 @@ impl Cache {
 
         // Total minutes and play count
         let mut sum_stmt = conn
-            .prepare("SELECT COALESCE(SUM(ms_played), 0), COUNT(*) FROM play_log WHERE started_at >= ?1")
+            .prepare(
+                "SELECT COALESCE(SUM(ms_played), 0), COUNT(*) FROM play_log WHERE started_at >= ?1",
+            )
             .map_err(|e| e.to_string())?;
 
         let (total_ms, count): (i64, i64) = sum_stmt
-            .query_row(params![thirty_days_ago as i64], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_row(params![thirty_days_ago as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .map_err(|e| e.to_string())?;
 
         if count == 0 {
@@ -1463,7 +1539,13 @@ impl Cache {
                         return Ok(track);
                     }
                 }
-                Ok(Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                Ok(Track::simple(
+                    track_id,
+                    title,
+                    artist,
+                    album,
+                    ms_played.max(0) as u64,
+                ))
             })
             .optional()
             .map_err(|e| e.to_string())?;
@@ -1547,7 +1629,9 @@ impl Cache {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let now = now_secs();
         let mut stmt = conn
-            .prepare("SELECT data_json, fetched_at, is_miss FROM lyrics WHERE track_id = ?1 LIMIT 1")
+            .prepare(
+                "SELECT data_json, fetched_at, is_miss FROM lyrics WHERE track_id = ?1 LIMIT 1",
+            )
             .map_err(|e| e.to_string())?;
 
         let mut rows = stmt.query(params![track_id]).map_err(|e| e.to_string())?;
@@ -1589,7 +1673,12 @@ impl Cache {
                 fetched_at = excluded.fetched_at,
                 is_miss = 0
             "#,
-            params![lyrics.track_id, if lyrics.synced { 1 } else { 0 }, json, now as i64],
+            params![
+                lyrics.track_id,
+                if lyrics.synced { 1 } else { 0 },
+                json,
+                now as i64
+            ],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -1666,11 +1755,15 @@ impl Cache {
             .map_err(|e| e.to_string())?;
 
         let (total_ms, total_plays): (i64, i64) = sum_stmt
-            .query_row(params![start_ts as i64, end_ts as i64], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_row(params![start_ts as i64, end_ts as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .map_err(|e| e.to_string())?;
 
         let (prev_ms, _): (i64, i64) = sum_stmt
-            .query_row(params![prev_start as i64, prev_end as i64], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_row(params![prev_start as i64, prev_end as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .unwrap_or((0, 0));
 
         let mom_change_percent = if prev_ms > 0 {
@@ -1707,8 +1800,9 @@ impl Cache {
                 let count: i64 = row.get(6)?;
 
                 let track = if let Some(json_str) = data_json {
-                    serde_json::from_str::<Track>(&json_str)
-                        .unwrap_or_else(|_| Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                    serde_json::from_str::<Track>(&json_str).unwrap_or_else(|_| {
+                        Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
+                    })
                 } else {
                     Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
                 };
@@ -1749,7 +1843,9 @@ impl Cache {
 
         let mut genres_map = std::collections::HashMap::new();
         for (artist, _) in &top_artists {
-            let mut rows = artist_stmt.query(params![artist]).map_err(|e| e.to_string())?;
+            let mut rows = artist_stmt
+                .query(params![artist])
+                .map_err(|e| e.to_string())?;
             if let Some(row) = rows.next().map_err(|e| e.to_string())? {
                 let json_str: String = row.get(0).map_err(|e| e.to_string())?;
                 if let Ok(cached_artist) = serde_json::from_str::<Artist>(&json_str) {
@@ -1847,8 +1943,9 @@ impl Cache {
                 let daily_count: i64 = row.get(6)?;
 
                 let track = if let Some(json_str) = data_json {
-                    serde_json::from_str::<Track>(&json_str)
-                        .unwrap_or_else(|_| Track::simple(track_id, title, artist, album, ms_played.max(0) as u64))
+                    serde_json::from_str::<Track>(&json_str).unwrap_or_else(|_| {
+                        Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
+                    })
                 } else {
                     Track::simple(track_id, title, artist, album, ms_played.max(0) as u64)
                 };
@@ -1899,10 +1996,25 @@ mod tests {
     #[test]
     fn artist_tags_round_trip_and_update() {
         let dir = tempfile::tempdir().unwrap();
-        let cache = Cache::open(&dir.path().join("c.db"), &dir.path().join("img"), 1024 * 1024).unwrap();
-        cache.put_artist_tags("ash", &[("rock".to_string(), 1.0)], 100).unwrap();
-        cache.put_artist_tags("ash", &[("folk".to_string(), 0.5), ("rock".to_string(), 0.2)], 200).unwrap();
-        cache.put_artist_tags("birch", &[("jazz".to_string(), 1.0)], 150).unwrap();
+        let cache = Cache::open(
+            &dir.path().join("c.db"),
+            &dir.path().join("img"),
+            1024 * 1024,
+        )
+        .unwrap();
+        cache
+            .put_artist_tags("ash", &[("rock".to_string(), 1.0)], 100)
+            .unwrap();
+        cache
+            .put_artist_tags(
+                "ash",
+                &[("folk".to_string(), 0.5), ("rock".to_string(), 0.2)],
+                200,
+            )
+            .unwrap();
+        cache
+            .put_artist_tags("birch", &[("jazz".to_string(), 1.0)], 150)
+            .unwrap();
         let rows = cache.all_artist_tags().unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "ash");
@@ -1913,11 +2025,24 @@ mod tests {
     #[test]
     fn skips_are_kept_apart_from_plays() {
         let dir = tempfile::tempdir().unwrap();
-        let cache = Cache::open(&dir.path().join("c.db"), &dir.path().join("img"), 1024 * 1024).unwrap();
-        cache.log_play("t1", "One", "A", "X", 100, 180_000, true).unwrap();
+        let cache = Cache::open(
+            &dir.path().join("c.db"),
+            &dir.path().join("img"),
+            1024 * 1024,
+        )
+        .unwrap();
+        cache
+            .log_play("t1", "One", "A", "X", 100, 180_000, true)
+            .unwrap();
         cache.log_skip("t2", "Two", "B", "Y", 200, 4_000).unwrap();
-        cache.log_skip("t3", "Three", "B", "Y", 300, 12_000).unwrap();
-        assert_eq!(cache.get_recent_plays(10).unwrap().len(), 1, "a skip is not a play");
+        cache
+            .log_skip("t3", "Three", "B", "Y", 300, 12_000)
+            .unwrap();
+        assert_eq!(
+            cache.get_recent_plays(10).unwrap().len(),
+            1,
+            "a skip is not a play"
+        );
         let skips = cache.get_skips(10).unwrap();
         assert_eq!(skips.len(), 2);
         assert_eq!(skips[0].track_id, "t2", "oldest first");
@@ -2039,7 +2164,8 @@ mod tests {
         let img_dir = dir.path().join("images");
 
         // Write junk to db_path
-        std::fs::write(&db_path, b"NOT A VALID SQLITE DATABASE FILE GARBAGE JUNK").expect("write junk");
+        std::fs::write(&db_path, b"NOT A VALID SQLITE DATABASE FILE GARBAGE JUNK")
+            .expect("write junk");
 
         // Opening should detect corruption, move aside to .corrupt.db, and succeed
         let cache = Cache::open(&db_path, &img_dir, 10 * 1024 * 1024).expect("cache recovery open");
@@ -2080,7 +2206,17 @@ mod tests {
 
         // Insert a play record
         let now = now_secs();
-        cache.log_play("track1", "Aerodynamic", "Daft Punk", "Discovery", now, 180_000, true).expect("log play");
+        cache
+            .log_play(
+                "track1",
+                "Aerodynamic",
+                "Daft Punk",
+                "Discovery",
+                now,
+                180_000,
+                true,
+            )
+            .expect("log play");
 
         let capsule_updated = cache.get_full_capsule(0).expect("capsule updated");
         assert_eq!(capsule_updated.total_plays, 1);
@@ -2118,7 +2254,10 @@ mod tests {
         };
         cache.put_lyrics(&lyrics).expect("put_lyrics");
 
-        let cached = cache.get_lyrics("track_hit").expect("get_lyrics").expect("cache entry");
+        let cached = cache
+            .get_lyrics("track_hit")
+            .expect("get_lyrics")
+            .expect("cache entry");
         let retrieved = cached.expect("not a miss");
         assert_eq!(retrieved.track_id, "track_hit");
         assert!(retrieved.synced);
@@ -2126,20 +2265,46 @@ mod tests {
         assert_eq!(retrieved.lines[0].text, "Around the world");
 
         // 3. Put lyrics miss (cached for 7 days so we don't spam LRCLIB)
-        cache.put_lyrics_miss("track_miss").expect("put_lyrics_miss");
-        let cached_miss = cache.get_lyrics("track_miss").expect("get_lyrics").expect("entry present");
+        cache
+            .put_lyrics_miss("track_miss")
+            .expect("put_lyrics_miss");
+        let cached_miss = cache
+            .get_lyrics("track_miss")
+            .expect("get_lyrics")
+            .expect("entry present");
         assert!(cached_miss.is_none()); // Is None indicates cached negative result
 
         // 4. Per-song manual offset persistence
-        assert_eq!(cache.get_lyric_offset("track_hit").expect("get default offset"), 0);
-        cache.set_lyric_offset("track_hit", -200).expect("set offset");
-        assert_eq!(cache.get_lyric_offset("track_hit").expect("get updated offset"), -200);
+        assert_eq!(
+            cache
+                .get_lyric_offset("track_hit")
+                .expect("get default offset"),
+            0
+        );
+        cache
+            .set_lyric_offset("track_hit", -200)
+            .expect("set offset");
+        assert_eq!(
+            cache
+                .get_lyric_offset("track_hit")
+                .expect("get updated offset"),
+            -200
+        );
 
         // Verify offset persistence across re-opening cache
         drop(cache);
         let cache2 = Cache::open(&db_path, &img_dir, 10 * 1024 * 1024).expect("cache re-open");
-        assert_eq!(cache2.get_lyric_offset("track_hit").expect("persisted offset"), -200);
-        let re_cached = cache2.get_lyrics("track_hit").expect("re-read").expect("entry").expect("hit");
+        assert_eq!(
+            cache2
+                .get_lyric_offset("track_hit")
+                .expect("persisted offset"),
+            -200
+        );
+        let re_cached = cache2
+            .get_lyrics("track_hit")
+            .expect("re-read")
+            .expect("entry")
+            .expect("hit");
         assert_eq!(re_cached.track_id, "track_hit");
     }
 }

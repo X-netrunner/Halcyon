@@ -42,7 +42,13 @@ pub fn view<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let mut chips = row![].spacing(4).align_y(Alignment::Center);
     for t in SideTab::ALL {
-        chips = chips.push(library_sidebar::chip(t.label(), tab == t, CHIP_TEXT, palette, on_select(t)));
+        chips = chips.push(library_sidebar::chip(
+            t.label(),
+            tab == t,
+            CHIP_TEXT,
+            palette,
+            on_select(t),
+        ));
     }
     let body: Element<'a, M> = match tab {
         SideTab::Queue => queue_column::list(state, palette),
@@ -53,10 +59,14 @@ pub fn view<'a, M: Clone + 'a>(
             lyrics_compact::view(fresh, state.position_ms, palette)
         }
     };
-    container(column![container(chips).padding([4, 8]), Space::with_height(4), body])
-        .width(WIDTH)
-        .height(Length::Fill)
-        .into()
+    container(column![
+        container(chips).padding([4, 8]),
+        Space::with_height(4),
+        body
+    ])
+    .width(WIDTH)
+    .height(Length::Fill)
+    .into()
 }
 
 #[cfg(test)]
@@ -77,10 +87,21 @@ mod tests {
         for tab in SideTab::ALL {
             let _v: Element<'_, SideTab> = view(tab, &state, None, palette, |t| t);
         }
-        let t = Track::simple("x".into(), "Song".into(), "Artist".into(), "Album".into(), 180_000);
+        let t = Track::simple(
+            "x".into(),
+            "Song".into(),
+            "Artist".into(),
+            "Album".into(),
+            180_000,
+        );
         state.track = Some(t.clone());
         state.queue.push(t);
-        let stale = Lyrics { track_id: "other".into(), synced: false, lines: vec![], offset_ms: 0 };
+        let stale = Lyrics {
+            track_id: "other".into(),
+            synced: false,
+            lines: vec![],
+            offset_ms: 0,
+        };
         for tab in SideTab::ALL {
             let _v: Element<'_, SideTab> = view(tab, &state, Some(&stale), palette, |t| t);
         }

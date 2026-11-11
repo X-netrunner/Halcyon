@@ -82,7 +82,14 @@ impl TapSink {
             // Without the thread the sink still plays; only the visuals are lost.
             debug!("could not start the audio pacing thread: {e}");
         }
-        Self { inner, analyzer: Analyzer::new(), scratch: Vec::new(), tx, bus, hop_index: 0 }
+        Self {
+            inner,
+            analyzer: Analyzer::new(),
+            scratch: Vec::new(),
+            tx,
+            bus,
+            hop_index: 0,
+        }
     }
 
     fn reset(&mut self) {
@@ -190,7 +197,10 @@ mod tests {
 
         let start = Instant::now();
         for i in 0..5u64 {
-            let frame = Frame { beat: (i + 1) as u8, ..Frame::default() };
+            let frame = Frame {
+                beat: (i + 1) as u8,
+                ..Frame::default()
+            };
             tx.send(Msg::Frame(i, frame)).expect("send");
         }
         let mut seen = Vec::new();
@@ -203,13 +213,24 @@ mod tests {
                 }
                 Err(_) => std::thread::sleep(Duration::from_millis(2)),
             }
-            assert!(start.elapsed() < Duration::from_secs(2), "frames never arrived");
+            assert!(
+                start.elapsed() < Duration::from_secs(2),
+                "frames never arrived"
+            );
         }
         let order: Vec<u8> = seen.iter().map(|(b, _)| *b).collect();
         assert_eq!(order, vec![1, 2, 3, 4, 5]);
         // The first is held back by roughly the latency, the last by latency + 4 hops (~93 ms).
-        assert!(seen[0].1 >= Duration::from_millis(35), "first frame too early: {:?}", seen[0].1);
-        assert!(seen[4].1 >= Duration::from_millis(120), "last frame too early: {:?}", seen[4].1);
+        assert!(
+            seen[0].1 >= Duration::from_millis(35),
+            "first frame too early: {:?}",
+            seen[0].1
+        );
+        assert!(
+            seen[4].1 >= Duration::from_millis(120),
+            "last frame too early: {:?}",
+            seen[4].1
+        );
         drop(tx);
         let _ = handle.join();
     }
@@ -219,7 +240,14 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (bus, mut listener) = broadcast::channel(64);
         let handle = std::thread::spawn(move || pace(rx, bus, Duration::from_millis(500)));
-        tx.send(Msg::Frame(0, Frame { beat: 9, ..Frame::default() })).expect("send");
+        tx.send(Msg::Frame(
+            0,
+            Frame {
+                beat: 9,
+                ..Frame::default()
+            },
+        ))
+        .expect("send");
         tx.send(Msg::Reset).expect("send");
         let first = loop {
             if let Ok(ev) = listener.try_recv() {

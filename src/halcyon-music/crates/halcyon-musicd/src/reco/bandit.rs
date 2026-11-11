@@ -105,7 +105,10 @@ pub struct Arm {
 
 impl Default for Arm {
     fn default() -> Self {
-        Arm { alpha: 1.0, beta: 1.0 }
+        Arm {
+            alpha: 1.0,
+            beta: 1.0,
+        }
     }
 }
 
@@ -137,7 +140,10 @@ pub fn arm_key(shelf: &str, source_name: &str) -> String {
 
 impl Bandit {
     pub fn arm(&self, shelf: &str, source: Source) -> Arm {
-        self.arms.get(&arm_key(shelf, source.name())).cloned().unwrap_or_default()
+        self.arms
+            .get(&arm_key(shelf, source.name()))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// One draw from the belief about (shelf, source).
@@ -170,7 +176,11 @@ impl Bandit {
     pub fn note_served(&mut self, track_id: &str, shelf: &str, source: Source, at: u64) {
         self.served.insert(
             track_id.to_string(),
-            Served { shelf: shelf.to_string(), source: source.name().to_string(), at },
+            Served {
+                shelf: shelf.to_string(),
+                source: source.name().to_string(),
+                at,
+            },
         );
         self.prune(at);
     }
@@ -188,9 +198,14 @@ impl Bandit {
     }
 
     fn prune(&mut self, now: u64) {
-        self.served.retain(|_, s| now.saturating_sub(s.at) <= SERVED_TTL_SECS);
+        self.served
+            .retain(|_, s| now.saturating_sub(s.at) <= SERVED_TTL_SECS);
         while self.served.len() > MAX_SERVED {
-            let oldest = self.served.iter().min_by(|a, b| a.1.at.cmp(&b.1.at).then_with(|| a.0.cmp(b.0))).map(|(k, _)| k.clone());
+            let oldest = self
+                .served
+                .iter()
+                .min_by(|a, b| a.1.at.cmp(&b.1.at).then_with(|| a.0.cmp(b.0)))
+                .map(|(k, _)| k.clone());
             match oldest {
                 Some(k) => {
                     self.served.remove(&k);
@@ -224,7 +239,10 @@ mod tests {
             let n = 4000;
             let mean: f64 = (0..n).map(|_| rng.beta(a, b)).sum::<f64>() / n as f64;
             let want = a / (a + b);
-            assert!((mean - want).abs() < 0.03, "Beta({a},{b}): mean {mean}, want {want}");
+            assert!(
+                (mean - want).abs() < 0.03,
+                "Beta({a},{b}): mean {mean}, want {want}"
+            );
         }
     }
 
@@ -268,7 +286,10 @@ mod tests {
         }
         let mut rng = Rng::new(5);
         let tries = (0..500)
-            .filter(|_| bandit.sample("home", Source::TagNeighbour, &mut rng) > bandit.sample("home", Source::Similar, &mut rng))
+            .filter(|_| {
+                bandit.sample("home", Source::TagNeighbour, &mut rng)
+                    > bandit.sample("home", Source::Similar, &mut rng)
+            })
             .count();
         assert!(tries > 20, "the unknown source never won ({tries})");
     }
@@ -292,7 +313,11 @@ mod tests {
         for _ in 0..40 {
             bandit.reward("s", "similar", false);
         }
-        assert!(bandit.mean("s", Source::Similar) < 0.7, "slow to react: {}", bandit.mean("s", Source::Similar));
+        assert!(
+            bandit.mean("s", Source::Similar) < 0.7,
+            "slow to react: {}",
+            bandit.mean("s", Source::Similar)
+        );
     }
 
     #[test]
@@ -313,8 +338,17 @@ mod tests {
         }
         assert_eq!(bandit.served.len(), MAX_SERVED);
         assert!(!bandit.served.contains_key("t0"), "the oldest goes first");
-        bandit.note_served("late", "home", Source::Chart, 1_000 + SERVED_TTL_SECS + 10_000);
-        assert_eq!(bandit.served.len(), 1, "everything older than the TTL is dropped");
+        bandit.note_served(
+            "late",
+            "home",
+            Source::Chart,
+            1_000 + SERVED_TTL_SECS + 10_000,
+        );
+        assert_eq!(
+            bandit.served.len(),
+            1,
+            "everything older than the TTL is dropped"
+        );
     }
 
     #[test]
@@ -323,7 +357,10 @@ mod tests {
         // 1_800_000_000 is 08:00 UTC; 50 minutes later is the same day.
         assert_eq!(shelf_seed("daily", t, 0), shelf_seed("daily", t + 3_000, 0));
         assert_ne!(shelf_seed("daily", t, 0), shelf_seed("weekly", t, 0));
-        assert_ne!(shelf_seed("daily", t, 0), shelf_seed("daily", t + 86_400, 0));
+        assert_ne!(
+            shelf_seed("daily", t, 0),
+            shelf_seed("daily", t + 86_400, 0)
+        );
         assert_ne!(shelf_seed("daily", t, 0), shelf_seed("daily", t, 1));
     }
 }

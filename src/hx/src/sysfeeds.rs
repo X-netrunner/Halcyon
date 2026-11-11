@@ -31,7 +31,9 @@ fn read(p: &str) -> String {
     crate::util::read(&fx(p))
 }
 fn xdg_rt() -> Option<String> {
-    std::env::var("XDG_RUNTIME_DIR").ok().filter(|s| !s.is_empty())
+    std::env::var("XDG_RUNTIME_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 fn state_dir() -> String {
     format!("{}/.local/state/island", home())
@@ -44,7 +46,10 @@ fn exists(p: &str) -> bool {
 }
 fn names(dir: &str) -> Vec<String> {
     let mut v: Vec<String> = match std::fs::read_dir(fx(dir)) {
-        Ok(rd) => rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect(),
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect(),
         Err(_) => Vec::new(),
     };
     v.sort();
@@ -54,7 +59,9 @@ fn js(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
 }
 fn lower_dash(s: &str) -> String {
-    s.chars().filter(|c| c.is_ascii_lowercase() || *c == '-').collect()
+    s.chars()
+        .filter(|c| c.is_ascii_lowercase() || *c == '-')
+        .collect()
 }
 
 /// Prints a line unless it is the same as the last one (the island ignores repeats anyway). false = the pipe is closed.
@@ -84,7 +91,11 @@ struct Wake {
 }
 impl Wake {
     fn open(name: &str) -> Wake {
-        let path = format!("{}/halcyon-{}.wake", xdg_rt().unwrap_or_else(|| "/tmp".into()), name);
+        let path = format!(
+            "{}/halcyon-{}.wake",
+            xdg_rt().unwrap_or_else(|| "/tmp".into()),
+            name
+        );
         let c = match std::ffi::CString::new(path) {
             Ok(c) => c,
             Err(_) => return Wake { fd: -1 },
@@ -92,23 +103,33 @@ impl Wake {
         // SAFETY: c is a NUL-terminated CString alive for the whole block; st is a zeroed plain C struct used as an out-pointer.
         unsafe {
             let mut st: libc::stat = std::mem::zeroed();
-            if libc::stat(c.as_ptr(), &mut st) == 0 && (st.st_mode & libc::S_IFMT) != libc::S_IFIFO {
+            if libc::stat(c.as_ptr(), &mut st) == 0 && (st.st_mode & libc::S_IFMT) != libc::S_IFIFO
+            {
                 libc::unlink(c.as_ptr());
             }
             libc::mkfifo(c.as_ptr(), 0o600); // already there = fine
-            let fd = libc::open(c.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC);
+            let fd = libc::open(
+                c.as_ptr(),
+                libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            );
             Wake { fd }
         }
     }
     fn poll(&self, ms: i32) -> bool {
-        let mut p = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
+        let mut p = libc::pollfd {
+            fd: self.fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
         // SAFETY: p is one valid pollfd on the stack and nfds is 1.
         unsafe { libc::poll(&mut p, 1, ms) > 0 && (p.revents & libc::POLLIN) != 0 }
     }
     fn drain(&self) {
         let mut buf = [0u8; 256];
         // SAFETY: buf is a live stack buffer and its real length is passed; the fd is non-blocking, so the loop ends.
-        unsafe { while libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) > 0 {} }
+        unsafe {
+            while libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) > 0 {}
+        }
     }
     /// Sleep `secs`, or less when poked. A poke gets one more second so the action that caused it can finish first.
     fn wait(&self, secs: f64) {
@@ -138,8 +159,14 @@ impl Drop for Wake {
 /// its battery: 2.5x, and 5x once it is nearly empty. On the mains, or a desktop: 1x, the feeds stay live. It only looks at
 /// /proc and /sys (no process), and it is asked once per wait, so it follows the machine within a few seconds.
 fn adaptive_factor() -> f64 {
-    let load: f64 = read("/proc/loadavg").split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
-    let cores = std::thread::available_parallelism().map(|n| n.get() as f64).unwrap_or(1.0);
+    let load: f64 = read("/proc/loadavg")
+        .split_whitespace()
+        .next()
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(0.0);
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get() as f64)
+        .unwrap_or(1.0);
     if load >= cores * 0.9 {
         return 5.0;
     }
@@ -148,7 +175,9 @@ fn adaptive_factor() -> f64 {
             if ac_online() {
                 return 1.0;
             }
-            let cap: i64 = first_line(&format!("/sys/class/power_supply/{}/capacity", n)).parse().unwrap_or(100);
+            let cap: i64 = first_line(&format!("/sys/class/power_supply/{}/capacity", n))
+                .parse()
+                .unwrap_or(100);
             return if cap <= 20 { 5.0 } else { 2.5 };
         }
     }
@@ -178,7 +207,15 @@ fn pace(iv: f64, fast_aware: bool) -> f64 {
 // ================================================================== stats
 fn cpu_times() -> (u64, u64) {
     let s = read("/proc/stat");
-    let f: Vec<u64> = s.lines().next().unwrap_or("").split_whitespace().skip(1).take(8).map(|x| x.parse().unwrap_or(0)).collect();
+    let f: Vec<u64> = s
+        .lines()
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .skip(1)
+        .take(8)
+        .map(|x| x.parse().unwrap_or(0))
+        .collect();
     if f.len() < 8 {
         return (0, 0);
     }
@@ -218,7 +255,10 @@ fn mem_kb() -> (u64, u64) {
 
 fn temp_paths() -> Vec<String> {
     let mut v = Vec::new();
-    for (dir, prefix, file) in [("/sys/class/hwmon", "hwmon", "temp1_input"), ("/sys/class/thermal", "thermal_zone", "temp")] {
+    for (dir, prefix, file) in [
+        ("/sys/class/hwmon", "hwmon", "temp1_input"),
+        ("/sys/class/thermal", "thermal_zone", "temp"),
+    ] {
         for n in names(dir) {
             if n.starts_with(prefix) {
                 v.push(format!("{}/{}/{}", dir, n, file));
@@ -282,13 +322,20 @@ impl Upower {
     fn read(&mut self) {
         if !self.probed {
             self.probed = true;
-            self.dev = run("upower", &["-e"], 3).lines().find(|l| l.to_lowercase().contains("bat")).map(|s| s.trim().to_string());
+            self.dev = run("upower", &["-e"], 3)
+                .lines()
+                .find(|l| l.to_lowercase().contains("bat"))
+                .map(|s| s.trim().to_string());
         }
         let dev = match &self.dev {
             Some(d) => d.clone(),
             None => return,
         };
-        if self.at.map(|t| t.elapsed() < Duration::from_secs(15)).unwrap_or(false) {
+        if self
+            .at
+            .map(|t| t.elapsed() < Duration::from_secs(15))
+            .unwrap_or(false)
+        {
             return;
         }
         self.at = Some(Instant::now());
@@ -344,7 +391,19 @@ impl Bat {
                 }
             }
         }
-        Bat { dir, rate_avg: 0, last_st: String::new(), up: Upower { probed: false, dev: None, at: None, cap: 0, st: String::new(), est: String::new() } }
+        Bat {
+            dir,
+            rate_avg: 0,
+            last_st: String::new(),
+            up: Upower {
+                probed: false,
+                dev: None,
+                at: None,
+                cap: 0,
+                st: String::new(),
+                est: String::new(),
+            },
+        }
     }
 
     fn read(&mut self) -> BatNow {
@@ -353,16 +412,36 @@ impl Bat {
             None => {
                 self.up.read();
                 return if self.up.dev.is_some() {
-                    BatNow { has: true, cap: self.up.cap, chg: self.up.st == "charging", w: 0.0, est: self.up.est.clone() }
+                    BatNow {
+                        has: true,
+                        cap: self.up.cap,
+                        chg: self.up.st == "charging",
+                        w: 0.0,
+                        est: self.up.est.clone(),
+                    }
                 } else {
-                    BatNow { has: false, cap: 0, chg: false, w: 0.0, est: String::new() }
+                    BatNow {
+                        has: false,
+                        cap: 0,
+                        chg: false,
+                        w: 0.0,
+                        est: String::new(),
+                    }
                 };
             }
         };
-        let cap = first_line(&format!("{}/capacity", d)).parse::<i64>().unwrap_or(0);
+        let cap = first_line(&format!("{}/capacity", d))
+            .parse::<i64>()
+            .unwrap_or(0);
         let st = first_line(&format!("{}/status", d));
-        let num = |f: &str| -> Option<u64> { first_line(&format!("{}/{}", d, f)).trim_start_matches('-').parse().ok() };
-        let by_charge = exists(&format!("{}/charge_now", d)) && exists(&format!("{}/current_now", d));
+        let num = |f: &str| -> Option<u64> {
+            first_line(&format!("{}/{}", d, f))
+                .trim_start_matches('-')
+                .parse()
+                .ok()
+        };
+        let by_charge =
+            exists(&format!("{}/charge_now", d)) && exists(&format!("{}/current_now", d));
         let (now, full, rate) = if by_charge {
             (num("charge_now"), num("charge_full"), num("current_now"))
         } else if exists(&format!("{}/energy_now", d)) && exists(&format!("{}/power_now", d)) {
@@ -376,7 +455,11 @@ impl Bat {
         }
         if let Some(r) = rate {
             if r > 0 {
-                self.rate_avg = if self.rate_avg == 0 { r } else { (self.rate_avg * 7 + r) / 8 }; // smoothed, so the estimate does not jump
+                self.rate_avg = if self.rate_avg == 0 {
+                    r
+                } else {
+                    (self.rate_avg * 7 + r) / 8
+                }; // smoothed, so the estimate does not jump
             }
         }
         let mut est = String::new();
@@ -400,11 +483,19 @@ impl Bat {
         let w = if self.rate_avg == 0 || (st != "Discharging" && st != "Charging") {
             0.0
         } else if by_charge {
-            num("voltage_now").map(|v| self.rate_avg as f64 * v as f64 / 1e12).unwrap_or(0.0)
+            num("voltage_now")
+                .map(|v| self.rate_avg as f64 * v as f64 / 1e12)
+                .unwrap_or(0.0)
         } else {
             self.rate_avg as f64 / 1e6
         };
-        BatNow { has: true, cap, chg: st == "Charging", w, est }
+        BatNow {
+            has: true,
+            cap,
+            chg: st == "Charging",
+            w,
+            est,
+        }
     }
 }
 
@@ -419,8 +510,13 @@ pub fn stats(iv: f64) {
     let (mut prx, mut ptx) = net_bytes();
     // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let uid = unsafe { libc::getuid() };
-    let pm_state = format!("{}/power-manager.state", xdg_rt().unwrap_or_else(|| format!("/run/user/{}", uid)));
-    let mut out = Out { last: String::new() };
+    let pm_state = format!(
+        "{}/power-manager.state",
+        xdg_rt().unwrap_or_else(|| format!("/run/user/{}", uid))
+    );
+    let mut out = Out {
+        last: String::new(),
+    };
     let mut tprev = Instant::now();
     std::thread::sleep(Duration::from_millis(1000)); // a first sample soon, from a one second window
     loop {
@@ -437,7 +533,10 @@ pub fn stats(iv: f64) {
         let (mt, ma) = mem_kb();
         let (mem, memgb) = if mt > 0 {
             let u = mt.saturating_sub(ma);
-            (u * 100 / mt, format!("{}.{}", u / 1_048_576, (u * 10 / 1_048_576) % 10))
+            (
+                u * 100 / mt,
+                format!("{}.{}", u / 1_048_576, (u * 10 / 1_048_576) % 10),
+            )
         } else {
             (0, "0.0".to_string())
         };
@@ -465,8 +564,15 @@ pub fn stats(iv: f64) {
         let (mut auto, mut pmode, mut pprof) = (false, String::new(), String::new());
         let raw = read(&pm_state);
         let mut it = raw.lines().next().unwrap_or("").split_whitespace();
-        if let (Some(m), Some(p), Some(ts)) = (it.next(), it.next(), it.next().and_then(|x| x.parse::<i64>().ok())) {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        if let (Some(m), Some(p), Some(ts)) = (
+            it.next(),
+            it.next(),
+            it.next().and_then(|x| x.parse::<i64>().ok()),
+        ) {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
             if now - ts < 90 {
                 auto = true;
                 pmode = lower_dash(m);
@@ -535,9 +641,18 @@ fn proc_wireless(iface: &str) -> Option<i32> {
     for l in read("/proc/net/wireless").lines() {
         if let Some((n, rest)) = l.split_once(':') {
             if n.trim() == iface {
-                let f: Vec<f64> = rest.split_whitespace().skip(1).take(2).map(|x| x.trim_end_matches('.').parse().unwrap_or(0.0)).collect();
+                let f: Vec<f64> = rest
+                    .split_whitespace()
+                    .skip(1)
+                    .take(2)
+                    .map(|x| x.trim_end_matches('.').parse().unwrap_or(0.0))
+                    .collect();
                 if f.len() == 2 {
-                    return Some(if f[1] < 0.0 { dbm_to_pct(f[1]) } else { ((f[0] * 100.0 / 70.0).round() as i32).clamp(0, 100) });
+                    return Some(if f[1] < 0.0 {
+                        dbm_to_pct(f[1])
+                    } else {
+                        ((f[0] * 100.0 / 70.0).round() as i32).clamp(0, 100)
+                    });
                 }
             }
         }
@@ -552,20 +667,30 @@ fn wifi_radio() -> Option<bool> {
         let p = format!("/sys/class/rfkill/{}", n);
         if first_line(&format!("{}/type", p)) == "wlan" {
             found = true;
-            if first_line(&format!("{}/soft", p)) == "0" && first_line(&format!("{}/hard", p)) == "0" {
+            if first_line(&format!("{}/soft", p)) == "0"
+                && first_line(&format!("{}/hard", p)) == "0"
+            {
                 on = true;
             }
         }
     }
-    if found { Some(on) } else { None }
+    if found {
+        Some(on)
+    } else {
+        None
+    }
 }
 
 impl Drop for Net {
     fn drop(&mut self) {
         // SAFETY: both sockets are owned by Net and closed once, here in Drop.
         unsafe {
-            if self.ip_sock >= 0 { libc::close(self.ip_sock); }
-            if self.hci_sock >= 0 { libc::close(self.hci_sock); }
+            if self.ip_sock >= 0 {
+                libc::close(self.ip_sock);
+            }
+            if self.hci_sock >= 0 {
+                libc::close(self.hci_sock);
+            }
         }
     }
 }
@@ -573,11 +698,21 @@ impl Drop for Net {
 impl Net {
     fn new() -> Net {
         // SAFETY: socket() takes plain integers and returns an fd or -1, which is checked before use.
-        let ip_sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
+        let ip_sock =
+            unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
         // AF_BLUETOOTH = 31, BTPROTO_HCI = 1: only used to ask "is the adapter up" (no root needed)
         // SAFETY: socket() takes plain integers and returns an fd or -1, which is checked before use.
         let hci_sock = unsafe { libc::socket(31, libc::SOCK_RAW | libc::SOCK_CLOEXEC, 1) };
-        Net { ip_sock, hci_sock, ssid_cache: None, bt_sig: String::new(), bt_n: 0, bt_dev: String::new(), bt_at: None, bt_settle: false }
+        Net {
+            ip_sock,
+            hci_sock,
+            ssid_cache: None,
+            bt_sig: String::new(),
+            bt_n: 0,
+            bt_dev: String::new(),
+            bt_at: None,
+            bt_settle: false,
+        }
     }
 
     fn ssid_ioctl(&self, iface: &str) -> Option<String> {
@@ -585,13 +720,25 @@ impl Net {
             return None;
         }
         let mut buf = [0u8; 40];
-        let mut req = IwReq { name: [0; 16], pointer: buf.as_mut_ptr(), length: 33, flags: 0, _pad: [0; 4] };
+        let mut req = IwReq {
+            name: [0; 16],
+            pointer: buf.as_mut_ptr(),
+            length: 33,
+            flags: 0,
+            _pad: [0; 4],
+        };
         for (i, b) in iface.bytes().take(15).enumerate() {
             req.name[i] = b;
         }
         // SIOCGIWESSID = 0x8B1B (wireless extensions, still served by cfg80211 on mainstream kernels)
         // SAFETY: req is a live, initialised IwReq whose pointer targets buf (40 bytes) with length 33, so the kernel writes at most 33 bytes into it.
-        let rc = unsafe { libc::ioctl(self.ip_sock, 0x8B1B as libc::c_ulong, &mut req as *mut IwReq) };
+        let rc = unsafe {
+            libc::ioctl(
+                self.ip_sock,
+                0x8B1B as libc::c_ulong,
+                &mut req as *mut IwReq,
+            )
+        };
         if rc < 0 {
             return None;
         }
@@ -599,7 +746,11 @@ impl Net {
         let n = (req.length as usize).min(32);
         let n = buf[..n].iter().position(|&b| b == 0).unwrap_or(n);
         let s = String::from_utf8_lossy(&buf[..n]).into_owned();
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     }
 
     fn hci_up(&self, id: u16) -> Option<bool> {
@@ -612,7 +763,8 @@ impl Net {
         let mut buf = [0u8; 128]; // struct hci_dev_info: dev_id u16 first, flags u32 at offset 16, HCI_UP = bit 0
         buf[..2].copy_from_slice(&id.to_ne_bytes());
         // SAFETY: buf is 128 bytes, larger than struct hci_dev_info (92 bytes), so the kernel's write stays inside it.
-        let rc = unsafe { libc::ioctl(self.hci_sock, 0x800448D3 as libc::c_ulong, buf.as_mut_ptr()) }; // HCIGETDEVINFO
+        let rc =
+            unsafe { libc::ioctl(self.hci_sock, 0x800448D3 as libc::c_ulong, buf.as_mut_ptr()) }; // HCIGETDEVINFO
         if rc < 0 {
             return None;
         }
@@ -631,7 +783,8 @@ impl Net {
             }
             let base = format!("/sys/class/net/{}", n);
             let oper = first_line(&format!("{}/operstate", base));
-            let up = oper == "up" || (oper == "unknown" && first_line(&format!("{}/carrier", base)) == "1");
+            let up = oper == "up"
+                || (oper == "unknown" && first_line(&format!("{}/carrier", base)) == "1");
             if exists(&format!("{}/wireless", base)) || exists(&format!("{}/phy80211", base)) {
                 if oper == "up" && wlan_up.is_none() {
                     wlan_up = Some(n);
@@ -653,13 +806,37 @@ impl Net {
                     }
                     None => {
                         // no wireless-extensions on this driver: ask nmcli, then reuse the answer for a minute
-                        let fresh = self.ssid_cache.as_ref().map(|c| &c.0 == ifc && c.3.elapsed() < Duration::from_secs(60)).unwrap_or(false);
+                        let fresh = self
+                            .ssid_cache
+                            .as_ref()
+                            .map(|c| &c.0 == ifc && c.3.elapsed() < Duration::from_secs(60))
+                            .unwrap_or(false);
                         if !fresh {
-                            let o = run("nmcli", &["-t", "-f", "active,signal,ssid", "dev", "wifi", "list", "--rescan", "no"], 3);
-                            let hit = o.lines().find_map(|l| l.strip_prefix("yes:").map(|r| r.to_string()));
+                            let o = run(
+                                "nmcli",
+                                &[
+                                    "-t",
+                                    "-f",
+                                    "active,signal,ssid",
+                                    "dev",
+                                    "wifi",
+                                    "list",
+                                    "--rescan",
+                                    "no",
+                                ],
+                                3,
+                            );
+                            let hit = o
+                                .lines()
+                                .find_map(|l| l.strip_prefix("yes:").map(|r| r.to_string()));
                             if let Some(r) = hit {
                                 let (s, n) = r.split_once(':').unwrap_or((r.as_str(), ""));
-                                self.ssid_cache = Some((ifc.clone(), unescape(n), s.parse().unwrap_or(0), Instant::now()));
+                                self.ssid_cache = Some((
+                                    ifc.clone(),
+                                    unescape(n),
+                                    s.parse().unwrap_or(0),
+                                    Instant::now(),
+                                ));
                             }
                         }
                         if let Some(c) = &self.ssid_cache {
@@ -684,7 +861,11 @@ impl Net {
     /// bluetoothctl is only run when that set CHANGED (plus once a minute and once after a change has settled).
     fn bluetooth(&mut self) -> (bool, String, usize) {
         let ns = names("/sys/class/bluetooth");
-        let ids: Vec<u16> = ns.iter().filter(|n| !n.contains(':')).filter_map(|n| n.strip_prefix("hci").and_then(|d| d.parse().ok())).collect();
+        let ids: Vec<u16> = ns
+            .iter()
+            .filter(|n| !n.contains(':'))
+            .filter_map(|n| n.strip_prefix("hci").and_then(|d| d.parse().ok()))
+            .collect();
         if ids.is_empty() && std::env::var("HX_FAKE_HCI").is_err() {
             // no Bluetooth adapter at all
             self.bt_sig.clear();
@@ -713,8 +894,15 @@ impl Net {
             self.bt_dev.clear();
             return (false, String::new(), 0);
         }
-        let links: Vec<&String> = ns.iter().filter(|n| n.starts_with("hci") && n.contains(':')).collect();
-        let sig = links.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",");
+        let links: Vec<&String> = ns
+            .iter()
+            .filter(|n| n.starts_with("hci") && n.contains(':'))
+            .collect();
+        let sig = links
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         if fast && links.is_empty() {
             self.bt_sig = sig;
             self.bt_n = 0;
@@ -776,7 +964,10 @@ const LEARN_MIN_DAYS: usize = 3;
 const LEARN_MAX_SECS: f64 = 60.0;
 
 fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 struct Learner {
@@ -805,7 +996,12 @@ impl Learner {
                 changes.push(v);
             }
         }
-        let l = Learner { path, days, changes, last_key: None };
+        let l = Learner {
+            path,
+            days,
+            changes,
+            last_key: None,
+        };
         l.rewrite(); // drops what is older than 14 days
         l
     }
@@ -827,7 +1023,11 @@ impl Learner {
 
     fn append(&self, line: &str) {
         let _ = std::fs::create_dir_all(state_dir());
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&self.path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+        {
             let _ = writeln!(f, "{}", line);
         }
     }
@@ -866,7 +1066,11 @@ impl Learner {
     fn factor(&self) -> f64 {
         let now = now_secs();
         let oldest = now.saturating_sub(LEARN_DAYS * 86400);
-        let days = self.days.iter().filter(|d| d.saturating_mul(86400).saturating_add(86400) > oldest).count();
+        let days = self
+            .days
+            .iter()
+            .filter(|d| d.saturating_mul(86400).saturating_add(86400) > oldest)
+            .count();
         if days < LEARN_MIN_DAYS {
             return 1.0;
         }
@@ -904,7 +1108,9 @@ pub fn net(iv: f64) {
     }
     let wake = Wake::open("net");
     let mut n = Net::new();
-    let mut out = Out { last: String::new() };
+    let mut out = Out {
+        last: String::new(),
+    };
     let mut learner = Learner::load();
     loop {
         let line = n.sample();
@@ -947,7 +1153,13 @@ fn caffeine_on() -> bool {
 fn power_profile() -> String {
     let o = run(
         "busctl",
-        &["get-property", "net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles", "ActiveProfile"],
+        &[
+            "get-property",
+            "net.hadess.PowerProfiles",
+            "/net/hadess/PowerProfiles",
+            "net.hadess.PowerProfiles",
+            "ActiveProfile",
+        ],
         3,
     );
     if let Some(p) = o.split('"').nth(1) {
@@ -988,21 +1200,37 @@ fn focus_flag(conf: &str, key: &str, default: bool) -> bool {
 fn focus_status() -> Value {
     // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
     let rt = xdg_rt().unwrap_or_else(|| format!("/run/user/{}", unsafe { libc::getuid() }));
-    let st: Option<Value> = serde_json::from_str(&read(&format!("{}/halcyon-focus.json", rt))).ok().filter(|v: &Value| v.is_object());
+    let st: Option<Value> = serde_json::from_str(&read(&format!("{}/halcyon-focus.json", rt)))
+        .ok()
+        .filter(|v: &Value| v.is_object());
     let slow = || -> Value {
-        let o = run("bash", &[&format!("{}/.config/Halcyon/scripts/focus.sh", home()), "status"], 10);
+        let o = run(
+            "bash",
+            &[
+                &format!("{}/.config/Halcyon/scripts/focus.sh", home()),
+                "status",
+            ],
+            10,
+        );
         serde_json::from_str(o.trim()).unwrap_or_else(|_| json!({"on": false}))
     };
     let st = match st {
         None => {
-            return if exists(&format!("{}/focus-restore.json", state_dir())) { slow() } else { json!({"on": false}) };
+            return if exists(&format!("{}/focus-restore.json", state_dir())) {
+                slow()
+            } else {
+                json!({"on": false})
+            };
         }
         Some(s) => s,
     };
     if !truthy(&st["on"]) {
         return json!({"on": false});
     }
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
     let alive = match st["pid"].as_i64().filter(|p| *p != 0) {
         // SAFETY: kill() only sends a signal (0 = does the process exist); no memory is shared.
         Some(pid) => unsafe { libc::kill(pid as i32, 0) == 0 },
@@ -1012,9 +1240,15 @@ fn focus_status() -> Value {
         return slow();
     }
     let paused = truthy(&st["paused"]);
-    let left = if paused { st["left"].clone() } else { json!(((st["end"].as_f64().unwrap_or(0.0) - now).round() as i64).max(0)) };
+    let left = if paused {
+        st["left"].clone()
+    } else {
+        json!(((st["end"].as_f64().unwrap_or(0.0) - now).round() as i64).max(0))
+    };
     let conf = read(&format!("{}/.config/Halcyon/focus.conf", home()));
-    let blocking = focus_flag(&conf, "BLOCK", true) && !paused && (st["phase"] == "work" || !focus_flag(&conf, "BREAK_FREE", true));
+    let blocking = focus_flag(&conf, "BLOCK", true)
+        && !paused
+        && (st["phase"] == "work" || !focus_flag(&conf, "BREAK_FREE", true));
     json!({
         "on": true, "phase": st["phase"], "paused": paused, "left": left, "end": st["end"], "total": st["total"],
         "cycle": st["cycle"], "cycles": st["cycles"], "pomodoro": truthy(&st["pomodoro"]), "mins": st["mins"],

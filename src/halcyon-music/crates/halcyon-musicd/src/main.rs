@@ -63,7 +63,10 @@ fn main() -> ExitCode {
 /// `--login`: run the browser sign-in once, store the streaming token, and exit. Meant for
 /// testing and headless setups; the GUI uses the `login_start_librespot` command instead.
 fn login_cli() -> ExitCode {
-    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("could not start the async runtime: {e}");
@@ -95,7 +98,10 @@ fn login_cli() -> ExitCode {
 
 /// `--probe`: PASS/FAIL table of the Web API endpoints for the current browsing mode.
 fn probe_cli_main() -> ExitCode {
-    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("could not start the async runtime: {e}");
@@ -121,7 +127,10 @@ fn connect_spike_main(args: &[String]) -> ExitCode {
         },
         None => 50,
     };
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("could not start the async runtime: {e}");
@@ -190,7 +199,10 @@ fn eval_main(args: &[String]) -> ExitCode {
     } else {
         println!("No play history found; only the fixtures were scored.");
     }
-    let dirs = eval::OutputDirs { docs, private: state_private };
+    let dirs = eval::OutputDirs {
+        docs,
+        private: state_private,
+    };
     match eval::write_all(&dirs, &out, write_baseline) {
         Ok(files) => {
             for f in files {
@@ -240,14 +252,25 @@ fn reco_reset_main() -> ExitCode {
     let db = halcyon_music_core::paths::cache_dir().join("cache.db");
     if db.exists() {
         if let Ok(cache) = Cache::open_default() {
-            last_play = cache.get_recent_plays(1).ok().and_then(|v| v.first().map(|p| p.id)).unwrap_or(last_play);
-            last_skip = cache.get_skips(1_000_000).ok().and_then(|v| v.iter().map(|p| p.id).max()).unwrap_or(last_skip);
+            last_play = cache
+                .get_recent_plays(1)
+                .ok()
+                .and_then(|v| v.first().map(|p| p.id))
+                .unwrap_or(last_play);
+            last_skip = cache
+                .get_skips(1_000_000)
+                .ok()
+                .and_then(|v| v.iter().map(|p| p.id).max())
+                .unwrap_or(last_skip);
         }
     }
     state.reset(last_play, last_skip);
     match state.save(&path) {
         Ok(()) => {
-            println!("The recommendation model is back to its starting weights ({}).", path.display());
+            println!(
+                "The recommendation model is back to its starting weights ({}).",
+                path.display()
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -259,7 +282,10 @@ fn reco_reset_main() -> ExitCode {
 
 /// `--reco-probe`: does each outside source answer in the shape the code expects?
 fn reco_probe_main() -> ExitCode {
-    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("could not start the async runtime: {e}");
@@ -270,7 +296,12 @@ fn reco_probe_main() -> ExitCode {
     let rows = runtime.block_on(halcyon_musicd::reco::engine::probe_sources(&http));
     let mut all_ok = true;
     for r in &rows {
-        println!("{:<32} {:<5} {}", r.name, if r.ok { "PASS" } else { "FAIL" }, r.detail);
+        println!(
+            "{:<32} {:<5} {}",
+            r.name,
+            if r.ok { "PASS" } else { "FAIL" },
+            r.detail
+        );
         all_ok &= r.ok;
     }
     if all_ok {
@@ -281,7 +312,11 @@ fn reco_probe_main() -> ExitCode {
 }
 
 fn cli_runtime() -> Option<tokio::runtime::Runtime> {
-    match tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build() {
+    match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+    {
         Ok(rt) => Some(rt),
         Err(e) => {
             eprintln!("could not start the async runtime: {e}");
@@ -293,7 +328,9 @@ fn cli_runtime() -> Option<tokio::runtime::Runtime> {
 /// `--model-check`: HEAD every catalogue URL and print status, size and the server's checksum.
 fn model_check_main() -> ExitCode {
     use halcyon_musicd::llm::models;
-    let Some(rt) = cli_runtime() else { return ExitCode::from(2) };
+    let Some(rt) = cli_runtime() else {
+        return ExitCode::from(2);
+    };
     let mut all_ok = true;
     for m in models::CATALOGUE {
         match rt.block_on(models::head(m.url)) {
@@ -311,30 +348,57 @@ fn model_check_main() -> ExitCode {
             }
         }
     }
-    if all_ok { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if all_ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 /// `--model-fetch ID`: download one model with a progress line.
 fn model_fetch_main(args: &[String]) -> ExitCode {
     use halcyon_musicd::llm::models;
     let Some(id) = args.get(2) else {
-        eprintln!("usage: halcyon-musicd --model-fetch ID   (ids: {})", models::CATALOGUE.iter().map(|m| m.id).collect::<Vec<_>>().join(", "));
+        eprintln!(
+            "usage: halcyon-musicd --model-fetch ID   (ids: {})",
+            models::CATALOGUE
+                .iter()
+                .map(|m| m.id)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         return ExitCode::from(2);
     };
     let Some(spec) = models::find(id) else {
         eprintln!("unknown model {id}");
         return ExitCode::from(2);
     };
-    let Some(rt) = cli_runtime() else { return ExitCode::from(2) };
+    let Some(rt) = cli_runtime() else {
+        return ExitCode::from(2);
+    };
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let mut shown = |p: models::Progress| {
-        eprint!("\r{:<10} {:>4} / {:>4} MB   ", p.state, p.done / 1_000_000, p.total / 1_000_000);
+        eprint!(
+            "\r{:<10} {:>4} / {:>4} MB   ",
+            p.state,
+            p.done / 1_000_000,
+            p.total / 1_000_000
+        );
     };
-    let r = rt.block_on(models::download(&models::Plan::from_spec(spec), &models::models_dir(), &cancel, &mut shown));
+    let r = rt.block_on(models::download(
+        &models::Plan::from_spec(spec),
+        &models::models_dir(),
+        &cancel,
+        &mut shown,
+    ));
     eprintln!();
     match r {
         Ok(how) => {
-            println!("{} ready in {} (checked: {how})", spec.id, models::models_dir().display());
+            println!(
+                "{} ready in {} (checked: {how})",
+                spec.id,
+                models::models_dir().display()
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -352,13 +416,27 @@ fn model_bench_main(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
     let which = args.get(2).map(String::as_str).unwrap_or("all");
-    let runs = args.get(3).and_then(|v| v.parse::<usize>().ok()).unwrap_or(3).clamp(1, 20);
-    let Some(rt) = cli_runtime() else { return ExitCode::from(2) };
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let runs = args
+        .get(3)
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3)
+        .clamp(1, 20);
+    let Some(rt) = cli_runtime() else {
+        return ExitCode::from(2);
+    };
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     let mut any = false;
-    for spec in models::CATALOGUE.iter().filter(|m| which == "all" || m.id == which) {
+    for spec in models::CATALOGUE
+        .iter()
+        .filter(|m| which == "all" || m.id == which)
+    {
         if !models::disk_status(&models::models_dir(), spec.file).installed {
-            eprintln!("{}: not downloaded (run --model-fetch {})", spec.id, spec.id);
+            eprintln!(
+                "{}: not downloaded (run --model-fetch {})",
+                spec.id, spec.id
+            );
             continue;
         }
         any = true;
@@ -367,5 +445,9 @@ fn model_bench_main(args: &[String]) -> ExitCode {
         println!("{}", bench::report(spec.id, &rows, threads));
         local::unload_now();
     }
-    if any { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if any {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }

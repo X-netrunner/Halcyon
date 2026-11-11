@@ -16,7 +16,10 @@ fn backlight() -> Option<(String, f64)> {
     let mut best: Option<(String, f64)> = None;
     for e in std::fs::read_dir("/sys/class/backlight").ok()?.flatten() {
         let p = e.path().to_string_lossy().into_owned();
-        let max: f64 = util::read(&format!("{}/max_brightness", p)).trim().parse().unwrap_or(0.0);
+        let max: f64 = util::read(&format!("{}/max_brightness", p))
+            .trim()
+            .parse()
+            .unwrap_or(0.0);
         if max > 0.0 && best.as_ref().is_none_or(|(_, m)| max > *m) {
             best = Some((p, max));
         }
@@ -26,14 +29,22 @@ fn backlight() -> Option<(String, f64)> {
 
 fn bright(bl: &Option<(String, f64)>, last_bctl: &mut Instant, cached_b: &mut i32) -> i32 {
     if let Some((p, max)) = bl {
-        if let Ok(v) = util::read(&format!("{}/brightness", p)).trim().parse::<f64>() {
+        if let Ok(v) = util::read(&format!("{}/brightness", p))
+            .trim()
+            .parse::<f64>()
+        {
             *cached_b = (v * 100.0 / max).round() as i32;
             return *cached_b;
         }
     }
     if last_bctl.elapsed() >= Duration::from_millis(1500) {
         let o = util::run("brightnessctl", &["-m"], 2);
-        *cached_b = o.lines().next().and_then(|l| l.split(',').nth(3)).map(|s| s.trim_end_matches('%').parse().unwrap_or(0)).unwrap_or(*cached_b);
+        *cached_b = o
+            .lines()
+            .next()
+            .and_then(|l| l.split(',').nth(3))
+            .map(|s| s.trim_end_matches('%').parse().unwrap_or(0))
+            .unwrap_or(*cached_b);
         *last_bctl = Instant::now();
     }
     *cached_b
@@ -41,7 +52,11 @@ fn bright(bl: &Option<(String, f64)>, last_bctl: &mut Instant, cached_b: &mut i3
 
 fn volume(target: &str) -> (i32, bool) {
     let o = util::run("wpctl", &["get-volume", target], 2);
-    let v = o.split_whitespace().nth(1).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let v = o
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0);
     ((v * 100.0).round() as i32, o.contains("MUTED"))
 }
 
@@ -52,7 +67,10 @@ pub fn run() {
         // `hx ctl` is stopped (SIGTERM) every time the panel closes, and a SIGTERM runs no cleanup: without this the `pactl subscribe`
         // child would be left behind, one more orphan on every open / close of the panel. PDEATHSIG makes the kernel kill it with us.
         let mut cmd = Command::new("pactl");
-        cmd.arg("subscribe").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        cmd.arg("subscribe")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
         // SAFETY: runs in the forked child just before exec; prctl / setsid are async-signal-safe and nothing is allocated.
         unsafe {
             cmd.pre_exec(|| {
@@ -66,7 +84,10 @@ pub fn run() {
                 std::thread::spawn(move || {
                     if let Some(o) = out {
                         for line in BufReader::new(o).lines().map_while(Result::ok) {
-                            if line.contains(" sink ") || line.contains(" source ") || line.contains("server") {
+                            if line.contains(" sink ")
+                                || line.contains(" source ")
+                                || line.contains("server")
+                            {
                                 d.store(true, Ordering::Relaxed);
                             }
                         }
@@ -108,13 +129,20 @@ pub fn run() {
         if changed {
             first = false;
             last_change = Instant::now();
-            let line = format!("{{\"vol\":{},\"muted\":{},\"mic\":{},\"micMuted\":{},\"bright\":{}}}", vol.0, vol.1, mic.0, mic.1, b);
+            let line = format!(
+                "{{\"vol\":{},\"muted\":{},\"mic\":{},\"micMuted\":{},\"bright\":{}}}",
+                vol.0, vol.1, mic.0, mic.1, b
+            );
             let mut o = stdout.lock();
             if writeln!(o, "{}", line).is_err() || o.flush().is_err() {
                 return; // the island went away
             }
         }
-        let sleep_ms = if last_change.elapsed() < Duration::from_secs(5) { 80 } else { 250 };
+        let sleep_ms = if last_change.elapsed() < Duration::from_secs(5) {
+            80
+        } else {
+            250
+        };
         std::thread::sleep(Duration::from_millis(sleep_ms));
     }
 }

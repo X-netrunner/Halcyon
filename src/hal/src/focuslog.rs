@@ -55,7 +55,10 @@ fn esc(s: &str) -> String {
 }
 
 fn render(days: &BTreeMap<String, i64>) -> String {
-    let body: Vec<String> = days.iter().map(|(k, v)| format!("\"{}\":{}", esc(k), v)).collect();
+    let body: Vec<String> = days
+        .iter()
+        .map(|(k, v)| format!("\"{}\":{}", esc(k), v))
+        .collect();
     format!("{{{}}}", body.join(","))
 }
 
@@ -65,7 +68,11 @@ pub fn run(args: &[String]) -> i32 {
     let mut days = load(&text);
     match args.first().map(|s| s.as_str()) {
         Some("add") => {
-            let minutes = args.get(1).and_then(|s| s.trim().parse::<i64>().ok()).unwrap_or(0).clamp(0, 600);
+            let minutes = args
+                .get(1)
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .unwrap_or(0)
+                .clamp(0, 600);
             let today = util::out("date", &["+%F"]).trim().to_string();
             if today.is_empty() {
                 return 1;

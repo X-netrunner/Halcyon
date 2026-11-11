@@ -1,5 +1,6 @@
 mod classify;
 
+use evdev::{AbsoluteAxisType, Device, EventType};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,6 @@ use std::process::Command;
 use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use evdev::{AbsoluteAxisType, Device, EventType};
 
 /// Fingers land one after the other and jitter for a moment: movement in the first few milliseconds after the
 /// last finger touches down is not counted as a swipe or a pinch.
@@ -22,7 +22,12 @@ fn cmd_sender() -> &'static Sender<(&'static str, Vec<String>)> {
             while let Ok((cmd, args)) = rx.recv() {
                 match Command::new(cmd).args(&args).output() {
                     Ok(o) if o.status.success() => {}
-                    Ok(o) => eprintln!("{} {:?} failed: {}", cmd, args, String::from_utf8_lossy(&o.stderr).trim()),
+                    Ok(o) => eprintln!(
+                        "{} {:?} failed: {}",
+                        cmd,
+                        args,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    ),
                     Err(e) => eprintln!("cannot run {}: {} (is it installed and in PATH?)", cmd, e),
                 }
             }
@@ -44,7 +49,11 @@ fn brightness(dir: &str) {
     let home = std::env::var("HOME").unwrap_or_default();
     fire(
         "bash",
-        vec![format!("{}/.config/Halcyon/scripts/brightness.sh", home), dir.to_string(), "5".to_string()],
+        vec![
+            format!("{}/.config/Halcyon/scripts/brightness.sh", home),
+            dir.to_string(),
+            "5".to_string(),
+        ],
     );
 }
 
@@ -66,17 +75,23 @@ fn find_touchpad() -> Option<Device> {
     let mut denied = 0;
     for entry in entries.flatten() {
         let path = entry.path();
-        let is_event = path.file_name().and_then(|n| n.to_str()).is_some_and(|s| s.starts_with("event"));
+        let is_event = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|s| s.starts_with("event"));
         if !is_event {
             continue;
         }
         match Device::open(&path) {
             Ok(device) => {
                 let name = device.name().unwrap_or("").to_lowercase();
-                let named = name.contains("touchpad") || name.contains("touch pad") || name.contains("trackpad");
-                let has_mt = device
-                    .supported_absolute_axes()
-                    .is_some_and(|a| a.contains(AbsoluteAxisType::ABS_MT_POSITION_X) && a.contains(AbsoluteAxisType::ABS_MT_POSITION_Y));
+                let named = name.contains("touchpad")
+                    || name.contains("touch pad")
+                    || name.contains("trackpad");
+                let has_mt = device.supported_absolute_axes().is_some_and(|a| {
+                    a.contains(AbsoluteAxisType::ABS_MT_POSITION_X)
+                        && a.contains(AbsoluteAxisType::ABS_MT_POSITION_Y)
+                });
                 if named && has_mt {
                     return Some(device);
                 }
@@ -118,8 +133,22 @@ fn load_gestures_conf(last_load: &mut Instant, map: &mut HashMap<String, String>
     out.insert("g3-down".into(), "scratch".into());
     out.insert("g3-pinchin".into(), "overview".into());
     out.insert("g3-pinchout".into(), "overview".into());
-    out.insert("g4-left".into(), if swipe4_right { "ws-prev".into() } else { "ws-next".into() });
-    out.insert("g4-right".into(), if swipe4_right { "ws-next".into() } else { "ws-prev".into() });
+    out.insert(
+        "g4-left".into(),
+        if swipe4_right {
+            "ws-prev".into()
+        } else {
+            "ws-next".into()
+        },
+    );
+    out.insert(
+        "g4-right".into(),
+        if swipe4_right {
+            "ws-next".into()
+        } else {
+            "ws-prev".into()
+        },
+    );
     out.insert("g4-down".into(), "sleep".into());
 
     if let Ok(raw) = fs::read_to_string(state_dir.join("gestures.conf")) {
@@ -155,7 +184,15 @@ fn json_esc(s: &str) -> String {
 
 /// Streams live 3-finger / 4-finger normalized displacement & pinch scale to $XDG_RUNTIME_DIR/halcyon-gesture.json
 /// so Quickshell overlays (Overview tree, Launcher, Calendar, Notifications) follow the user's fingers 1:1 in real time.
-fn write_gesture_state(phase: &str, fingers: usize, dx: f32, dy: f32, scale: f32, dir: &str, action: &str) {
+fn write_gesture_state(
+    phase: &str,
+    fingers: usize,
+    dx: f32,
+    dy: f32,
+    scale: f32,
+    dir: &str,
+    action: &str,
+) {
     let p = gesture_state_path();
     let tmp = p.with_extension("json.tmp");
     let payload = format!(
@@ -224,8 +261,14 @@ fn main() {
     let h_threshold = (0.08 * max_x as f64) as i32;
     let b_threshold = (0.04 * max_x as f64) as i32;
 
-    println!("Left Edge (< {}), Right Edge (> {}), Top Edge (< {})", left_edge, right_edge, top_edge);
-    println!("Thresholds: Vertical Delta={}, Horizontal Delta={}, Brightness Delta={}", v_threshold, h_threshold, b_threshold);
+    println!(
+        "Left Edge (< {}), Right Edge (> {}), Top Edge (< {})",
+        left_edge, right_edge, top_edge
+    );
+    println!(
+        "Thresholds: Vertical Delta={}, Horizontal Delta={}, Brightness Delta={}",
+        v_threshold, h_threshold, b_threshold
+    );
 
     let mut active_slots: HashMap<i32, SlotState> = HashMap::new();
     let mut current_slot: i32 = 0;
@@ -287,7 +330,9 @@ fn main() {
                                     last_trigger_y = None;
                                     multi_finger_detected = false;
                                     triggered_action = false;
-                                    music_disabled = Path::new("/dev/shm/touchpad_music_gestures_disabled").exists();
+                                    music_disabled =
+                                        Path::new("/dev/shm/touchpad_music_gestures_disabled")
+                                            .exists();
                                     pad_disabled = touchpad_disabled();
                                 } else if active_slots.len() > 1 {
                                     multi_finger_detected = true;
@@ -296,7 +341,10 @@ fn main() {
                                 active_slots.remove(&current_slot);
                                 if active_slots.is_empty() {
                                     if mf_fingers >= 3 {
-                                        write_gesture_state("end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                                        write_gesture_state(
+                                            "end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir,
+                                            &mf_action,
+                                        );
                                         mf_fingers = 0;
                                         mf_dir.clear();
                                         mf_action.clear();
@@ -371,34 +419,58 @@ fn main() {
                                             if delta_y.abs() >= v_threshold {
                                                 if delta_y < 0 {
                                                     println!("Gesture: Volume Up");
-                                                    fire_s("wpctl", &["set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "2%+"]);
+                                                    fire_s(
+                                                        "wpctl",
+                                                        &[
+                                                            "set-volume",
+                                                            "-l",
+                                                            "1.0",
+                                                            "@DEFAULT_AUDIO_SINK@",
+                                                            "2%+",
+                                                        ],
+                                                    );
                                                 } else {
                                                     println!("Gesture: Volume Down");
-                                                    fire_s("wpctl", &["set-volume", "@DEFAULT_AUDIO_SINK@", "2%-"]);
+                                                    fire_s(
+                                                        "wpctl",
+                                                        &[
+                                                            "set-volume",
+                                                            "@DEFAULT_AUDIO_SINK@",
+                                                            "2%-",
+                                                        ],
+                                                    );
                                                 }
                                                 last_trigger_y = Some(y);
                                             }
                                         } else if is_left_edge
-                                            && !music_disabled && !triggered_action && delta_y.abs() >= v_threshold * 2 {
-                                                if delta_y < 0 {
-                                                    println!("Gesture: Media Next");
-                                                    fire_s("playerctl", &["next"]);
-                                                } else {
-                                                    println!("Gesture: Media Prev");
-                                                    fire_s("playerctl", &["previous"]);
-                                                }
-                                                triggered_action = true;
+                                            && !music_disabled
+                                            && !triggered_action
+                                            && delta_y.abs() >= v_threshold * 2
+                                        {
+                                            if delta_y < 0 {
+                                                println!("Gesture: Media Next");
+                                                fire_s("playerctl", &["next"]);
+                                            } else {
+                                                println!("Gesture: Media Prev");
+                                                fire_s("playerctl", &["previous"]);
                                             }
+                                            triggered_action = true;
+                                        }
                                     }
                                 }
                             }
                         }
-                    } else if event.event_type() == EventType::SYNCHRONIZATION && event.code() == 0 && !pad_disabled {
+                    } else if event.event_type() == EventType::SYNCHRONIZATION
+                        && event.code() == 0
+                        && !pad_disabled
+                    {
                         // Real-time 3-finger & 4-finger tracking on SYN_REPORT
                         let pts: Vec<(f32, f32)> = active_slots
                             .values()
                             .filter_map(|s| match (s.x, s.y) {
-                                (Some(vx), Some(vy)) => Some((vx as f32 / max_x as f32, vy as f32 / max_y as f32)),
+                                (Some(vx), Some(vy)) => {
+                                    Some((vx as f32 / max_x as f32, vy as f32 / max_y as f32))
+                                }
                                 _ => None,
                             })
                             .collect();
@@ -448,11 +520,19 @@ fn main() {
                                 // pinch or swipe? see classify.rs: a pinch wins whenever the fingers moved against
                                 // each other by a fair share of the movement, so hand drift no longer turns it into a swipe
                                 let radial = spread - mf_start_spread;
-                                let kind = classify::classify(&thresholds, radial, cx - mf_start_cx, cy - mf_start_cy);
+                                let kind = classify::classify(
+                                    &thresholds,
+                                    radial,
+                                    cx - mf_start_cx,
+                                    cy - mf_start_cy,
+                                );
                                 if let Some(name) = kind.name() {
                                     mf_dir = name.to_string();
                                     let key = format!("g{}-{}", n, name);
-                                    mf_action = gestures_conf.get(&key).cloned().unwrap_or_else(|| "none".into());
+                                    mf_action = gestures_conf
+                                        .get(&key)
+                                        .cloned()
+                                        .unwrap_or_else(|| "none".into());
                                     if debug {
                                         eprintln!(
                                             "{} fingers: {} (radial {:.3}, drift {:.3},{:.3}) -> {}",
@@ -463,11 +543,15 @@ fn main() {
                             }
 
                             if mf_last_emit.elapsed() >= Duration::from_millis(16) {
-                                write_gesture_state("update", n, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                                write_gesture_state(
+                                    "update", n, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action,
+                                );
                                 mf_last_emit = Instant::now();
                             }
                         } else if mf_fingers >= 3 && active_slots.is_empty() {
-                            write_gesture_state("end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action);
+                            write_gesture_state(
+                                "end", mf_fingers, mf_dx, mf_dy, mf_scale, &mf_dir, &mf_action,
+                            );
                             mf_fingers = 0;
                             mf_dir.clear();
                             mf_action.clear();

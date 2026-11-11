@@ -121,7 +121,9 @@ pub fn connect_pref_file() -> PathBuf {
 pub fn avatar_candidates_in(home: &std::path::Path, user: &str) -> Vec<PathBuf> {
     let mut v = vec![home.join(".face"), home.join(".face.icon")];
     if !user.is_empty() {
-        v.push(PathBuf::from(format!("/var/lib/AccountsService/icons/{user}")));
+        v.push(PathBuf::from(format!(
+            "/var/lib/AccountsService/icons/{user}"
+        )));
     }
     let extensions = ["png", "jpg", "jpeg", "webp"];
     for ext in extensions {
@@ -158,7 +160,10 @@ fn expand_user_path(home: &std::path::Path, raw: &str) -> Option<PathBuf> {
 /// `"profileAvatar"` in `~/.local/state/island/settings.json`. This is the first thing the rice
 /// itself looks at (`avatar.sh <chosen>`), so it has to be first here too, or choosing a picture
 /// in Halcyon would not change anything in the music app.
-pub fn profile_avatar_from_settings(home: &std::path::Path, settings_json: &str) -> Option<PathBuf> {
+pub fn profile_avatar_from_settings(
+    home: &std::path::Path,
+    settings_json: &str,
+) -> Option<PathBuf> {
     let v: serde_json::Value = serde_json::from_str(settings_json).ok()?;
     expand_user_path(home, v.get("profileAvatar")?.as_str()?)
 }
@@ -217,13 +222,20 @@ mod tests {
     #[test]
     fn a_picture_chosen_in_halcyon_comes_before_face_and_the_standard_places() {
         let home = PathBuf::from("/h");
-        let chosen = profile_avatar_from_settings(&home, r#"{"profileAvatar":"~/Pictures/me.png"}"#);
+        let chosen =
+            profile_avatar_from_settings(&home, r#"{"profileAvatar":"~/Pictures/me.png"}"#);
         assert_eq!(chosen, Some(PathBuf::from("/h/Pictures/me.png")));
-        assert_eq!(profile_avatar_from_settings(&home, r#"{"profileAvatar":""}"#), None);
+        assert_eq!(
+            profile_avatar_from_settings(&home, r#"{"profileAvatar":""}"#),
+            None
+        );
         assert_eq!(profile_avatar_from_settings(&home, "not json"), None);
         let shown = shown_avatar_from_greeter_look(&home, r#"{"v":1,"avatar":"/x/a.jpg"}"#);
         assert_eq!(shown, Some(PathBuf::from("/x/a.jpg")));
-        assert_eq!(shown_avatar_from_greeter_look(&home, r#"{"v":2,"avatar":"/x/a.jpg"}"#), None);
+        assert_eq!(
+            shown_avatar_from_greeter_look(&home, r#"{"v":2,"avatar":"/x/a.jpg"}"#),
+            None
+        );
         let c = avatar_candidates_full(&home, "ada", chosen, shown);
         assert_eq!(c[0], PathBuf::from("/h/Pictures/me.png"));
         assert_eq!(c[1], PathBuf::from("/x/a.jpg"));

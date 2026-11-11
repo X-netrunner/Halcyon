@@ -174,7 +174,11 @@ impl Feedback {
         cut(&mut self.blocked_artists, MAX_BLOCKED_ARTISTS);
         while self.less.len() > MAX_LESS_ENTRIES {
             // Drop the entries said least often; ties by key, so the result is deterministic.
-            let drop = self.less.iter().min_by(|a, b| a.1.cmp(b.1).then_with(|| a.0.cmp(b.0))).map(|(k, _)| k.clone());
+            let drop = self
+                .less
+                .iter()
+                .min_by(|a, b| a.1.cmp(b.1).then_with(|| a.0.cmp(b.0)))
+                .map(|(k, _)| k.clone());
             match drop {
                 Some(k) => {
                     self.less.remove(&k);
@@ -185,7 +189,10 @@ impl Feedback {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.blocked_tracks.is_empty() && self.blocked_names.is_empty() && self.blocked_artists.is_empty() && self.less.is_empty()
+        self.blocked_tracks.is_empty()
+            && self.blocked_names.is_empty()
+            && self.blocked_artists.is_empty()
+            && self.less.is_empty()
     }
 }
 
@@ -211,7 +218,12 @@ pub struct MixStore {
 
 impl Default for MixStore {
     fn default() -> Self {
-        MixStore { version: STORE_VERSION, mixes: BTreeMap::new(), slots: BTreeMap::new(), feedback: Feedback::default() }
+        MixStore {
+            version: STORE_VERSION,
+            mixes: BTreeMap::new(),
+            slots: BTreeMap::new(),
+            feedback: Feedback::default(),
+        }
     }
 }
 
@@ -253,8 +265,12 @@ impl MixStore {
 
     /// Take a song out of a mix at once (it was rejected). True when something was removed.
     pub fn remove_track(&mut self, mix_id: &str, track_id: &str) -> bool {
-        let Some(m) = self.mixes.get_mut(mix_id) else { return false };
-        let Some(pos) = m.tracks.iter().position(|t| t.id == track_id) else { return false };
+        let Some(m) = self.mixes.get_mut(mix_id) else {
+            return false;
+        };
+        let Some(pos) = m.tracks.iter().position(|t| t.id == track_id) else {
+            return false;
+        };
         m.tracks.remove(pos);
         if pos < m.reasons.len() {
             m.reasons.remove(pos);
@@ -274,7 +290,10 @@ impl MixStore {
             let keep: Vec<bool> = m
                 .tracks
                 .iter()
-                .map(|t| !fb.is_track_blocked(Some(&t.id), &t.artist, &t.title) && !fb.is_artist_blocked(&t.artist))
+                .map(|t| {
+                    !fb.is_track_blocked(Some(&t.id), &t.artist, &t.title)
+                        && !fb.is_artist_blocked(&t.artist)
+                })
                 .collect();
             if keep.iter().all(|k| *k) {
                 continue;
@@ -296,7 +315,8 @@ impl MixStore {
     /// are released. Returns `(slot, cluster id)` by slot.
     pub fn assign_slots(&mut self, cluster_ids: &[u32], max: usize) -> Vec<(usize, u32)> {
         let wanted: Vec<u32> = cluster_ids.iter().copied().take(max).collect();
-        self.slots.retain(|slot, cid| (1..=max as u32).contains(slot) && wanted.contains(cid));
+        self.slots
+            .retain(|slot, cid| (1..=max as u32).contains(slot) && wanted.contains(cid));
         for cid in &wanted {
             if self.slots.values().any(|v| v == cid) {
                 continue;
@@ -310,13 +330,20 @@ impl MixStore {
 
     /// Mixes in the order Home shows them, as the wire types.
     pub fn to_wire(&self) -> (Vec<MusicMix>, Vec<MixMeta>) {
-        let mut all: Vec<&StoredMix> = self.mixes.values().filter(|m| !m.tracks.is_empty()).collect();
+        let mut all: Vec<&StoredMix> = self
+            .mixes
+            .values()
+            .filter(|m| !m.tracks.is_empty())
+            .collect();
         all.sort_by(|a, b| {
             let ra = MixKind::from_name(&a.kind).map_or(99, |k| k.display_rank());
             let rb = MixKind::from_name(&b.kind).map_or(99, |k| k.display_rank());
             ra.cmp(&rb).then_with(|| a.id.cmp(&b.id))
         });
-        (all.iter().map(|m| m.to_music_mix()).collect(), all.iter().map(|m| m.to_meta()).collect())
+        (
+            all.iter().map(|m| m.to_music_mix()).collect(),
+            all.iter().map(|m| m.to_meta()).collect(),
+        )
     }
 }
 
@@ -347,7 +374,10 @@ mod tests {
         let mut f = Feedback::default();
         f.block_track("sp1", "Daft Punk", "Get Lucky");
         assert!(f.is_track_blocked(Some("sp1"), "x", "y"));
-        assert!(f.is_track_blocked(Some("sp2"), "daft punk", "Get Lucky (Radio Edit)"), "same name, other id");
+        assert!(
+            f.is_track_blocked(Some("sp2"), "daft punk", "Get Lucky (Radio Edit)"),
+            "same name, other id"
+        );
         assert!(!f.is_track_blocked(Some("sp3"), "Daft Punk", "Around the World"));
         assert!(!f.is_track_blocked(None, "Daft Punk", ""));
     }
@@ -357,7 +387,11 @@ mod tests {
         let mut f = Feedback::default();
         assert_eq!(f.artist_cap("Muse", 2), 2);
         f.less_like("Muse");
-        assert_eq!(f.artist_cap("  MUSE ", 2), 1, "one song per list after the first less");
+        assert_eq!(
+            f.artist_cap("  MUSE ", 2),
+            1,
+            "one song per list after the first less"
+        );
         assert_eq!(f.artist_cap("Muse", 3), 1);
         f.less_like("Muse");
         assert!(!f.is_artist_blocked("Muse"));
@@ -375,7 +409,10 @@ mod tests {
         }
         assert_eq!(f.blocked_tracks.len(), MAX_BLOCKED_TRACKS);
         assert!(f.is_track_blocked(Some(&format!("id{}", MAX_BLOCKED_TRACKS + 49)), "x", ""));
-        assert!(!f.is_track_blocked(Some("id0"), "x", ""), "the oldest fell out");
+        assert!(
+            !f.is_track_blocked(Some("id0"), "x", ""),
+            "the oldest fell out"
+        );
     }
 
     #[test]
@@ -414,7 +451,11 @@ mod tests {
     #[test]
     fn removing_a_track_keeps_reasons_and_flags_in_step() {
         let mut s = MixStore::default();
-        s.put(mix("m", "daylist", vec![t("a", "A", "1"), t("b", "B", "2"), t("c", "C", "3")]));
+        s.put(mix(
+            "m",
+            "daylist",
+            vec![t("a", "A", "1"), t("b", "B", "2"), t("c", "C", "3")],
+        ));
         assert!(s.remove_track("m", "b"));
         let m = s.get("m").expect("mix");
         assert_eq!(m.tracks.len(), 2);
@@ -427,12 +468,28 @@ mod tests {
     #[test]
     fn purge_removes_blocked_songs_and_artists_everywhere() {
         let mut s = MixStore::default();
-        s.put(mix("m1", "daily_mix", vec![t("a", "A", "1"), t("b", "B", "2"), t("c", "A", "3")]));
-        s.put(mix("m2", "on_repeat", vec![t("d", "D", "4"), t("a", "A", "1")]));
+        s.put(mix(
+            "m1",
+            "daily_mix",
+            vec![t("a", "A", "1"), t("b", "B", "2"), t("c", "A", "3")],
+        ));
+        s.put(mix(
+            "m2",
+            "on_repeat",
+            vec![t("d", "D", "4"), t("a", "A", "1")],
+        ));
         s.feedback.block_artist("B");
         s.feedback.block_track("a", "A", "1");
         assert!(s.purge_blocked());
-        assert_eq!(s.get("m1").expect("m1").tracks.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), vec!["c"]);
+        assert_eq!(
+            s.get("m1")
+                .expect("m1")
+                .tracks
+                .iter()
+                .map(|x| x.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["c"]
+        );
         assert_eq!(s.get("m1").expect("m1").reasons, vec!["r2"]);
         assert_eq!(s.get("m2").expect("m2").tracks.len(), 1);
         assert!(!s.purge_blocked(), "nothing left to remove");
@@ -441,9 +498,15 @@ mod tests {
     #[test]
     fn slots_are_kept_when_clusters_are_recomputed() {
         let mut s = MixStore::default();
-        assert_eq!(s.assign_slots(&[10, 20, 30], 6), vec![(1, 10), (2, 20), (3, 30)]);
+        assert_eq!(
+            s.assign_slots(&[10, 20, 30], 6),
+            vec![(1, 10), (2, 20), (3, 30)]
+        );
         // Cluster 10 disappears and a new one (40) appears; 20 and 30 keep their numbers.
-        assert_eq!(s.assign_slots(&[20, 40, 30], 6), vec![(1, 40), (2, 20), (3, 30)]);
+        assert_eq!(
+            s.assign_slots(&[20, 40, 30], 6),
+            vec![(1, 40), (2, 20), (3, 30)]
+        );
         // Never more than the maximum.
         let many: Vec<u32> = (100..110).collect();
         let mut s2 = MixStore::default();
@@ -456,12 +519,22 @@ mod tests {
         s.put(mix("daylist", "daylist", vec![t("a", "A", "1")]));
         s.put(mix("daily-mix-2", "daily_mix", vec![t("b", "B", "2")]));
         s.put(mix("daily-mix-1", "daily_mix", vec![t("c", "C", "3")]));
-        s.put(mix("release-radar", "release_radar", vec![t("d", "D", "4")]));
+        s.put(mix(
+            "release-radar",
+            "release_radar",
+            vec![t("d", "D", "4")],
+        ));
         s.put(mix("empty", "on_repeat", vec![]));
         let (mixes, meta) = s.to_wire();
         let ids: Vec<&str> = mixes.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["daily-mix-1", "daily-mix-2", "release-radar", "daylist"]);
-        assert_eq!(meta.iter().map(|m| m.mix_id.as_str()).collect::<Vec<_>>(), ids);
+        assert_eq!(
+            ids,
+            vec!["daily-mix-1", "daily-mix-2", "release-radar", "daylist"]
+        );
+        assert_eq!(
+            meta.iter().map(|m| m.mix_id.as_str()).collect::<Vec<_>>(),
+            ids
+        );
         assert!(mixes.iter().all(|m| m.source == "Halcyon Local"));
         assert_eq!(meta.first().map(|m| m.reasons.len()), Some(1));
     }

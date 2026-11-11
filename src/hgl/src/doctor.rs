@@ -37,10 +37,28 @@ pub struct Check {
 
 impl Check {
     fn ok(id: &'static str, label: &str, detail: &str) -> Check {
-        Check { id, label: label.into(), level: Level::Ok, detail: detail.into(), pkgs: vec![], cmd: None, manual: None, optional: false }
+        Check {
+            id,
+            label: label.into(),
+            level: Level::Ok,
+            detail: detail.into(),
+            pkgs: vec![],
+            cmd: None,
+            manual: None,
+            optional: false,
+        }
     }
     fn bad(id: &'static str, label: &str, level: Level, detail: &str) -> Check {
-        Check { id, label: label.into(), level, detail: detail.into(), pkgs: vec![], cmd: None, manual: None, optional: false }
+        Check {
+            id,
+            label: label.into(),
+            level,
+            detail: detail.into(),
+            pkgs: vec![],
+            cmd: None,
+            manual: None,
+            optional: false,
+        }
     }
     fn pkgs(mut self, p: Vec<String>) -> Check {
         self.pkgs = p;
@@ -73,7 +91,9 @@ pub fn mgr() -> Mgr {
 fn pkg_installed(m: Mgr, p: &str) -> bool {
     match m {
         Mgr::Pacman => run_quiet("pacman", &["-Qq", p], 10),
-        Mgr::Apt => out("dpkg-query", &["-W", "-f=${Status}", p]).map(|s| s.contains("install ok installed")).unwrap_or(false),
+        Mgr::Apt => out("dpkg-query", &["-W", "-f=${Status}", p])
+            .map(|s| s.contains("install ok installed"))
+            .unwrap_or(false),
         Mgr::None => false,
     }
 }
@@ -107,7 +127,11 @@ fn gpu_vendors() -> Vec<String> {
 
 fn icd_files() -> Vec<String> {
     let mut v = Vec::new();
-    for d in ["/usr/share/vulkan/icd.d", "/etc/vulkan/icd.d", "/usr/local/share/vulkan/icd.d"] {
+    for d in [
+        "/usr/share/vulkan/icd.d",
+        "/etc/vulkan/icd.d",
+        "/usr/local/share/vulkan/icd.d",
+    ] {
         if let Ok(rd) = fs::read_dir(d) {
             for e in rd.flatten() {
                 let n = e.file_name().to_string_lossy().to_ascii_lowercase();
@@ -126,7 +150,12 @@ fn icd_files() -> Vec<String> {
 }
 
 fn ldconfig_p() -> String {
-    for p in ["ldconfig", "/sbin/ldconfig", "/usr/sbin/ldconfig", "/usr/bin/ldconfig"] {
+    for p in [
+        "ldconfig",
+        "/sbin/ldconfig",
+        "/usr/sbin/ldconfig",
+        "/usr/bin/ldconfig",
+    ] {
         if let Some(o) = out(p, &["-p"]) {
             return o;
         }
@@ -139,11 +168,23 @@ pub fn run_checks() -> Vec<Check> {
     let mut c: Vec<Check> = Vec::new();
 
     // tools hgl itself needs
-    let missing: Vec<&str> = ["curl", "tar", "sha512sum", "systemd-run", "systemctl"].into_iter().filter(|t| !have(t)).collect();
+    let missing: Vec<&str> = ["curl", "tar", "sha512sum", "systemd-run", "systemctl"]
+        .into_iter()
+        .filter(|t| !have(t))
+        .collect();
     if missing.is_empty() {
-        c.push(Check::ok("tools", "Basic tools (curl, tar, sha512sum, systemd-run)", "present"));
+        c.push(Check::ok(
+            "tools",
+            "Basic tools (curl, tar, sha512sum, systemd-run)",
+            "present",
+        ));
     } else {
-        let mut ch = Check::bad("tools", "Basic tools (curl, tar, sha512sum, systemd-run)", Level::Fail, &format!("missing: {}", missing.join(", ")));
+        let mut ch = Check::bad(
+            "tools",
+            "Basic tools (curl, tar, sha512sum, systemd-run)",
+            Level::Fail,
+            &format!("missing: {}", missing.join(", ")),
+        );
         let mut p = vec![];
         for t in &missing {
             match *t {
@@ -158,7 +199,16 @@ pub fn run_checks() -> Vec<Check> {
         c.push(ch);
     }
     if !have("xz") {
-        c.push(Check::bad("xz", "xz (needed to unpack Proton-CachyOS)", Level::Warn, "missing").pkgs(names(m, &["xz"], &["xz-utils"])).optional());
+        c.push(
+            Check::bad(
+                "xz",
+                "xz (needed to unpack Proton-CachyOS)",
+                Level::Warn,
+                "missing",
+            )
+            .pkgs(names(m, &["xz"], &["xz-utils"]))
+            .optional(),
+        );
     }
 
     // 32-bit support
@@ -166,7 +216,11 @@ pub fn run_checks() -> Vec<Check> {
         Mgr::Pacman => {
             let conf = fs::read_to_string("/etc/pacman.conf").unwrap_or_default();
             if conf.lines().any(|l| l.trim() == "[multilib]") {
-                c.push(Check::ok("multilib", "multilib repository (32-bit libraries)", "enabled"));
+                c.push(Check::ok(
+                    "multilib",
+                    "multilib repository (32-bit libraries)",
+                    "enabled",
+                ));
             } else {
                 c.push(
                     Check::bad("multilib", "multilib repository (32-bit libraries)", Level::Fail, "not enabled in /etc/pacman.conf")
@@ -177,22 +231,39 @@ pub fn run_checks() -> Vec<Check> {
         Mgr::Apt => {
             let fa = out("dpkg", &["--print-foreign-architectures"]).unwrap_or_default();
             if fa.split_whitespace().any(|a| a == "i386") {
-                c.push(Check::ok("multilib", "i386 architecture (32-bit libraries)", "enabled"));
+                c.push(Check::ok(
+                    "multilib",
+                    "i386 architecture (32-bit libraries)",
+                    "enabled",
+                ));
             } else {
                 c.push(
-                    Check::bad("multilib", "i386 architecture (32-bit libraries)", Level::Fail, "not enabled")
-                        .cmd("dpkg --add-architecture i386 && apt-get update"),
+                    Check::bad(
+                        "multilib",
+                        "i386 architecture (32-bit libraries)",
+                        Level::Fail,
+                        "not enabled",
+                    )
+                    .cmd("dpkg --add-architecture i386 && apt-get update"),
                 );
             }
         }
         Mgr::None => {}
     }
-    let have_multilib = c.iter().find(|x| x.id == "multilib").map(|x| x.level == Level::Ok).unwrap_or(true);
+    let have_multilib = c
+        .iter()
+        .find(|x| x.id == "multilib")
+        .map(|x| x.level == Level::Ok)
+        .unwrap_or(true);
 
     // Vulkan
     let ldc = ldconfig_p();
-    let has64 = ldc.lines().any(|l| l.contains("libvulkan.so.1") && l.contains("x86-64"));
-    let has32 = ldc.lines().any(|l| l.contains("libvulkan.so.1") && !l.contains("x86-64"));
+    let has64 = ldc
+        .lines()
+        .any(|l| l.contains("libvulkan.so.1") && l.contains("x86-64"));
+    let has32 = ldc
+        .lines()
+        .any(|l| l.contains("libvulkan.so.1") && !l.contains("x86-64"));
     let icds = icd_files();
     let vendors = gpu_vendors();
     let mut vk_pkgs: Vec<String> = Vec::new();
@@ -239,7 +310,10 @@ pub fn run_checks() -> Vec<Check> {
                     vk_notes.push("no NVIDIA Vulkan driver".into());
                     vk_manual = Some("Install the NVIDIA driver for your card (Arch: nvidia / nvidia-open + nvidia-utils; Debian/Ubuntu: nvidia-driver-XXX) — hgl does not pick a driver for you".into());
                 }
-                if m == Mgr::Pacman && !pkg_installed(m, "lib32-nvidia-utils") && icds.iter().any(|f| f.contains("nvidia")) {
+                if m == Mgr::Pacman
+                    && !pkg_installed(m, "lib32-nvidia-utils")
+                    && icds.iter().any(|f| f.contains("nvidia"))
+                {
                     vk_notes.push("no 32-bit NVIDIA libraries".into());
                     vk_pkgs.push("lib32-nvidia-utils".into());
                 }
@@ -256,9 +330,19 @@ pub fn run_checks() -> Vec<Check> {
         vk_pkgs.retain(|p| !p.starts_with("lib32-") && !p.ends_with(":i386"));
     }
     if vk_notes.is_empty() && !icds.is_empty() {
-        c.push(Check::ok("vulkan", "Vulkan (64-bit and 32-bit)", &format!("{} driver file(s)", icds.len())));
+        c.push(Check::ok(
+            "vulkan",
+            "Vulkan (64-bit and 32-bit)",
+            &format!("{} driver file(s)", icds.len()),
+        ));
     } else {
-        let mut ch = Check::bad("vulkan", "Vulkan (64-bit and 32-bit)", Level::Fail, &vk_notes.join("; ")).pkgs(vk_pkgs);
+        let mut ch = Check::bad(
+            "vulkan",
+            "Vulkan (64-bit and 32-bit)",
+            Level::Fail,
+            &vk_notes.join("; "),
+        )
+        .pkgs(vk_pkgs);
         if let Some(mn) = vk_manual {
             ch = ch.manual(&mn);
         }
@@ -269,12 +353,21 @@ pub fn run_checks() -> Vec<Check> {
     if have("umu-run") {
         c.push(Check::ok("umu", "umu-launcher (umu-run)", "present"));
         if crate::run::umu_runtime_ready() {
-            c.push(Check::ok("umu-runtime", "Steam Runtime for umu", "downloaded"));
+            c.push(Check::ok(
+                "umu-runtime",
+                "Steam Runtime for umu",
+                "downloaded",
+            ));
         } else {
             c.push(Check::bad("umu-runtime", "Steam Runtime for umu", Level::Warn, "not downloaded yet: the first game start downloads it (a few hundred MB, a few minutes); let that first start finish"));
         }
     } else {
-        let mut ch = Check::bad("umu", "umu-launcher (umu-run)", Level::Fail, "umu-run not found");
+        let mut ch = Check::bad(
+            "umu",
+            "umu-launcher (umu-run)",
+            Level::Fail,
+            "umu-run not found",
+        );
         match m {
             Mgr::Pacman => ch = ch.pkgs(vec!["umu-launcher".into()]),
             _ => ch = ch.manual("Install umu-launcher from https://github.com/Open-Wine-Components/umu-launcher/releases (a .deb is published there)"),
@@ -290,23 +383,48 @@ pub fn run_checks() -> Vec<Check> {
         Mgr::None => true,
     };
     if gm_ok && gm32 {
-        c.push(Check::ok("gamemode", "gamemode (64-bit and 32-bit)", "present"));
+        c.push(Check::ok(
+            "gamemode",
+            "gamemode (64-bit and 32-bit)",
+            "present",
+        ));
     } else {
         let mut p = vec![];
         if !gm_ok {
             p.extend(names(m, &["gamemode"], &["gamemode"]));
         }
         if !gm32 && have_multilib {
-            p.extend(names(m, &["lib32-gamemode"], &["libgamemode0:i386", "libgamemodeauto0:i386"]));
+            p.extend(names(
+                m,
+                &["lib32-gamemode"],
+                &["libgamemode0:i386", "libgamemodeauto0:i386"],
+            ));
         }
-        c.push(Check::bad("gamemode", "gamemode (64-bit and 32-bit)", Level::Warn, "missing (games run without it, but lose the per-game boost)").pkgs(p));
+        c.push(
+            Check::bad(
+                "gamemode",
+                "gamemode (64-bit and 32-bit)",
+                Level::Warn,
+                "missing (games run without it, but lose the per-game boost)",
+            )
+            .pkgs(p),
+        );
     }
 
     // optional extras
     if have("gamescope") {
         c.push(Check::ok("gamescope", "gamescope (optional)", "present").optional());
     } else {
-        c.push(Check::bad("gamescope", "gamescope (optional)", Level::Warn, "not installed").pkgs(names(m, &["gamescope"], &["gamescope"])).optional());
+        c.push(
+            Check::bad(
+                "gamescope",
+                "gamescope (optional)",
+                Level::Warn,
+                "not installed",
+            )
+            .pkgs(names(m, &["gamescope"], &["gamescope"]))
+            .optional(),
+        );
     }
     if have("mangohud") {
         c.push(Check::ok("mangohud", "mangohud (optional)", "present").optional());
@@ -315,18 +433,50 @@ pub fn run_checks() -> Vec<Check> {
         if have_multilib {
             p.extend(names(m, &["lib32-mangohud"], &["mangohud:i386"]));
         }
-        c.push(Check::bad("mangohud", "mangohud (optional)", Level::Warn, "not installed").pkgs(p).optional());
+        c.push(
+            Check::bad(
+                "mangohud",
+                "mangohud (optional)",
+                Level::Warn,
+                "not installed",
+            )
+            .pkgs(p)
+            .optional(),
+        );
     }
     if have("wrestool") && have("icotool") {
-        c.push(Check::ok("icoutils", "icoutils (icons for added .exe games, optional)", "present").optional());
+        c.push(
+            Check::ok(
+                "icoutils",
+                "icoutils (icons for added .exe games, optional)",
+                "present",
+            )
+            .optional(),
+        );
     } else {
-        c.push(Check::bad("icoutils", "icoutils (icons for added .exe games, optional)", Level::Warn, "not installed").pkgs(names(m, &["icoutils"], &["icoutils"])).optional());
+        c.push(
+            Check::bad(
+                "icoutils",
+                "icoutils (icons for added .exe games, optional)",
+                Level::Warn,
+                "not installed",
+            )
+            .pkgs(names(m, &["icoutils"], &["icoutils"]))
+            .optional(),
+        );
     }
 
     // kernel limit many games hit
-    let mmc: u64 = fs::read_to_string("/proc/sys/vm/max_map_count").ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
+    let mmc: u64 = fs::read_to_string("/proc/sys/vm/max_map_count")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
     if mmc >= 1_048_576 {
-        c.push(Check::ok("max_map_count", "vm.max_map_count", &mmc.to_string()));
+        c.push(Check::ok(
+            "max_map_count",
+            "vm.max_map_count",
+            &mmc.to_string(),
+        ));
     } else {
         c.push(
             Check::bad("max_map_count", "vm.max_map_count", Level::Warn, &format!("{mmc} (some games crash below 1048576)"))
@@ -335,28 +485,74 @@ pub fn run_checks() -> Vec<Check> {
     }
 
     // scoped runs
-    if have("systemd-run") && run_quiet("systemd-run", &["--user", "--scope", "--quiet", "-p", "CPUWeight=100", "true"], 8) {
-        c.push(Check::ok("scope", "Per-game systemd scope (CPU priority, wineserver cleanup)", "works"));
+    if have("systemd-run")
+        && run_quiet(
+            "systemd-run",
+            &[
+                "--user",
+                "--scope",
+                "--quiet",
+                "-p",
+                "CPUWeight=100",
+                "true",
+            ],
+            8,
+        )
+    {
+        c.push(Check::ok(
+            "scope",
+            "Per-game systemd scope (CPU priority, wineserver cleanup)",
+            "works",
+        ));
     } else {
-        c.push(Check::bad("scope", "Per-game systemd scope (CPU priority, wineserver cleanup)", Level::Warn, "systemd-run --user --scope failed: games still run, without their own scope").manual("Needs a systemd user session (log in through your normal session, not su/sudo)"));
+        c.push(
+            Check::bad(
+                "scope",
+                "Per-game systemd scope (CPU priority, wineserver cleanup)",
+                Level::Warn,
+                "systemd-run --user --scope failed: games still run, without their own scope",
+            )
+            .manual(
+                "Needs a systemd user session (log in through your normal session, not su/sudo)",
+            ),
+        );
     }
 
     // runtimes
     let cfg = Conf::load();
     match proton::resolve("", &cfg) {
         Some(r) => c.push(Check::ok("proton", "Proton runtime", &r.name)),
-        None => c.push(Check::bad("proton", "Proton runtime", Level::Fail, "none installed").cmd("@hgl-proton-install")),
+        None => c.push(
+            Check::bad("proton", "Proton runtime", Level::Fail, "none installed")
+                .cmd("@hgl-proton-install"),
+        ),
     }
 
     if have("steam") {
-        c.push(Check::ok("steam", "Steam (optional, for the Steam library)", "present").optional());
+        c.push(
+            Check::ok(
+                "steam",
+                "Steam (optional, for the Steam library)",
+                "present",
+            )
+            .optional(),
+        );
     }
 
     // downloads (Proton, cover art, the GOG library) go through curl
     if have("curl") {
         c.push(Check::ok("curl", "curl (downloads: Proton, cover art)", "present").optional());
     } else {
-        c.push(Check::bad("curl", "curl (downloads: Proton, cover art)", Level::Warn, "not installed").pkgs(names(m, &["curl"], &["curl"])).optional());
+        c.push(
+            Check::bad(
+                "curl",
+                "curl (downloads: Proton, cover art)",
+                Level::Warn,
+                "not installed",
+            )
+            .pkgs(names(m, &["curl"], &["curl"]))
+            .optional(),
+        );
     }
 
     // stores: neither is needed for Steam or plain .exe games
@@ -364,9 +560,14 @@ pub fn run_checks() -> Vec<Check> {
         c.push(Check::ok("legendary", "legendary (Epic Games, optional)", "present").optional());
     } else {
         c.push(
-            Check::bad("legendary", "legendary (Epic Games, optional)", Level::Warn, "not installed: Epic login and install are off")
-                .manual("Arch: yay -S legendary (AUR). Any distribution: pipx install legendary-gl")
-                .optional(),
+            Check::bad(
+                "legendary",
+                "legendary (Epic Games, optional)",
+                Level::Warn,
+                "not installed: Epic login and install are off",
+            )
+            .manual("Arch: yay -S legendary (AUR). Any distribution: pipx install legendary-gl")
+            .optional(),
         );
     }
     if crate::gog::gogdl_present() {
@@ -391,7 +592,11 @@ fn symbol(l: Level, opt: bool) -> &'static str {
 
 pub fn print_human(checks: &[Check]) {
     for ch in checks {
-        let d = if ch.detail.is_empty() { String::new() } else { format!(" — {}", ch.detail) };
+        let d = if ch.detail.is_empty() {
+            String::new()
+        } else {
+            format!(" — {}", ch.detail)
+        };
         println!("[{}] {}{}", symbol(ch.level, ch.optional), ch.label, d);
         if ch.level != Level::Ok {
             if !ch.pkgs.is_empty() {
@@ -436,7 +641,10 @@ pub fn print_json(checks: &[Check]) {
 /// Install what is missing, after one confirmation. Returns true when nothing is left that hgl could have fixed.
 pub fn fix(checks: &[Check], yes: bool) -> bool {
     let m = mgr();
-    let todo: Vec<&Check> = checks.iter().filter(|c| c.level != Level::Ok && (!c.pkgs.is_empty() || c.cmd.is_some())).collect();
+    let todo: Vec<&Check> = checks
+        .iter()
+        .filter(|c| c.level != Level::Ok && (!c.pkgs.is_empty() || c.cmd.is_some()))
+        .collect();
     if todo.is_empty() {
         println!("Nothing hgl can fix by itself.");
         return true;
@@ -463,7 +671,13 @@ pub fn fix(checks: &[Check], yes: bool) -> bool {
         println!("Cancelled.");
         return false;
     }
-    let sudo = if uid() == 0 { None } else if have("sudo") { Some("sudo") } else { None };
+    let sudo = if uid() == 0 {
+        None
+    } else if have("sudo") {
+        Some("sudo")
+    } else {
+        None
+    };
     if uid() != 0 && sudo.is_none() {
         eprintln!("sudo is not installed: run the commands above as root.");
         return false;
@@ -472,7 +686,10 @@ pub fn fix(checks: &[Check], yes: bool) -> bool {
     for c in todo {
         if !c.pkgs.is_empty() {
             let (prog, args): (&str, Vec<String>) = match m {
-                Mgr::Pacman => ("pacman", vec!["-S".into(), "--needed".into(), "--noconfirm".into()]),
+                Mgr::Pacman => (
+                    "pacman",
+                    vec!["-S".into(), "--needed".into(), "--noconfirm".into()],
+                ),
                 Mgr::Apt => ("apt-get", vec!["install".into(), "-y".into()]),
                 Mgr::None => continue,
             };
@@ -528,5 +745,9 @@ pub fn fix(checks: &[Check], yes: bool) -> bool {
 
 /// Only the Vulkan check, for crash triage.
 pub fn vulkan_ok() -> bool {
-    run_checks().iter().find(|c| c.id == "vulkan").map(|c| c.level == Level::Ok).unwrap_or(false)
+    run_checks()
+        .iter()
+        .find(|c| c.id == "vulkan")
+        .map(|c| c.level == Level::Ok)
+        .unwrap_or(false)
 }

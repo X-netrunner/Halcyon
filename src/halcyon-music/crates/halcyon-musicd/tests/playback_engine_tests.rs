@@ -23,7 +23,12 @@ fn test_track(id: &str, duration_ms: u64) -> Track {
     }
 }
 
-fn test_context() -> (Arc<DaemonContext>, Arc<Player>, Cache, broadcast::Receiver<protocol::Event>) {
+fn test_context() -> (
+    Arc<DaemonContext>,
+    Arc<Player>,
+    Cache,
+    broadcast::Receiver<protocol::Event>,
+) {
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join("test_cache.db");
     let img_dir = dir.path().join("images");
@@ -55,10 +60,14 @@ async fn test_queue_context_play_next_and_reorder() {
     let t3 = test_track("t3", 220_000);
 
     // Play album/playlist context
-    apply_command(&ctx, CommandBody::PlayContext {
-        tracks: vec![t1.clone(), t2.clone()],
-        start_index: 0,
-    }).await;
+    apply_command(
+        &ctx,
+        CommandBody::PlayContext {
+            tracks: vec![t1.clone(), t2.clone()],
+            start_index: 0,
+        },
+    )
+    .await;
 
     let s = player.snapshot().await;
     assert!(s.playing);
@@ -88,11 +97,23 @@ async fn test_repeat_modes_and_bitrate_settings() {
     let (ctx, player, _cache, _events_rx) = test_context();
 
     // Repeat mode direct setting
-    apply_command(&ctx, CommandBody::SetRepeat { repeat: RepeatMode::One }).await;
+    apply_command(
+        &ctx,
+        CommandBody::SetRepeat {
+            repeat: RepeatMode::One,
+        },
+    )
+    .await;
     assert_eq!(player.snapshot().await.repeat, RepeatMode::One);
 
     // Bitrate setting
-    apply_command(&ctx, CommandBody::SetBitrate { bitrate: Bitrate::Bitrate320 }).await;
+    apply_command(
+        &ctx,
+        CommandBody::SetBitrate {
+            bitrate: Bitrate::Bitrate320,
+        },
+    )
+    .await;
     assert_eq!(player.snapshot().await.bitrate, Bitrate::Bitrate320);
 
     // Normalisation setting
@@ -135,11 +156,13 @@ async fn test_watchdog_resets_on_normal_advance() {
     let engine = AudioEngine::new(player.clone(), cache, events_tx);
     assert_eq!(engine.consecutive_failures(), 0);
 
-    player.mutate(|s| {
-        s.track = Some(test_track("w1", 10_000));
-        s.playing = true;
-        s.position_ms = 1000;
-    }).await;
+    player
+        .mutate(|s| {
+            s.track = Some(test_track("w1", 10_000));
+            s.playing = true;
+            s.position_ms = 1000;
+        })
+        .await;
 
     engine.reset_failures();
     assert_eq!(engine.consecutive_failures(), 0);

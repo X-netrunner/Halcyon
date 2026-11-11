@@ -20,7 +20,13 @@ pub struct Track {
 }
 
 impl Track {
-    pub fn simple(id: String, title: String, artist: String, album: String, duration_ms: u64) -> Self {
+    pub fn simple(
+        id: String,
+        title: String,
+        artist: String,
+        album: String,
+        duration_ms: u64,
+    ) -> Self {
         let uri = format!("spotify:track:{id}");
         Self {
             id,
@@ -117,12 +123,16 @@ impl<T> Page<T> {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum AuthStatus {
     LoggedOut,
-    LoggingIn { auth_url: String },
+    LoggingIn {
+        auth_url: String,
+    },
     LoggedIn {
         user_id: Option<String>,
         display_name: Option<String>,
     },
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 /// Which token the Web API (browsing) uses. Streaming always uses librespot's own token.
@@ -274,13 +284,13 @@ pub struct FullCapsule {
     pub month: u32,
     pub total_minutes: u64,
     pub total_plays: u64,
-    pub top_tracks: Vec<(Track, u64)>, // (track, play count)
-    pub top_artists: Vec<(String, u64)>, // (artist name, minutes played)
+    pub top_tracks: Vec<(Track, u64)>,    // (track, play count)
+    pub top_artists: Vec<(String, u64)>,  // (artist name, minutes played)
     pub top_genres: Vec<(String, usize)>, // (genre name, count)
-    pub hourly_distribution: [u32; 24], // plays per hour (0..=23)
+    pub hourly_distribution: [u32; 24],   // plays per hour (0..=23)
     pub longest_streak_days: u32,
     pub most_replayed_track: Option<(Track, u32)>, // (track, plays in best single day)
-    pub mom_change_percent: i32, // Month-over-month growth percentage
+    pub mom_change_percent: i32,                   // Month-over-month growth percentage
 }
 
 impl Default for FullCapsule {
@@ -348,7 +358,6 @@ pub struct Lyrics {
     pub lines: Vec<LyricLine>,
     pub offset_ms: i64,
 }
-
 
 /// One downloadable built-in language model, as the Settings card shows it (Part 7).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

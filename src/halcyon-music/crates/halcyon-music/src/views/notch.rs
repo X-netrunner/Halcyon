@@ -52,10 +52,18 @@ impl<M> canvas::Program<M> for Notch {
             b.bezier_curve_to(p(EAR * K, top), p(left, top + ear_k), p(left, top + EAR));
             b.line_to(p(left, bottom - CORNER));
             // Left lower corner.
-            b.bezier_curve_to(p(left, bottom - corner_k), p(left + corner_k, bottom), p(left + CORNER, bottom));
+            b.bezier_curve_to(
+                p(left, bottom - corner_k),
+                p(left + corner_k, bottom),
+                p(left + CORNER, bottom),
+            );
             b.line_to(p(right - CORNER, bottom));
             // Right lower corner.
-            b.bezier_curve_to(p(right - corner_k, bottom), p(right, bottom - corner_k), p(right, bottom - CORNER));
+            b.bezier_curve_to(
+                p(right - corner_k, bottom),
+                p(right, bottom - corner_k),
+                p(right, bottom - CORNER),
+            );
             b.line_to(p(right, top + EAR));
             // Right ear: from the wall, curving out along the page's top edge.
             b.bezier_curve_to(p(right, top + ear_k), p(w - EAR * K, top), p(w, top));
@@ -83,5 +91,8 @@ impl<M> canvas::Program<M> for Notch {
 
 /// The notch shape, `width` x `height` px, including the two ears.
 pub fn view<'a, M: 'a>(width: f32, height: f32, fill: Color, outline: Color) -> Element<'a, M> {
-    Canvas::new(Notch { fill, outline }).width(Length::Fixed(width)).height(Length::Fixed(height)).into()
+    Canvas::new(Notch { fill, outline })
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(height))
+        .into()
 }

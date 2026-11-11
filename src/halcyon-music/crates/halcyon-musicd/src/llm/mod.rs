@@ -13,8 +13,8 @@ pub mod backend;
 pub mod bench;
 pub mod grammar;
 pub mod local;
-pub mod models;
 pub mod mock;
+pub mod models;
 pub mod playlist;
 pub mod prompts;
 pub mod rerank;
@@ -26,9 +26,9 @@ use crate::daemon::DaemonContext;
 use crate::suggestions::normalize_string;
 use crate::token_store::now_secs;
 use backend::{LlmError, LlmRequest, OllamaBackend, TasteLlm};
-use local::LocalGgufBackend;
 use halcyon_music_core::models::{MusicMix, Track};
 use halcyon_music_core::protocol::{self, EventBody};
+use local::LocalGgufBackend;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -94,10 +94,14 @@ impl Default for LlmSettings {
 /// An Ollama address that is safe to use: `http(s)://host[:port]` with nothing else.
 pub fn clean_endpoint(raw: &str) -> Option<String> {
     let t = raw.trim().trim_end_matches('/');
-    let rest = t.strip_prefix("http://").or_else(|| t.strip_prefix("https://"))?;
+    let rest = t
+        .strip_prefix("http://")
+        .or_else(|| t.strip_prefix("https://"))?;
     let ok = !rest.is_empty()
         && rest.len() <= 100
-        && rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
         && !rest.starts_with(['.', '-', ':']);
     ok.then(|| t.to_string())
 }
@@ -116,11 +120,16 @@ impl LlmSettings {
             .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ':' | '_' | '-' | '/'))
             .take(80)
             .collect();
-        self.model = if model.is_empty() { DEFAULT_MODEL.to_string() } else { model };
+        self.model = if model.is_empty() {
+            DEFAULT_MODEL.to_string()
+        } else {
+            model
+        };
         if !models::is_known(&self.local_model) {
             self.local_model = models::DEFAULT_LOCAL_MODEL.to_string();
         }
-        self.ollama_endpoint = clean_endpoint(&self.ollama_endpoint).unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
+        self.ollama_endpoint =
+            clean_endpoint(&self.ollama_endpoint).unwrap_or_else(|| DEFAULT_ENDPOINT.to_string());
         self
     }
 
@@ -159,7 +168,11 @@ pub fn save_settings(cache: &Cache, settings: &LlmSettings) {
     }
 }
 
-pub fn status_event(settings: &LlmSettings, reachable: bool, hint: Option<String>) -> protocol::Event {
+pub fn status_event(
+    settings: &LlmSettings,
+    reachable: bool,
+    hint: Option<String>,
+) -> protocol::Event {
     protocol::event(EventBody::LlmStatus {
         enabled: settings.enabled,
         backend: settings.backend.clone(),
@@ -173,7 +186,11 @@ pub fn make_backend(settings: &LlmSettings, http: &reqwest::Client) -> Box<dyn T
     if settings.uses_local() {
         Box::new(LocalGgufBackend::production(&settings.local_model))
     } else {
-        Box::new(OllamaBackend::new(http.clone(), &settings.ollama_endpoint, &settings.model))
+        Box::new(OllamaBackend::new(
+            http.clone(),
+            &settings.ollama_endpoint,
+            &settings.model,
+        ))
     }
 }
 
@@ -215,7 +232,12 @@ fn pause_key(feature: &str, model: &str) -> String {
 }
 
 fn is_paused(cache: &Cache, feature: &str, model: &str) -> bool {
-    cache.kv_get(&pause_key(feature, model)).ok().flatten().map(|i| !i.is_stale).unwrap_or(false)
+    cache
+        .kv_get(&pause_key(feature, model))
+        .ok()
+        .flatten()
+        .map(|i| !i.is_stale)
+        .unwrap_or(false)
 }
 
 fn set_pause(cache: &Cache, feature: &str, model: &str) {
@@ -240,7 +262,11 @@ struct StoredBlurb {
 
 /// One call with a timeout and a single retry. A missing model is not retried: asking again
 /// cannot install it.
-pub async fn call_with_retry(llm: &dyn TasteLlm, req: &LlmRequest, timeout: Duration) -> Result<String, LlmError> {
+pub async fn call_with_retry(
+    llm: &dyn TasteLlm,
+    req: &LlmRequest,
+    timeout: Duration,
+) -> Result<String, LlmError> {
     let mut last = LlmError::Timeout;
     for attempt in 0..2 {
         if attempt > 0 {
@@ -291,8 +317,11 @@ pub async fn enrich_mixes(
     let version = prompts::PROMPT_VERSION.to_string();
     let model = llm.model().to_string();
 
-    let eligible: Vec<&MusicMix> =
-        mixes.iter().filter(|m| m.tracks.len() >= 3).take(prompts::MAX_MIXES_PER_CALL).collect();
+    let eligible: Vec<&MusicMix> = mixes
+        .iter()
+        .filter(|m| m.tracks.len() >= 3)
+        .take(prompts::MAX_MIXES_PER_CALL)
+        .collect();
     let mut pending: Vec<&MusicMix> = Vec::new();
     let mut keys: HashMap<String, String> = HashMap::new();
 
@@ -338,11 +367,16 @@ pub async fn enrich_mixes(
     let blurbs = validate::parse_why_mix(&raw, &prompt.aliases);
     if blurbs.is_empty() {
         set_pause(cache, FEATURE_WHY_MIX, &model);
-        return Err(LlmError::BadResponse("no usable titles or reasons".to_string()));
+        return Err(LlmError::BadResponse(
+            "no usable titles or reasons".to_string(),
+        ));
     }
     for blurb in blurbs {
         if let Some(key) = keys.get(&blurb.mix_id) {
-            let stored = StoredBlurb { title: blurb.title.clone(), reason: blurb.reason.clone() };
+            let stored = StoredBlurb {
+                title: blurb.title.clone(),
+                reason: blurb.reason.clone(),
+            };
             if let Ok(json) = serde_json::to_string(&stored) {
                 let _ = cache.kv_set(key, &json, ANSWER_TTL_SECS);
             }
@@ -369,7 +403,10 @@ pub fn local_hour(secs: u64) -> u8 {
 /// this function's caller; the raw log never does.
 pub fn taste_from_cache(cache: &Cache) -> TasteSummary {
     let plays = cache.get_recent_plays(5000).unwrap_or_default();
-    let liked: Vec<Track> = cache.get_liked_tracks(1000, 0).map(|(t, _)| t).unwrap_or_default();
+    let liked: Vec<Track> = cache
+        .get_liked_tracks(1000, 0)
+        .map(|(t, _)| t)
+        .unwrap_or_default();
     let mut genres: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashSet<String> = HashSet::new();
     for p in &plays {
@@ -428,9 +465,24 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
             }));
         };
         let timeout = llm.call_timeout();
-        match enrich_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, timeout, &emit).await {
+        match enrich_mixes(
+            &ctx.cache,
+            llm.as_ref(),
+            &taste,
+            &mixes,
+            allow_model,
+            timeout,
+            &emit,
+        )
+        .await
+        {
             Ok(r) => {
-                debug!(from_cache = r.from_cache, generated = r.generated, paused = r.paused, "mix words done");
+                debug!(
+                    from_cache = r.from_cache,
+                    generated = r.generated,
+                    paused = r.paused,
+                    "mix words done"
+                );
                 // Feature 3, in the same task so the model is only ever used by one job at a time.
                 // Skipped when the words just failed: the backend is probably down.
                 let emit_order = move |o: rerank::MixOrder| {
@@ -439,8 +491,16 @@ pub fn spawn_enrichment(ctx: Arc<DaemonContext>, mixes: Vec<MusicMix>) {
                         track_ids: o.track_ids,
                     }));
                 };
-                match rerank::rerank_mixes(&ctx.cache, llm.as_ref(), &taste, &mixes, allow_model, timeout, &emit_order)
-                    .await
+                match rerank::rerank_mixes(
+                    &ctx.cache,
+                    llm.as_ref(),
+                    &taste,
+                    &mixes,
+                    allow_model,
+                    timeout,
+                    &emit_order,
+                )
+                .await
                 {
                     Ok(r) => debug!(
                         from_cache = r.from_cache,
@@ -487,7 +547,13 @@ fn home_mixes(ctx: &DaemonContext) -> Vec<MusicMix> {
 
 /// Settings after a client's change: only the chosen backend's model is replaced, so switching
 /// back and forth keeps each backend's own choice.
-pub fn merged_settings(old: LlmSettings, enabled: bool, backend: &str, model: &str, endpoint: &str) -> LlmSettings {
+pub fn merged_settings(
+    old: LlmSettings,
+    enabled: bool,
+    backend: &str,
+    model: &str,
+    endpoint: &str,
+) -> LlmSettings {
     let mut s = old;
     s.enabled = enabled;
     s.backend = backend.to_string();
@@ -508,7 +574,13 @@ pub fn merged_settings(old: LlmSettings, enabled: bool, backend: &str, model: &s
 /// Apply new settings from the GUI: store them, tell everyone, and check the connection. Turning
 /// Smart suggestions on with the built-in backend starts the one-time model download when the
 /// model is not on disk yet (Settings shows its size next to the switch).
-pub fn apply_settings(ctx: &Arc<DaemonContext>, enabled: bool, backend: &str, model: &str, endpoint: &str) {
+pub fn apply_settings(
+    ctx: &Arc<DaemonContext>,
+    enabled: bool,
+    backend: &str,
+    model: &str,
+    endpoint: &str,
+) {
     let settings = merged_settings(load_settings(&ctx.cache), enabled, backend, model, endpoint);
     save_settings(&ctx.cache, &settings);
     clear_pause(&ctx.cache, settings.active_model());
@@ -575,11 +647,27 @@ mod tests {
         .normalised();
         assert_eq!(s.backend, "local");
         assert_eq!(s.model, "qwen2.5:3brm-rf/");
-        let o = LlmSettings { backend: "ollama".into(), ..LlmSettings::default() }.normalised();
+        let o = LlmSettings {
+            backend: "ollama".into(),
+            ..LlmSettings::default()
+        }
+        .normalised();
         assert_eq!(o.backend, "ollama");
-        let empty = LlmSettings { enabled: true, backend: String::new(), model: "   ".into(), ..LlmSettings::default() }.normalised();
+        let empty = LlmSettings {
+            enabled: true,
+            backend: String::new(),
+            model: "   ".into(),
+            ..LlmSettings::default()
+        }
+        .normalised();
         assert_eq!(empty.model, DEFAULT_MODEL);
-        let long = LlmSettings { enabled: true, backend: String::new(), model: "a".repeat(500), ..LlmSettings::default() }.normalised();
+        let long = LlmSettings {
+            enabled: true,
+            backend: String::new(),
+            model: "a".repeat(500),
+            ..LlmSettings::default()
+        }
+        .normalised();
         assert_eq!(long.model.len(), 80);
     }
 
@@ -606,14 +694,18 @@ mod tests {
     fn old_stored_settings_keep_their_ollama_choice() {
         // What the layer stored before the built-in model existed.
         let stored = r#"{"enabled":true,"backend":"ollama","model":"llama3:8b"}"#;
-        let s = serde_json::from_str::<LlmSettings>(stored).expect("decode").normalised();
+        let s = serde_json::from_str::<LlmSettings>(stored)
+            .expect("decode")
+            .normalised();
         assert!(s.enabled);
         assert_eq!(s.backend, "ollama");
         assert_eq!(s.active_model(), "llama3:8b");
         assert_eq!(s.ollama_endpoint, DEFAULT_ENDPOINT);
         assert_eq!(s.local_model, models::DEFAULT_LOCAL_MODEL);
         // and an empty store is the new default
-        let fresh = serde_json::from_str::<LlmSettings>("{}").expect("decode").normalised();
+        let fresh = serde_json::from_str::<LlmSettings>("{}")
+            .expect("decode")
+            .normalised();
         assert_eq!(fresh.backend, "local");
         assert!(!fresh.enabled);
     }
@@ -622,9 +714,15 @@ mod tests {
     fn each_backend_keeps_its_own_model_choice() {
         let start = LlmSettings::default();
         let a = merged_settings(start, true, "ollama", "mistral:7b", "");
-        assert_eq!((a.backend.as_str(), a.active_model()), ("ollama", "mistral:7b"));
+        assert_eq!(
+            (a.backend.as_str(), a.active_model()),
+            ("ollama", "mistral:7b")
+        );
         let b = merged_settings(a, true, "local", "qwen3-0.6b", "");
-        assert_eq!((b.backend.as_str(), b.active_model()), ("local", "qwen3-0.6b"));
+        assert_eq!(
+            (b.backend.as_str(), b.active_model()),
+            ("local", "qwen3-0.6b")
+        );
         assert_eq!(b.model, "mistral:7b");
         // switching back finds the Ollama model again
         let c = merged_settings(b, true, "ollama", "", "");
@@ -636,12 +734,34 @@ mod tests {
 
     #[test]
     fn ollama_endpoint_is_a_plain_http_address() {
-        assert_eq!(clean_endpoint("http://127.0.0.1:11434/"), Some("http://127.0.0.1:11434".to_string()));
-        assert_eq!(clean_endpoint(" https://ollama.lan:8443 "), Some("https://ollama.lan:8443".to_string()));
-        for bad in ["", "127.0.0.1:11434", "ftp://x", "http://", "http://a b", "http://x/y?z=1", "http://x;rm", "http://:80", "javascript:alert(1)"] {
+        assert_eq!(
+            clean_endpoint("http://127.0.0.1:11434/"),
+            Some("http://127.0.0.1:11434".to_string())
+        );
+        assert_eq!(
+            clean_endpoint(" https://ollama.lan:8443 "),
+            Some("https://ollama.lan:8443".to_string())
+        );
+        for bad in [
+            "",
+            "127.0.0.1:11434",
+            "ftp://x",
+            "http://",
+            "http://a b",
+            "http://x/y?z=1",
+            "http://x;rm",
+            "http://:80",
+            "javascript:alert(1)",
+        ] {
             assert_eq!(clean_endpoint(bad), None, "{bad:?}");
         }
-        let s = merged_settings(LlmSettings::default(), true, "ollama", "", "http://192.168.1.5:11434");
+        let s = merged_settings(
+            LlmSettings::default(),
+            true,
+            "ollama",
+            "",
+            "http://192.168.1.5:11434",
+        );
         assert_eq!(s.ollama_endpoint, "http://192.168.1.5:11434");
         let bad = merged_settings(s, true, "ollama", "", "file:///etc/passwd");
         assert_eq!(bad.ollama_endpoint, DEFAULT_ENDPOINT);
@@ -649,7 +769,10 @@ mod tests {
 
     #[test]
     fn answers_are_cached_per_backend_model() {
-        let ollama = LlmSettings { backend: "ollama".into(), ..LlmSettings::default() };
+        let ollama = LlmSettings {
+            backend: "ollama".into(),
+            ..LlmSettings::default()
+        };
         let local = LlmSettings::default();
         assert_ne!(
             answer_key("why-mix", "abc", ollama.active_model()),

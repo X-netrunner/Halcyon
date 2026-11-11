@@ -87,7 +87,10 @@ mod tests {
 
     #[test]
     fn large_keeps_the_original_only() {
-        assert_eq!(ArtSize::Large.candidates(ALBUM_640), vec![ALBUM_640.to_string()]);
+        assert_eq!(
+            ArtSize::Large.candidates(ALBUM_640),
+            vec![ALBUM_640.to_string()]
+        );
     }
 
     #[test]
@@ -100,6 +103,9 @@ mod tests {
 
     #[test]
     fn cache_keys_differ_per_size() {
-        assert_ne!(cache_key("u", ArtSize::Small), cache_key("u", ArtSize::Large));
+        assert_ne!(
+            cache_key("u", ArtSize::Small),
+            cache_key("u", ArtSize::Large)
+        );
     }
 }

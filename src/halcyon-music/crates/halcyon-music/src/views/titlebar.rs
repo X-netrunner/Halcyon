@@ -125,7 +125,11 @@ pub fn arrow_centre_x() -> f32 {
 
 fn history_buttons<'a, M: Clone + 'a>(h: History<M>, palette: HalcyonPalette) -> Element<'a, M> {
     let arrow = |glyph: Icon, enabled: bool, msg: M| -> Element<'a, M> {
-        let colour = if enabled { palette.text_muted } else { crate::theme::alpha(palette.text_muted, 0.4) };
+        let colour = if enabled {
+            palette.text_muted
+        } else {
+            crate::theme::alpha(palette.text_muted, 0.4)
+        };
         let b = button(
             container(icon(glyph, 16.0, colour))
                 .width(Length::Fill)
@@ -137,7 +141,11 @@ fn history_buttons<'a, M: Clone + 'a>(h: History<M>, palette: HalcyonPalette) ->
         .height(ARROW_SIZE)
         .padding(0)
         .style(crate::views::ghost(palette));
-        if enabled { b.on_press(msg).into() } else { b.into() }
+        if enabled {
+            b.on_press(msg).into()
+        } else {
+            b.into()
+        }
     };
     container(
         row![
@@ -149,7 +157,12 @@ fn history_buttons<'a, M: Clone + 'a>(h: History<M>, palette: HalcyonPalette) ->
     )
     .width(SIDE_WIDTH)
     .height(HEIGHT)
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: HISTORY_LEFT })
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        left: HISTORY_LEFT,
+    })
     .align_y(iced::alignment::Vertical::Center)
     .into()
 }
@@ -162,7 +175,15 @@ pub fn view<'a, M: Clone + 'a>(
     on_toggle_maximize: M,
     on_close: M,
 ) -> Element<'a, M> {
-    view_with_history(connected, palette, None, on_press_bar, on_minimize, on_toggle_maximize, on_close)
+    view_with_history(
+        connected,
+        palette,
+        None,
+        on_press_bar,
+        on_minimize,
+        on_toggle_maximize,
+        on_close,
+    )
 }
 
 /// The bar, with back and forward arrows at the left when `history` is given.
@@ -177,12 +198,19 @@ pub fn view_with_history<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     let star = tooltip(
         icon(
-            if connected { Icon::StarFilled } else { Icon::Star },
+            if connected {
+                Icon::StarFilled
+            } else {
+                Icon::Star
+            },
             14.0,
             if connected {
                 palette.accent
             } else {
-                iced::Color { a: 0.55, ..palette.text_muted }
+                iced::Color {
+                    a: 0.55,
+                    ..palette.text_muted
+                }
             },
         ),
         tip(connection_label(connected), palette),
@@ -190,7 +218,9 @@ pub fn view_with_history<'a, M: Clone + 'a>(
     );
 
     let brand = row![
-        text("Halcyon").size(type_size::BODY).color(palette.text_muted),
+        text("Halcyon")
+            .size(type_size::BODY)
+            .color(palette.text_muted),
         Space::with_width(space::SM),
         star,
     ]
@@ -203,16 +233,14 @@ pub fn view_with_history<'a, M: Clone + 'a>(
         None => Space::with_width(SIDE_WIDTH).into(),
         Some(h) => history_buttons(h, palette),
     };
-    let drag_area = mouse_area(
-        row![
-            left_block,
-            container(brand)
-                .width(Length::Fill)
-                .height(HEIGHT)
-                .center_x(Length::Fill)
-                .align_y(iced::alignment::Vertical::Center),
-        ],
-    )
+    let drag_area = mouse_area(row![
+        left_block,
+        container(brand)
+            .width(Length::Fill)
+            .height(HEIGHT)
+            .center_x(Length::Fill)
+            .align_y(iced::alignment::Vertical::Center),
+    ])
     .on_press(on_press_bar);
 
     let controls = row![

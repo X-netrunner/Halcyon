@@ -22,7 +22,12 @@ fn good_app(s: &str) -> bool {
 
 /// The environment legendary needs when its config is not in the default place (for example Heroic's).
 pub fn config_env(cfg: &Conf) -> Option<(String, String)> {
-    cfg.get("epic_config").map(|p| ("LEGENDARY_CONFIG_PATH".to_string(), expand_home(p).to_string_lossy().to_string()))
+    cfg.get("epic_config").map(|p| {
+        (
+            "LEGENDARY_CONFIG_PATH".to_string(),
+            expand_home(p).to_string_lossy().to_string(),
+        )
+    })
 }
 
 fn leg(args: &[&str]) -> Command {
@@ -36,11 +41,19 @@ fn leg(args: &[&str]) -> Command {
 
 fn leg_json(args: &[&str]) -> Result<Json, String> {
     need_legendary()?;
-    let o = leg(args).stdin(Stdio::null()).stderr(Stdio::null()).output().map_err(|e| format!("legendary: {e}"))?;
+    let o = leg(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| format!("legendary: {e}"))?;
     if !o.status.success() {
-        return Err(format!("legendary {} failed (logged in? hgl epic login)", args.join(" ")));
+        return Err(format!(
+            "legendary {} failed (logged in? hgl epic login)",
+            args.join(" ")
+        ));
     }
-    json::parse(&String::from_utf8_lossy(&o.stdout)).ok_or_else(|| "legendary printed something hgl could not read".to_string())
+    json::parse(&String::from_utf8_lossy(&o.stdout))
+        .ok_or_else(|| "legendary printed something hgl could not read".to_string())
 }
 
 pub struct Status {
@@ -51,25 +64,40 @@ pub struct Status {
 
 pub fn status() -> Status {
     if !have("legendary") {
-        return Status { installed: false, logged_in: false, account: String::new() };
+        return Status {
+            installed: false,
+            logged_in: false,
+            account: String::new(),
+        };
     }
-    let acct = leg_json(&["status", "--json"]).ok().and_then(|j| j.str("account").map(|s| s.to_string())).unwrap_or_default();
+    let acct = leg_json(&["status", "--json"])
+        .ok()
+        .and_then(|j| j.str("account").map(|s| s.to_string()))
+        .unwrap_or_default();
     // legendary writes "<not logged in>" when there is no login
     let logged_in = !acct.is_empty() && !acct.starts_with('<');
-    Status { installed: true, logged_in, account: if logged_in { acct } else { String::new() } }
+    Status {
+        installed: true,
+        logged_in,
+        account: if logged_in { acct } else { String::new() },
+    }
 }
 
 /// Interactive: legendary shows the Epic sign-in page and asks for the code it gives you. Needs a terminal (the Game Center opens one).
 pub fn login() -> Result<i32, String> {
     need_legendary()?;
     println!("Epic login: sign in on the page legendary shows, then paste the authorizationCode it gives you here.");
-    let st = leg(&["auth"]).status().map_err(|e| format!("legendary: {e}"))?;
+    let st = leg(&["auth"])
+        .status()
+        .map_err(|e| format!("legendary: {e}"))?;
     Ok(st.code().unwrap_or(1))
 }
 
 pub fn logout() -> Result<i32, String> {
     need_legendary()?;
-    let st = leg(&["auth", "--delete"]).status().map_err(|e| format!("legendary: {e}"))?;
+    let st = leg(&["auth", "--delete"])
+        .status()
+        .map_err(|e| format!("legendary: {e}"))?;
     Ok(st.code().unwrap_or(1))
 }
 
@@ -84,7 +112,13 @@ pub fn installed() -> Result<Vec<Installed>, String> {
     let j = leg_json(&["list-installed", "--json"])?;
     let mut v = Vec::new();
     for g in j.items() {
-        let (Some(app), Some(root), Some(exe)) = (g.str("app_name"), g.str("install_path"), g.str("executable")) else { continue };
+        let (Some(app), Some(root), Some(exe)) = (
+            g.str("app_name"),
+            g.str("install_path"),
+            g.str("executable"),
+        ) else {
+            continue;
+        };
         if !good_app(app) {
             continue;
         }
@@ -97,7 +131,11 @@ pub fn installed() -> Result<Vec<Installed>, String> {
         // the exact file when it can be found (case differences are common), else the path as written
         let path = resolve_ci(base, exe).unwrap_or_else(|| base.join(exe.replace('\\', "/")));
         let title = g.str("title").or(g.str("app_title")).unwrap_or(app);
-        v.push(Installed { app: app.to_string(), title: title.to_string(), exe: path.to_string_lossy().to_string() });
+        v.push(Installed {
+            app: app.to_string(),
+            title: title.to_string(),
+            exe: path.to_string_lossy().to_string(),
+        });
     }
     Ok(v)
 }
@@ -111,10 +149,14 @@ pub struct Title {
 /// Your Epic library (online), with what is installed marked.
 pub fn owned() -> Result<Vec<Title>, String> {
     let all = leg_json(&["list", "--json"])?;
-    let have_apps: Vec<String> = installed().map(|v| v.into_iter().map(|i| i.app).collect()).unwrap_or_default();
+    let have_apps: Vec<String> = installed()
+        .map(|v| v.into_iter().map(|i| i.app).collect())
+        .unwrap_or_default();
     let mut out: Vec<Title> = Vec::new();
     for g in all.items() {
-        let Some(app) = g.str("app_name") else { continue };
+        let Some(app) = g.str("app_name") else {
+            continue;
+        };
         if !good_app(app) {
             continue;
         }
@@ -127,7 +169,11 @@ pub fn owned() -> Result<Vec<Title>, String> {
             }
         }
         let title = g.str("app_title").unwrap_or(app).to_string();
-        out.push(Title { app: app.to_string(), title, installed: have_apps.iter().any(|a| a == app) });
+        out.push(Title {
+            app: app.to_string(),
+            title,
+            installed: have_apps.iter().any(|a| a == app),
+        });
     }
     out.sort_by_cached_key(|a| a.title.to_lowercase());
     Ok(out)
@@ -136,7 +182,14 @@ pub fn owned() -> Result<Vec<Title>, String> {
 pub fn titles_json() -> Result<String, String> {
     let items: Vec<String> = owned()?
         .iter()
-        .map(|t| format!("{{\"app\":{},\"title\":{},\"installed\":{}}}", json_str(&t.app), json_str(&t.title), t.installed))
+        .map(|t| {
+            format!(
+                "{{\"app\":{},\"title\":{},\"installed\":{}}}",
+                json_str(&t.app),
+                json_str(&t.title),
+                t.installed
+            )
+        })
         .collect();
     Ok(format!("[{}]", items.join(",")))
 }
@@ -146,10 +199,19 @@ pub fn cover_map() -> HashMap<String, String> {
     let mut m = HashMap::new();
     if let Ok(all) = leg_json(&["list", "--json"]) {
         for g in all.items() {
-            let Some(app) = g.str("app_name") else { continue };
-            let Some(imgs) = g.get("metadata").and_then(|x| x.get("keyImages")) else { continue };
+            let Some(app) = g.str("app_name") else {
+                continue;
+            };
+            let Some(imgs) = g.get("metadata").and_then(|x| x.get("keyImages")) else {
+                continue;
+            };
             for want in ["DieselGameBoxTall", "OfferImageTall", "Thumbnail"] {
-                if let Some(u) = imgs.items().iter().find(|i| i.str("type") == Some(want)).and_then(|i| i.str("url")) {
+                if let Some(u) = imgs
+                    .items()
+                    .iter()
+                    .find(|i| i.str("type") == Some(want))
+                    .and_then(|i| i.str("url"))
+                {
                     m.insert(app.to_string(), u.to_string());
                     break;
                 }
@@ -197,12 +259,24 @@ pub fn import() -> Result<Imported, String> {
 pub fn install(app: &str) -> Result<i32, String> {
     need_legendary()?;
     if !good_app(app) {
-        return Err(format!("not an Epic app name: {app} (hgl epic list shows them)"));
+        return Err(format!(
+            "not an Epic app name: {app} (hgl epic list shows them)"
+        ));
     }
     let base = games_root(&Conf::load()).join("Epic");
     std::fs::create_dir_all(&base).map_err(|e| format!("cannot create {}: {e}", base.display()))?;
     let base_s = base.to_string_lossy().to_string();
-    let st = leg(&["install", app, "--base-path", base_s.as_str(), "--platform", "Windows", "-y"]).status().map_err(|e| format!("legendary: {e}"))?;
+    let st = leg(&[
+        "install",
+        app,
+        "--base-path",
+        base_s.as_str(),
+        "--platform",
+        "Windows",
+        "-y",
+    ])
+    .status()
+    .map_err(|e| format!("legendary: {e}"))?;
     if !st.success() {
         return Ok(st.code().unwrap_or(1));
     }

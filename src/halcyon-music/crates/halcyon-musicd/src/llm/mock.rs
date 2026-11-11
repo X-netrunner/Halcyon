@@ -41,7 +41,11 @@ impl ScriptedLlm {
     /// A mock whose backend is down: every call and every probe fails as "unreachable".
     pub fn down() -> Self {
         let err = LlmError::Unreachable("http://127.0.0.1:11434".to_string());
-        let mock = Self::new(vec![Step::Fail(err.clone()), Step::Fail(err.clone()), Step::Fail(err.clone())]);
+        let mock = Self::new(vec![
+            Step::Fail(err.clone()),
+            Step::Fail(err.clone()),
+            Step::Fail(err.clone()),
+        ]);
         if let Ok(mut p) = mock.probe_result.lock() {
             *p = Err(err);
         }
@@ -87,13 +91,20 @@ impl TasteLlm for ScriptedLlm {
                     std::future::pending::<()>().await;
                     Err(LlmError::Timeout)
                 }
-                None => Err(LlmError::BadResponse("the test script ran out of steps".to_string())),
+                None => Err(LlmError::BadResponse(
+                    "the test script ran out of steps".to_string(),
+                )),
             }
         })
     }
 
     fn probe<'a>(&'a self) -> BoxFuture<'a, Result<(), LlmError>> {
-        Box::pin(async move { self.probe_result.lock().map(|p| p.clone()).unwrap_or(Ok(())) })
+        Box::pin(async move {
+            self.probe_result
+                .lock()
+                .map(|p| p.clone())
+                .unwrap_or(Ok(()))
+        })
     }
 }
 
@@ -114,7 +125,10 @@ impl MockCatalogue {
 
     /// A catalogue that cannot be reached.
     pub fn down() -> Self {
-        Self { down: true, ..Self::default() }
+        Self {
+            down: true,
+            ..Self::default()
+        }
     }
 
     /// Answer `query` with `tracks`.
@@ -138,7 +152,12 @@ impl Catalogue for MockCatalogue {
             if self.down {
                 return None;
             }
-            Some(self.answers.get(&query.to_lowercase()).cloned().unwrap_or_default())
+            Some(
+                self.answers
+                    .get(&query.to_lowercase())
+                    .cloned()
+                    .unwrap_or_default(),
+            )
         })
     }
 }

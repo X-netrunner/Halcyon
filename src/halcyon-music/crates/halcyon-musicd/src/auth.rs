@@ -64,11 +64,9 @@ pub async fn start_pkce_flow(client_id: &str) -> Result<(PkceSession, TcpListene
     // Try default port 8888 first, fallback to ephemeral port 0
     let listener = match TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], DEFAULT_PORT))).await {
         Ok(l) => l,
-        Err(_) => {
-            TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
-                .await
-                .map_err(|e| format!("unable to bind loopback server: {e}"))?
-        }
+        Err(_) => TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .map_err(|e| format!("unable to bind loopback server: {e}"))?,
     };
 
     let local_addr = listener
@@ -145,7 +143,9 @@ pub async fn wait_for_callback(
                 body.len(), body
             );
             let _ = socket.write_all(resp.as_bytes()).await;
-            return Err("Spotify authorization was declined or failed; try signing in again".to_string());
+            return Err(
+                "Spotify authorization was declined or failed; try signing in again".to_string(),
+            );
         }
 
         let code = match params.get("code") {
@@ -229,7 +229,9 @@ pub async fn exchange_code(
         .map_err(|e| format!("failed to read token exchange response: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Spotify token exchange failed (HTTP {status}); try signing in again"));
+        return Err(format!(
+            "Spotify token exchange failed (HTTP {status}); try signing in again"
+        ));
     }
 
     let token_resp = serde_json::from_str::<TokenResponse>(&text)
@@ -289,7 +291,9 @@ pub async fn refresh_access_token(
         .map_err(|e| format!("refresh response read error: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Spotify token refresh failed (HTTP {status}); sign in again"));
+        return Err(format!(
+            "Spotify token refresh failed (HTTP {status}); sign in again"
+        ));
     }
 
     let token_resp = serde_json::from_str::<TokenResponse>(&text)
@@ -357,10 +361,7 @@ fn urldecode(s: &str) -> String {
         if b == b'%' && i + 2 < bytes.len() {
             let h1 = bytes.get(i + 1).copied().unwrap_or(0);
             let h2 = bytes.get(i + 2).copied().unwrap_or(0);
-            if let Ok(val) = u8::from_str_radix(
-                &format!("{}{}", h1 as char, h2 as char),
-                16,
-            ) {
+            if let Ok(val) = u8::from_str_radix(&format!("{}{}", h1 as char, h2 as char), 16) {
                 out.push(val);
                 i += 3;
                 continue;

@@ -10,7 +10,11 @@ fn status() -> String {
     for line in out.lines() {
         if line.contains("\"numLock\":") {
             let is_on = line.contains("true");
-            return if is_on { "on".to_string() } else { "off".to_string() };
+            return if is_on {
+                "on".to_string()
+            } else {
+                "off".to_string()
+            };
         }
     }
     // Fallback: sysfs
@@ -46,13 +50,23 @@ fn press() -> bool {
 fn flip() -> i32 {
     let before = status();
     if !press() {
-        util::notify("Num Lock", "Could not press key: ydotool needed", Some("input-keyboard"), 3000);
+        util::notify(
+            "Num Lock",
+            "Could not press key: ydotool needed",
+            Some("input-keyboard"),
+            3000,
+        );
         return 1;
     }
     sleep(Duration::from_millis(250));
     let after = status();
     if after == before {
-        util::notify("Num Lock", "Key sent but Num Lock did not change", Some("input-keyboard"), 3000);
+        util::notify(
+            "Num Lock",
+            "Key sent but Num Lock did not change",
+            Some("input-keyboard"),
+            3000,
+        );
         return 1;
     }
     0

@@ -52,7 +52,11 @@ pub struct Thresholds {
 
 impl Default for Thresholds {
     fn default() -> Self {
-        Thresholds { pinch_min: 0.018, swipe_min: 0.048, pinch_bias: 0.5 }
+        Thresholds {
+            pinch_min: 0.018,
+            swipe_min: 0.048,
+            pinch_bias: 0.5,
+        }
     }
 }
 
@@ -70,7 +74,10 @@ impl Thresholds {
 }
 
 fn env_f32(name: &str, default: f32) -> f32 {
-    match env::var(name).ok().and_then(|v| v.trim().parse::<f32>().ok()) {
+    match env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<f32>().ok())
+    {
         Some(v) if v.is_finite() && v > 0.0 => v,
         _ => default,
     }
@@ -82,7 +89,11 @@ pub fn classify(t: &Thresholds, radial: f32, dx: f32, dy: f32) -> Kind {
 
     // pinch first: it wins whenever the fingers moved against each other by a fair share of the total movement
     if rad >= t.pinch_min && rad >= drift * t.pinch_bias {
-        return if radial < 0.0 { Kind::PinchIn } else { Kind::PinchOut };
+        return if radial < 0.0 {
+            Kind::PinchIn
+        } else {
+            Kind::PinchOut
+        };
     }
 
     if drift >= t.swipe_min {

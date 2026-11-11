@@ -44,7 +44,10 @@ pub fn extract_code(input: &str) -> Option<String> {
         Some(i) => &t[i + 5..],
         None => t,
     };
-    let code: String = raw.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    let code: String = raw
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
     if code.len() >= 8 {
         Some(code)
     } else {
@@ -63,7 +66,9 @@ pub fn login(input: Option<&str>) -> Result<i32, String> {
         println!("1. Open this page and sign in to GOG:\n\n   {}\n\n2. You land on a page that may look empty. Copy its address (it contains code=...).\n3. Run:  hgl gog login '<that address>'", login_url());
         return Ok(0);
     };
-    let code = extract_code(input).ok_or_else(|| "that is not a GOG address or code (the address contains code=...)".to_string())?;
+    let code = extract_code(input).ok_or_else(|| {
+        "that is not a GOG address or code (the address contains code=...)".to_string()
+    })?;
     let bin = gogdl()?;
     let auth = auth_path();
     if let Some(d) = auth.parent() {
@@ -71,7 +76,16 @@ pub fn login(input: Option<&str>) -> Result<i32, String> {
         make_private(d, 0o700);
     }
     let a = auth.to_string_lossy().to_string();
-    let st = Command::new(&bin).args(["--auth-config-path", a.as_str(), "auth", "--code", code.as_str()]).status().map_err(|e| format!("{bin}: {e}"))?;
+    let st = Command::new(&bin)
+        .args([
+            "--auth-config-path",
+            a.as_str(),
+            "auth",
+            "--code",
+            code.as_str(),
+        ])
+        .status()
+        .map_err(|e| format!("{bin}: {e}"))?;
     if !st.success() {
         return Ok(st.code().unwrap_or(1));
     }
@@ -92,7 +106,10 @@ fn token_obj(j: &Json) -> Option<&Json> {
     if j.str("refresh_token").is_some() {
         return Some(j);
     }
-    j.entries().iter().map(|(_, v)| v).find(|v| v.str("refresh_token").is_some())
+    j.entries()
+        .iter()
+        .map(|(_, v)| v)
+        .find(|v| v.str("refresh_token").is_some())
 }
 
 pub fn logged_in() -> bool {
@@ -111,11 +128,18 @@ fn fresh_token() -> Result<String, String> {
     if !access.is_empty() && at > now() as f64 + 120.0 {
         return Ok(access.to_string());
     }
-    let refresh = t.str("refresh_token").ok_or_else(|| "the GOG login has no refresh token (hgl gog login)".to_string())?;
+    let refresh = t
+        .str("refresh_token")
+        .ok_or_else(|| "the GOG login has no refresh token (hgl gog login)".to_string())?;
     let url = format!("https://auth.gog.com/token?client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}&grant_type=refresh_token&refresh_token={}", url_encode(refresh));
-    let body = curl_run(&url, None, None).ok_or_else(|| "could not renew the GOG login (offline? or log in again: hgl gog login)".to_string())?;
+    let body = curl_run(&url, None, None).ok_or_else(|| {
+        "could not renew the GOG login (offline? or log in again: hgl gog login)".to_string()
+    })?;
     let nj = json::parse(&body).ok_or_else(|| "GOG answered something unreadable".to_string())?;
-    let new_access = nj.str("access_token").ok_or_else(|| "GOG did not give a new token: log in again (hgl gog login)".to_string())?.to_string();
+    let new_access = nj
+        .str("access_token")
+        .ok_or_else(|| "GOG did not give a new token: log in again (hgl gog login)".to_string())?
+        .to_string();
     let new_refresh = nj.str("refresh_token").unwrap_or(refresh).to_string();
     let expires = nj.num("expires_in").unwrap_or(3600.0) as u64;
     let mut saved = String::new();
@@ -123,14 +147,17 @@ fn fresh_token() -> Result<String, String> {
     saved.push_str(&json_str(CLIENT_ID));
     saved.push_str(":{\"access_token\":");
     saved.push_str(&json_str(&new_access));
-    saved.push_str(&format!(",\"expires_in\":{expires},\"token_type\":\"bearer\",\"scope\":\"\",\"session_id\":"));
+    saved.push_str(&format!(
+        ",\"expires_in\":{expires},\"token_type\":\"bearer\",\"scope\":\"\",\"session_id\":"
+    ));
     saved.push_str(&json_str(nj.str("session_id").unwrap_or("")));
     saved.push_str(",\"refresh_token\":");
     saved.push_str(&json_str(&new_refresh));
     saved.push_str(",\"user_id\":");
     saved.push_str(&json_str(nj.str("user_id").unwrap_or("")));
     saved.push_str(&format!(",\"loginTime\":{}}}}}\n", now()));
-    atomic_write(&auth_path(), &saved).map_err(|e| format!("cannot save the new GOG login: {e}"))?;
+    atomic_write(&auth_path(), &saved)
+        .map_err(|e| format!("cannot save the new GOG login: {e}"))?;
     make_private(&auth_path(), 0o600);
     Ok(new_access)
 }
@@ -176,13 +203,21 @@ pub fn parse_info(root: &Path, text: &str) -> Option<Found> {
     if !exe.is_file() {
         return None;
     }
-    Some(Found { id: gid, name, exe, args: task.str("arguments").unwrap_or("").to_string() })
+    Some(Found {
+        id: gid,
+        name,
+        exe,
+        args: task.str("arguments").unwrap_or("").to_string(),
+    })
 }
 
 /// Where GOG games are looked for: hgl's own install folder, Heroic's default, and `gog_dirs` (folders separated by `:`).
 pub fn scan_dirs() -> Vec<PathBuf> {
     let cfg = Conf::load();
-    let mut v = vec![games_root(&cfg).join("GOG"), home().join("Games").join("Heroic")];
+    let mut v = vec![
+        games_root(&cfg).join("GOG"),
+        home().join("Games").join("Heroic"),
+    ];
     if let Some(extra) = cfg.get("gog_dirs") {
         for d in extra.split(':') {
             if !d.trim().is_empty() {
@@ -276,17 +311,28 @@ pub fn owned() -> Result<Vec<Owned>, String> {
     let mut out: Vec<Owned> = Vec::new();
     let mut page: u32 = 1;
     loop {
-        let url = format!("https://embed.gog.com/account/getFilteredProducts?mediaType=1&page={page}");
-        let body = curl_run(&url, Some(hdr.as_str()), None).ok_or_else(|| "could not read your GOG library (offline, or the login ran out: hgl gog login)".to_string())?;
-        let j = json::parse(&body).ok_or_else(|| "GOG answered something unreadable".to_string())?;
+        let url =
+            format!("https://embed.gog.com/account/getFilteredProducts?mediaType=1&page={page}");
+        let body = curl_run(&url, Some(hdr.as_str()), None).ok_or_else(|| {
+            "could not read your GOG library (offline, or the login ran out: hgl gog login)"
+                .to_string()
+        })?;
+        let j =
+            json::parse(&body).ok_or_else(|| "GOG answered something unreadable".to_string())?;
         for p in j.get("products").map(|x| x.items()).unwrap_or(&[]) {
-            let Some(id) = p.get("id").and_then(id_of) else { continue };
+            let Some(id) = p.get("id").and_then(id_of) else {
+                continue;
+            };
             if p.get("worksOn").and_then(|w| w.get("Windows")) != Some(&Json::Bool(true)) {
                 continue;
             }
             let title = p.str("title").unwrap_or(id.as_str()).to_string();
             let installed = mine.contains(&id);
-            out.push(Owned { id, title, installed });
+            out.push(Owned {
+                id,
+                title,
+                installed,
+            });
         }
         let total = j.num("totalPages").unwrap_or(1.0) as u32;
         if page >= total.min(30) {
@@ -301,7 +347,14 @@ pub fn owned() -> Result<Vec<Owned>, String> {
 pub fn titles_json() -> Result<String, String> {
     let items: Vec<String> = owned()?
         .iter()
-        .map(|t| format!("{{\"id\":{},\"title\":{},\"installed\":{}}}", json_str(&t.id), json_str(&t.title), t.installed))
+        .map(|t| {
+            format!(
+                "{{\"id\":{},\"title\":{},\"installed\":{}}}",
+                json_str(&t.id),
+                json_str(&t.title),
+                t.installed
+            )
+        })
         .collect();
     Ok(format!("[{}]", items.join(",")))
 }
@@ -309,7 +362,9 @@ pub fn titles_json() -> Result<String, String> {
 /// Download and install (gogdl shows its own progress). `title` only names the folder.
 pub fn install(id: &str, title: Option<&str>) -> Result<i32, String> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
-        return Err(format!("not a GOG product id: {id} (hgl gog list shows them)"));
+        return Err(format!(
+            "not a GOG product id: {id} (hgl gog list shows them)"
+        ));
     }
     let bin = gogdl()?;
     if !logged_in() {
@@ -322,7 +377,18 @@ pub fn install(id: &str, title: Option<&str>) -> Result<i32, String> {
     let a = auth_path().to_string_lossy().to_string();
     let d = dir.to_string_lossy().to_string();
     let st = Command::new(&bin)
-        .args(["--auth-config-path", a.as_str(), "download", id, "--platform", "windows", "--path", d.as_str(), "--lang", "en-US"])
+        .args([
+            "--auth-config-path",
+            a.as_str(),
+            "download",
+            id,
+            "--platform",
+            "windows",
+            "--path",
+            d.as_str(),
+            "--lang",
+            "en-US",
+        ])
         .status()
         .map_err(|e| format!("{bin}: {e}"))?;
     if !st.success() {
@@ -339,8 +405,16 @@ mod tests {
 
     #[test]
     fn codes() {
-        assert_eq!(extract_code("https://embed.gog.com/on_login_success?origin=client&code=AbC123-xyz_9&x=1"), Some("AbC123-xyz_9".to_string()));
-        assert_eq!(extract_code("  AbC123xyz9  "), Some("AbC123xyz9".to_string()));
+        assert_eq!(
+            extract_code(
+                "https://embed.gog.com/on_login_success?origin=client&code=AbC123-xyz_9&x=1"
+            ),
+            Some("AbC123-xyz_9".to_string())
+        );
+        assert_eq!(
+            extract_code("  AbC123xyz9  "),
+            Some("AbC123xyz9".to_string())
+        );
         assert_eq!(extract_code("short"), None);
         assert_eq!(extract_code("code=; rm -rf"), None);
     }
@@ -366,7 +440,8 @@ mod tests {
 
     #[test]
     fn token_shapes() {
-        let keyed = json::parse(r#"{"4689":{"access_token":"a","refresh_token":"r"}}"#).unwrap_or(Json::Null);
+        let keyed = json::parse(r#"{"4689":{"access_token":"a","refresh_token":"r"}}"#)
+            .unwrap_or(Json::Null);
         assert!(token_obj(&keyed).is_some());
         let flat = json::parse(r#"{"access_token":"a","refresh_token":"r"}"#).unwrap_or(Json::Null);
         assert!(token_obj(&flat).is_some());

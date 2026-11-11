@@ -8,13 +8,20 @@ pub const WIDTH: f32 = 208.0;
 /// Seven rows plus padding; used to keep the menu inside the window.
 pub const HEIGHT: f32 = 7.0 * 36.0 + 2.0 * space::SM + 6.0 * 2.0;
 
-fn entry<'a, M: Clone + 'a>(label: &'static str, palette: HalcyonPalette, msg: Option<M>) -> Element<'a, M> {
+fn entry<'a, M: Clone + 'a>(
+    label: &'static str,
+    palette: HalcyonPalette,
+    msg: Option<M>,
+) -> Element<'a, M> {
     let enabled = msg.is_some();
-    let mut b = button(
-        text(label)
-            .size(type_size::BODY)
-            .color(if enabled { palette.text } else { iced::Color { a: 0.4, ..palette.text_muted } }),
-    )
+    let mut b = button(text(label).size(type_size::BODY).color(if enabled {
+        palette.text
+    } else {
+        iced::Color {
+            a: 0.4,
+            ..palette.text_muted
+        }
+    }))
     .width(Length::Fill)
     .padding([space::SM, space::MD])
     .style(move |_t, status| button::Style {
@@ -27,7 +34,10 @@ fn entry<'a, M: Clone + 'a>(label: &'static str, palette: HalcyonPalette, msg: O
             .into(),
         ),
         text_color: palette.text,
-        border: iced::Border { radius: radius::SM.into(), ..Default::default() },
+        border: iced::Border {
+            radius: radius::SM.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
     if let Some(m) = msg {
@@ -64,9 +74,16 @@ pub fn card<'a, M: Clone + 'a>(
     .padding(space::SM)
     .style(move |_t| container::Style {
         background: Some(palette.card_background()),
-        border: iced::Border { color: palette.soft_border(), width: 1.0, radius: radius::MD.into() },
+        border: iced::Border {
+            color: palette.soft_border(),
+            width: 1.0,
+            radius: radius::MD.into(),
+        },
         shadow: iced::Shadow {
-            color: iced::Color { a: 0.35, ..iced::Color::BLACK },
+            color: iced::Color {
+                a: 0.35,
+                ..iced::Color::BLACK
+            },
             offset: iced::Vector::new(0.0, 6.0),
             blur_radius: 18.0,
         },
@@ -77,8 +94,14 @@ pub fn card<'a, M: Clone + 'a>(
 
 /// Top-left corner for the menu so that it opens at the cursor but never leaves the window.
 pub fn place(cursor: iced::Point, window: iced::Size) -> (f32, f32) {
-    let x = cursor.x.min(window.width - WIDTH - space::SM).max(space::SM);
-    let y = cursor.y.min(window.height - HEIGHT - space::SM).max(space::SM);
+    let x = cursor
+        .x
+        .min(window.width - WIDTH - space::SM)
+        .max(space::SM);
+    let y = cursor
+        .y
+        .min(window.height - HEIGHT - space::SM)
+        .max(space::SM);
     (x, y)
 }
 
@@ -89,7 +112,10 @@ mod tests {
 
     #[test]
     fn menu_opens_at_the_cursor_when_there_is_room() {
-        assert_eq!(place(Point::new(100.0, 120.0), Size::new(1280.0, 800.0)), (100.0, 120.0));
+        assert_eq!(
+            place(Point::new(100.0, 120.0), Size::new(1280.0, 800.0)),
+            (100.0, 120.0)
+        );
     }
 
     #[test]

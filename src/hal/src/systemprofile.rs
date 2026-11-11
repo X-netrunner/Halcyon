@@ -83,7 +83,10 @@ fn analyze_command_habits() -> (Vec<(String, usize)>, usize) {
 
 fn gather_filesystem_info() -> String {
     let mut out = String::new();
-    let df = crate::util::out("df", &["-h", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay"]);
+    let df = crate::util::out(
+        "df",
+        &["-h", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay"],
+    );
     for line in df.lines() {
         if !line.is_empty() {
             out.push_str(&format!("  {}\n", line));
@@ -114,7 +117,11 @@ fn gather_hardware_info() -> (String, String, String, String) {
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         for line in meminfo.lines() {
             if let Some(val) = line.strip_prefix("MemTotal:") {
-                let kb: u64 = val.split_whitespace().next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                let kb: u64 = val
+                    .split_whitespace()
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
                 mem_str = format!("{:.1} GB", kb as f64 / 1_048_576.0);
                 break;
             }
@@ -126,7 +133,10 @@ fn gather_hardware_info() -> (String, String, String, String) {
     for line in lspci.lines() {
         if line.contains("VGA") || line.contains("3D controller") {
             if line.contains("NVIDIA") {
-                gpu = format!("NVIDIA Hybrid: {}", line.split(':').nth(2).unwrap_or(line).trim());
+                gpu = format!(
+                    "NVIDIA Hybrid: {}",
+                    line.split(':').nth(2).unwrap_or(line).trim()
+                );
                 break;
             } else if line.contains("Intel") || line.contains("AMD") {
                 gpu = line.split(':').nth(2).unwrap_or(line).trim().to_string();
@@ -141,7 +151,8 @@ fn gather_security_posture() -> (String, String, String, u32) {
     let afw = if crate::util::command_exists("ai-firewall") {
         let out = crate::util::out("ai-firewall", &["status"]);
         if out.contains("running") {
-            "ai-firewall: active (eBPF/XDP enforce, spamhaus-drop feed loaded, 0 open TCP ports)".to_string()
+            "ai-firewall: active (eBPF/XDP enforce, spamhaus-drop feed loaded, 0 open TCP ports)"
+                .to_string()
         } else {
             "ai-firewall: installed (not running or disabled)".to_string()
         }
@@ -152,7 +163,8 @@ fn gather_security_posture() -> (String, String, String, u32) {
     let aav = if crate::util::command_exists("ai-antivirus") {
         let out = crate::util::out("ai-antivirus", &["status"]);
         if out.contains("active") {
-            "ai-antivirus: active (alert-only mode, 13 behavioral rules, 8 YARA rules, 4 daemons)".to_string()
+            "ai-antivirus: active (alert-only mode, 13 behavioral rules, 8 YARA rules, 4 daemons)"
+                .to_string()
         } else {
             "ai-antivirus: installed (idle or alert-only)".to_string()
         }
@@ -188,7 +200,11 @@ fn gather_default_apps() -> (String, String, String, String, String) {
     let browser = crate::util::out("xdg-settings", &["get", "default-web-browser"])
         .trim()
         .replace(".desktop", "");
-    let browser = if browser.is_empty() { "firefox".to_string() } else { browser };
+    let browser = if browser.is_empty() {
+        "firefox".to_string()
+    } else {
+        browser
+    };
 
     let terminal = "foot".to_string();
     let editor = "zeditor".to_string();
@@ -219,7 +235,8 @@ fn gather_system_errors() -> Vec<String> {
     }
 
     if errors.is_empty() {
-        errors.push("No active critical errors detected in systemctl or kernel journal.".to_string());
+        errors
+            .push("No active critical errors detected in systemctl or kernel journal.".to_string());
     }
     errors
 }
@@ -301,8 +318,14 @@ pub fn sync_luna_memory() -> usize {
         if !exists {
             let obj = vec![
                 ("content".to_string(), crate::json::Json::Str(fact)),
-                ("added".to_string(), crate::json::Json::Str(date_clean.to_string())),
-                ("category".to_string(), crate::json::Json::Str(cat.to_string())),
+                (
+                    "added".to_string(),
+                    crate::json::Json::Str(date_clean.to_string()),
+                ),
+                (
+                    "category".to_string(),
+                    crate::json::Json::Str(cat.to_string()),
+                ),
             ];
             existing_mem.push(crate::json::Json::Obj(obj));
             added += 1;
@@ -319,7 +342,11 @@ pub fn sync_luna_memory() -> usize {
         json_out.push_str(&format!("    \"content\": {},\n", serde_escape(content)));
         json_out.push_str(&format!("    \"added\": \"{}\",\n", added_dt));
         json_out.push_str(&format!("    \"category\": \"{}\"\n", category));
-        json_out.push_str(if i + 1 < existing_mem.len() { "  },\n" } else { "  }\n" });
+        json_out.push_str(if i + 1 < existing_mem.len() {
+            "  },\n"
+        } else {
+            "  }\n"
+        });
     }
     json_out.push_str("]\n");
 
@@ -426,7 +453,11 @@ pub fn generate_and_save_profile() -> i32 {
             "      {{\"command\": {}, \"count\": {}}}{}\n",
             serde_escape(c),
             cnt,
-            if i + 1 < 15.min(top_cmds.len()) { "," } else { "" }
+            if i + 1 < 15.min(top_cmds.len()) {
+                ","
+            } else {
+                ""
+            }
         ));
     }
     json.push_str("    ]\n");
@@ -478,7 +509,8 @@ pub fn run_system_test() -> i32 {
 
     // 1. Check failed units and journals
     let failed = crate::util::out("systemctl", &["--failed", "--no-legend", "--no-pager"]);
-    let journal_errs = crate::util::out("journalctl", &["-p", "3", "-xb", "--no-pager", "-n", "15"]);
+    let journal_errs =
+        crate::util::out("journalctl", &["-p", "3", "-xb", "--no-pager", "-n", "15"]);
     let coredumps = crate::util::out("coredumpctl", &["list", "-n", "5", "--no-legend"]);
 
     // 2. Firewall details
@@ -503,15 +535,19 @@ pub fn run_system_test() -> i32 {
         .unwrap_or_else(|_| "unknown".to_string())
         .trim()
         .to_string();
-    let epp = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference")
-        .unwrap_or_else(|_| "unknown".to_string())
-        .trim()
-        .to_string();
+    let epp =
+        fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference")
+            .unwrap_or_else(|_| "unknown".to_string())
+            .trim()
+            .to_string();
 
     let mut out = String::new();
     out.push_str("# Halcyon Deep System Test & Diagnostic Report\n\n");
     out.push_str(&format!("*Executed: {}*\n", iso));
-    out.push_str(&format!("*Platform*: {} | CPU: {} | RAM: {} | GPU: {}\n\n", model, cpu, ram, gpu));
+    out.push_str(&format!(
+        "*Platform*: {} | CPU: {} | RAM: {} | GPU: {}\n\n",
+        model, cpu, ram, gpu
+    ));
 
     out.push_str("## 1. Bugs, Crashes & Error Profile\n");
     let failed_trimmed = failed.trim();
@@ -533,7 +569,11 @@ pub fn run_system_test() -> i32 {
     }
 
     out.push_str("### Critical Kernel / Journal Errors:\n```\n");
-    out.push_str(if journal_errs.trim().is_empty() { "No critical journal errors in current boot." } else { journal_errs.trim() });
+    out.push_str(if journal_errs.trim().is_empty() {
+        "No critical journal errors in current boot."
+    } else {
+        journal_errs.trim()
+    });
     out.push_str("\n```\n\n");
 
     out.push_str("## 2. Firewall Verification\n");
@@ -560,7 +600,11 @@ pub fn run_system_test() -> i32 {
     out.push_str(free_mem.trim());
     out.push_str("\n```\n");
     out.push_str("### Thermals & Sensors:\n```\n");
-    out.push_str(if sensors.trim().is_empty() { "sensors not available" } else { sensors.trim() });
+    out.push_str(if sensors.trim().is_empty() {
+        "sensors not available"
+    } else {
+        sensors.trim()
+    });
     out.push_str("\n```\n");
     out.push_str("### Storage Utilization:\n```\n");
     out.push_str(&fs_info);
@@ -575,7 +619,9 @@ pub fn run_system_test() -> i32 {
     }
     out.push_str("- 💡 **Cache Trimming**: Run `hal cache-trim --status` or `hal cache-trim --force` to recover disk space from old package and browser caches.\n");
     out.push_str("- 💡 **Memory Management**: If swap usage rises, check `hal mem where` to find high-footprint processes.\n");
-    out.push_str("- 💡 **Package Updates**: Run `checkupdates` to check pending system upgrades.\n");
+    out.push_str(
+        "- 💡 **Package Updates**: Run `checkupdates` to check pending system upgrades.\n",
+    );
 
     println!("{}", out);
     0

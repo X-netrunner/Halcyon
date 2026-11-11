@@ -8,7 +8,8 @@ static ANY_IP: LazyLock<Regex> =
 static ALERT_PREFIX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\[[^\]]*\]\s*\[ALERT\]\s*").expect("valid regex"));
 static IP_LABEL_CLEAN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b").expect("valid regex")
+    Regex::new(r"\s*\b(?:from|Source IP|Banning IP)\s+\d{1,3}(?:\.\d{1,3}){3}\b")
+        .expect("valid regex")
 });
 
 #[derive(Default, Clone)]
@@ -139,7 +140,12 @@ fn logs_dir() -> String {
     "/root/logs".to_string()
 }
 
-fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<(String, String, String, String)>) {
+fn load_cowrie(
+    logs: &str,
+) -> (
+    HashMap<String, CowrieData>,
+    Vec<(String, String, String, String)>,
+) {
     let mut agg: HashMap<String, CowrieData> = HashMap::new();
     let mut login_events = Vec::new();
     let p = format!("{}/cowrie/cowrie.json", logs);
@@ -173,14 +179,24 @@ fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<(String, String,
                 d.sessions += 1;
             }
             "cowrie.login.success" => {
-                let u = e.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let p = e.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let u = e
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let p = e
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 d.logins.add(&format!("{}:{}", u, p));
                 login_events.push((ip.clone(), u, p, t.clone()));
             }
             "cowrie.command.input" => {
                 if let Some(c) = e.get("input").and_then(|v| v.as_str()) {
-                    if !c.is_empty() && (d.cmds.is_empty() || d.cmds.last().map(|s| s.as_str()) != Some(c)) {
+                    if !c.is_empty()
+                        && (d.cmds.is_empty() || d.cmds.last().map(|s| s.as_str()) != Some(c))
+                    {
                         d.cmds.push(c.to_string());
                     }
                 }
@@ -236,7 +252,10 @@ fn main() {
     let sess: u64 = cow.values().map(|d| d.sessions).sum();
     let logn: u64 = cow.values().map(|d| d.logins.total()).sum();
     let cmds: usize = cow.values().map(|d| d.cmds.len()).sum();
-    println!("  sessions {}   logins captured {}   commands {}", sess, logn, cmds);
+    println!(
+        "  sessions {}   logins captured {}   commands {}",
+        sess, logn, cmds
+    );
 
     let start = if login_events.len() > 6 {
         login_events.len() - 6
@@ -274,7 +293,12 @@ fn main() {
     rows.sort_by(|a, b| b.1.cmp(&a.1));
 
     for (ip, total, c, r) in rows {
-        println!("\n  {}   activity: {}   (last cowrie hit {})", ip, total, ts(&c.last));
+        println!(
+            "\n  {}   activity: {}   (last cowrie hit {})",
+            ip,
+            total,
+            ts(&c.last)
+        );
         if !c.logins.is_empty() {
             let creds = c
                 .logins

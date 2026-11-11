@@ -115,7 +115,10 @@ fn stamp_text(epoch: f64, offset: i64) -> String {
     let minute = (day_secs % 3600) / 60;
     let (year, month, day) = civil_from_days(days);
     let month_idx = (month.saturating_sub(1) as usize).min(11);
-    format!("{} {} {}, {:02}:{:02}", day, MONTHS[month_idx], year, hour, minute)
+    format!(
+        "{} {} {}, {:02}:{:02}",
+        day, MONTHS[month_idx], year, hour, minute
+    )
 }
 
 fn file_mtime(path: &Path) -> f64 {
@@ -175,7 +178,10 @@ fn parse_pacman_date(date_str: &str) -> f64 {
         if idx > 2 {
             let (tm, tz) = time_part.split_at(idx);
             let sign = if tz.starts_with('-') { -1 } else { 1 };
-            let tz_digits = tz.trim_start_matches('+').trim_start_matches('-').replace(':', "");
+            let tz_digits = tz
+                .trim_start_matches('+')
+                .trim_start_matches('-')
+                .replace(':', "");
             if tz_digits.len() >= 4 {
                 let th: i64 = tz_digits[0..2].parse().unwrap_or(0);
                 let tm_m: i64 = tz_digits[2..4].parse().unwrap_or(0);
@@ -206,7 +212,8 @@ fn parse_pacman_date(date_str: &str) -> f64 {
 }
 
 fn pacman_epoch() -> f64 {
-    let log_path = env::var("HALCYON_PACMAN_LOG").unwrap_or_else(|_| "/var/log/pacman.log".to_string());
+    let log_path =
+        env::var("HALCYON_PACMAN_LOG").unwrap_or_else(|_| "/var/log/pacman.log".to_string());
     let mut file = match File::open(&log_path) {
         Ok(f) => f,
         Err(_) => return 0.0,
@@ -256,7 +263,9 @@ fn pacman_epoch() -> f64 {
                         if t > 0.0 {
                             return t;
                         }
-                    } else if full_upgrade == 0.0 && rest.starts_with(b" [PACMAN] starting full system upgrade") {
+                    } else if full_upgrade == 0.0
+                        && rest.starts_with(b" [PACMAN] starting full system upgrade")
+                    {
                         full_upgrade = parse_pacman_date(&stamp);
                     }
                 }
@@ -310,7 +319,11 @@ fn focus_stats(island_dir: &Path, now: f64, offset: i64) -> FocusStats {
             for (k, v) in entries {
                 let parts: Vec<&str> = k.split('-').collect();
                 if parts.len() == 3 {
-                    if let (Ok(y), Ok(m), Ok(d)) = (parts[0].parse::<i32>(), parts[1].parse::<u32>(), parts[2].parse::<u32>()) {
+                    if let (Ok(y), Ok(m), Ok(d)) = (
+                        parts[0].parse::<i32>(),
+                        parts[1].parse::<u32>(),
+                        parts[2].parse::<u32>(),
+                    ) {
                         let epoch_day = days_from_civil(y, m, d);
                         let mins = match v {
                             crate::json::Json::Num(n) => n as i64,
@@ -345,9 +358,16 @@ fn focus_stats(island_dir: &Path, now: f64, offset: i64) -> FocusStats {
         .collect();
     hit_days.sort_unstable();
 
-    let last = hit_days.last().map(|&ld| (today_day - ld).max(0)).unwrap_or(-1);
+    let last = hit_days
+        .last()
+        .map(|&ld| (today_day - ld).max(0))
+        .unwrap_or(-1);
 
-    let start_check = if today_mins >= goal { today_day } else { today_day - 1 };
+    let start_check = if today_mins >= goal {
+        today_day
+    } else {
+        today_day - 1
+    };
     let mut streak = 0i64;
     let mut d = start_check;
     while days_map.get(&d).copied().unwrap_or(0) >= goal && streak < 4000 {
@@ -425,9 +445,33 @@ pub fn run(args: &[String]) -> i32 {
         );
         0
     } else if cmd == "status" {
-        println!("wallpaper changed : {} ({})", wall_ago_str, if wall_at_str.is_empty() { "no record" } else { &wall_at_str });
-        println!("system updated    : {} ({})", upd_ago_str, if upd_at_str.is_empty() { "no readable pacman log" } else { &upd_at_str });
-        println!("Halcyon updated   : {} ({})", hal_ago_str, if hal_at_str.is_empty() { "no record" } else { &hal_at_str });
+        println!(
+            "wallpaper changed : {} ({})",
+            wall_ago_str,
+            if wall_at_str.is_empty() {
+                "no record"
+            } else {
+                &wall_at_str
+            }
+        );
+        println!(
+            "system updated    : {} ({})",
+            upd_ago_str,
+            if upd_at_str.is_empty() {
+                "no readable pacman log"
+            } else {
+                &upd_at_str
+            }
+        );
+        println!(
+            "Halcyon updated   : {} ({})",
+            hal_ago_str,
+            if hal_at_str.is_empty() {
+                "no record"
+            } else {
+                &hal_at_str
+            }
+        );
         println!(
             "focus streak      : {} day(s), best {}, a day counts from {} min, today {} min",
             focus.streak, focus.best, focus.goal, focus.today

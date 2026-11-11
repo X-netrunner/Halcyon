@@ -94,10 +94,21 @@ fn label_button<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     on_select: &impl Fn(NavPage) -> M,
 ) -> Element<'a, M> {
-    let colour = if active { palette.text } else { palette.text_muted };
+    let colour = if active {
+        palette.text
+    } else {
+        palette.text_muted
+    };
     let bar = container(Space::new(BAR_WIDTH, BAR_HEIGHT)).style(move |_t| container::Style {
-        background: if active { Some(palette.accent.into()) } else { None },
-        border: iced::Border { radius: (BAR_HEIGHT / 2.0).into(), ..Default::default() },
+        background: if active {
+            Some(palette.accent.into())
+        } else {
+            None
+        },
+        border: iced::Border {
+            radius: (BAR_HEIGHT / 2.0).into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
     button(
@@ -109,7 +120,11 @@ fn label_button<'a, M: Clone + 'a>(
     .padding([4, 6])
     .style(move |_t, status| button::Style {
         background: None,
-        text_color: if matches!(status, button::Status::Hovered) { palette.text } else { colour },
+        text_color: if matches!(status, button::Status::Hovered) {
+            palette.text
+        } else {
+            colour
+        },
         border: iced::Border::default(),
         ..Default::default()
     })
@@ -117,12 +132,20 @@ fn label_button<'a, M: Clone + 'a>(
 }
 
 /// The Halcyon star: opens and closes the pages kept behind it.
-fn more_button<'a, M: Clone + 'a>(lit: bool, palette: HalcyonPalette, on_toggle: M) -> Element<'a, M> {
+fn more_button<'a, M: Clone + 'a>(
+    lit: bool,
+    palette: HalcyonPalette,
+    on_toggle: M,
+) -> Element<'a, M> {
     button(
         container(icon(
             if lit { Icon::StarFilled } else { Icon::Star },
             15.0,
-            if lit { palette.accent } else { palette.text_muted },
+            if lit {
+                palette.accent
+            } else {
+                palette.text_muted
+            },
         ))
         .width(MORE_SIZE)
         .height(MORE_SIZE)
@@ -138,7 +161,10 @@ fn more_button<'a, M: Clone + 'a>(lit: bool, palette: HalcyonPalette, on_toggle:
             None
         },
         text_color: palette.text,
-        border: iced::Border { radius: (MORE_SIZE / 2.0).into(), ..Default::default() },
+        border: iced::Border {
+            radius: (MORE_SIZE / 2.0).into(),
+            ..Default::default()
+        },
         ..Default::default()
     })
     .into()
@@ -157,15 +183,32 @@ fn bar<'a, M: Clone + 'a>(
     let lit = Tab::for_page(active);
     let mut tabs = row![].spacing(theme::space::XL).align_y(Alignment::Center);
     for tab in Tab::ALL {
-        tabs = tabs.push(label_button(tab.label(), tab.page(), lit == Some(tab), palette, on_select));
+        tabs = tabs.push(label_button(
+            tab.label(),
+            tab.page(),
+            lit == Some(tab),
+            palette,
+            on_select,
+        ));
     }
 
     let mut extras = row![].spacing(theme::space::XL).align_y(Alignment::Center);
     for page in Tab::MORE {
-        extras = extras.push(label_button(more_label(page), page, active == page, palette, on_select));
+        extras = extras.push(label_button(
+            more_label(page),
+            page,
+            active == page,
+            palette,
+            on_select,
+        ));
     }
     let extras = Slide::horizontal(
-        container(extras).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: theme::space::LG }),
+        container(extras).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: theme::space::LG,
+        }),
         more,
     );
     let right = row![
@@ -177,9 +220,13 @@ fn bar<'a, M: Clone + 'a>(
 
     container(
         row![
-            container(left).width(Length::FillPortion(1)).align_y(iced::alignment::Vertical::Center),
+            container(left)
+                .width(Length::FillPortion(1))
+                .align_y(iced::alignment::Vertical::Center),
             tabs,
-            container(right).width(Length::FillPortion(1)).align_y(iced::alignment::Vertical::Center),
+            container(right)
+                .width(Length::FillPortion(1))
+                .align_y(iced::alignment::Vertical::Center),
         ]
         .align_y(Alignment::Center),
     )
@@ -207,7 +254,14 @@ pub fn view<'a, M: Clone + 'a>(
         bottom: 0.0,
         left: crate::views::titlebar::arrow_centre_x() - button_w / 2.0,
     });
-    bar(left.into(), active, palette, more, on_toggle_more, &on_select)
+    bar(
+        left.into(),
+        active,
+        palette,
+        more,
+        on_toggle_more,
+        &on_select,
+    )
 }
 
 /// The tabs alone, centred in whatever width they are given. The Player panel layout puts them at
@@ -219,7 +273,14 @@ pub fn inline<'a, M: Clone + 'a>(
     on_toggle_more: M,
     on_select: impl Fn(NavPage) -> M + 'a,
 ) -> Element<'a, M> {
-    bar(Space::with_width(0).into(), active, palette, more, on_toggle_more, &on_select)
+    bar(
+        Space::with_width(0).into(),
+        active,
+        palette,
+        more,
+        on_toggle_more,
+        &on_select,
+    )
 }
 
 #[cfg(test)]
@@ -257,7 +318,14 @@ mod tests {
             NavPage::Recent,
             NavPage::Discover,
         ] {
-            let _v: Element<'_, NavPage> = view(page, palette, Space::new(32, 32).into(), 0.5, NavPage::Home, |p| p);
+            let _v: Element<'_, NavPage> = view(
+                page,
+                palette,
+                Space::new(32, 32).into(),
+                0.5,
+                NavPage::Home,
+                |p| p,
+            );
             let _w: Element<'_, NavPage> = inline(page, palette, 1.0, NavPage::Home, |p| p);
         }
     }

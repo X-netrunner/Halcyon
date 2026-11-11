@@ -55,28 +55,46 @@ fn birthdays_file() -> PathBuf {
 /// created with the right mode from the start (never world-readable, not even for a moment)
 fn write_private(path: &Path, data: &str) -> Res<()> {
     let dir = path.parent().ok_or("bad path")?;
-    fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(err("state dir"))?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
+        .map_err(err("state dir"))?;
     let tmp = path.with_extension("tmp");
-    let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).map_err(err("write"))?;
+    let mut f = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(err("write"))?;
     f.write_all(data.as_bytes()).map_err(err("write"))?;
     fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600)).map_err(err("chmod"))?;
     fs::rename(&tmp, path).map_err(err("rename"))
 }
 
 fn load_cfg() -> Value {
-    fs::read_to_string(auth_file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| json!({}))
+    fs::read_to_string(auth_file())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}))
 }
 fn save_cfg(v: &Value) -> Res<()> {
     write_private(&auth_file(), &v.to_string())
 }
 fn field(cfg: &Value, k: &str) -> Option<String> {
-    cfg.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)
+    cfg.get(k)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 // ------------------------------------------------------------------ small helpers
 fn random_bytes(n: usize) -> Res<Vec<u8>> {
     let mut b = vec![0u8; n];
-    fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).map_err(err("urandom"))?;
+    fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut b))
+        .map_err(err("urandom"))?;
     Ok(b)
 }
 
@@ -97,7 +115,13 @@ fn pct_decode(s: &str) -> String {
     let mut o = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        let hex = if b[i] == b'%' && i + 2 < b.len() { std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) } else { None };
+        let hex = if b[i] == b'%' && i + 2 < b.len() {
+            std::str::from_utf8(&b[i + 1..i + 3])
+                .ok()
+                .and_then(|h| u8::from_str_radix(h, 16).ok())
+        } else {
+            None
+        };
         match (b[i], hex) {
             (_, Some(v)) => {
                 o.push(v);
@@ -112,15 +136,22 @@ fn pct_decode(s: &str) -> String {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout(Duration::from_secs(25)).build()
+    ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(25))
+        .build()
 }
 
 fn read_json(r: Result<ureq::Response, ureq::Error>) -> Res<Value> {
     match r {
-        Ok(resp) => resp.into_json::<Value>().map_err(err("bad reply from Google")),
+        Ok(resp) => resp
+            .into_json::<Value>()
+            .map_err(err("bad reply from Google")),
         Err(ureq::Error::Status(code, resp)) => {
             let body = resp.into_string().unwrap_or_default();
-            Err(format!("Google answered {code}: {}", body.chars().take(300).collect::<String>()))
+            Err(format!(
+                "Google answered {code}: {}",
+                body.chars().take(300).collect::<String>()
+            ))
         }
         Err(e) => Err(format!("network: {e}")),
     }
@@ -138,7 +169,10 @@ fn year_from_days(z: i64) -> i64 {
     yoe + era * 400 + if m <= 2 { 1 } else { 0 }
 }
 fn current_year() -> i64 {
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
     year_from_days(secs / 86400)
 }
 
@@ -147,14 +181,20 @@ fn cmd_setup(args: &[String]) -> Res<()> {
     let (id, secret) = if args.len() >= 2 {
         (args[0].clone(), args[1].clone())
     } else if let Some(p) = args.first() {
-        let v: Value = serde_json::from_str(&fs::read_to_string(p).map_err(err("cannot read the file"))?).map_err(err("not valid JSON"))?;
+        let v: Value =
+            serde_json::from_str(&fs::read_to_string(p).map_err(err("cannot read the file"))?)
+                .map_err(err("not valid JSON"))?;
         let c = v.get("installed").or_else(|| v.get("web")).unwrap_or(&v);
         (
-            field(c, "client_id").ok_or("no client_id in that file (create the credential as type 'Desktop app')")?,
+            field(c, "client_id")
+                .ok_or("no client_id in that file (create the credential as type 'Desktop app')")?,
             field(c, "client_secret").ok_or("no client_secret in that file")?,
         )
     } else {
-        return Err("usage: birthday-sync setup client_secret.json   (or: setup CLIENT_ID CLIENT_SECRET)".into());
+        return Err(
+            "usage: birthday-sync setup client_secret.json   (or: setup CLIENT_ID CLIENT_SECRET)"
+                .into(),
+        );
     };
     save_cfg(&json!({ "client_id": id, "client_secret": secret }))?;
     println!("Saved. Next: birthday-sync auth");
@@ -164,7 +204,10 @@ fn cmd_setup(args: &[String]) -> Res<()> {
 fn query_param(line: &str, key: &str) -> Option<String> {
     let path = line.strip_prefix("GET ")?.split(' ').next()?;
     let q = path.split_once('?')?.1;
-    q.split('&').filter_map(|kv| kv.split_once('=')).find(|(k, _)| *k == key).map(|(_, v)| pct_decode(v))
+    q.split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| pct_decode(v))
 }
 
 fn reply(s: &mut std::net::TcpStream, code: &str, msg: &str) {
@@ -183,13 +226,22 @@ fn cmd_auth(flags: &[String]) -> Res<()> {
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = URL_SAFE_NO_PAD.encode(random_bytes(16)?);
     let listener = TcpListener::bind("127.0.0.1:0").map_err(err("local port"))?;
-    let redirect = format!("http://127.0.0.1:{}", listener.local_addr().map_err(err("local port"))?.port());
+    let redirect = format!(
+        "http://127.0.0.1:{}",
+        listener.local_addr().map_err(err("local port"))?.port()
+    );
     let url = format!(
         "{AUTH_URL}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={challenge}&code_challenge_method=S256&state={}&access_type=offline&prompt=consent",
         pct_encode(&id), pct_encode(&redirect), pct_encode(SCOPE), pct_encode(&state)
     );
-    if !json_out { println!("Open this address and allow read-only calendar + contacts access:\n\n{url}\n"); }
-    let _ = process::Command::new("xdg-open").arg(&url).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn();
+    if !json_out {
+        println!("Open this address and allow read-only calendar + contacts access:\n\n{url}\n");
+    }
+    let _ = process::Command::new("xdg-open")
+        .arg(&url)
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .spawn();
 
     listener.set_nonblocking(true).map_err(err("local port"))?;
     let deadline = Instant::now() + Duration::from_secs(300);
@@ -200,14 +252,26 @@ fn cmd_auth(flags: &[String]) -> Res<()> {
                 let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
                 let mut buf = [0u8; 8192];
                 let n = s.read(&mut buf).unwrap_or(0);
-                let first = String::from_utf8_lossy(&buf[..n]).lines().next().unwrap_or("").to_string();
+                let first = String::from_utf8_lossy(&buf[..n])
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
                 if let Some(e) = query_param(&first, "error") {
-                    reply(&mut s, "400 Bad Request", "Access was not granted. You can close this tab.");
+                    reply(
+                        &mut s,
+                        "400 Bad Request",
+                        "Access was not granted. You can close this tab.",
+                    );
                     return Err(format!("Google: {e}"));
                 }
                 match (query_param(&first, "code"), query_param(&first, "state")) {
                     (Some(c), Some(st)) if st == state => {
-                        reply(&mut s, "200 OK", "Done. You can close this tab and go back to the terminal.");
+                        reply(
+                            &mut s,
+                            "200 OK",
+                            "Done. You can close this tab and go back to the terminal.",
+                        );
                         break c;
                     }
                     (Some(_), _) => reply(&mut s, "400 Bad Request", "State mismatch, ignored."),
@@ -225,27 +289,47 @@ fn cmd_auth(flags: &[String]) -> Res<()> {
     };
 
     let v = read_json(agent().post(TOKEN_URL).send_form(&[
-        ("code", &code), ("client_id", &id), ("client_secret", &secret),
-        ("redirect_uri", &redirect), ("grant_type", "authorization_code"), ("code_verifier", &verifier),
+        ("code", &code),
+        ("client_id", &id),
+        ("client_secret", &secret),
+        ("redirect_uri", &redirect),
+        ("grant_type", "authorization_code"),
+        ("code_verifier", &verifier),
     ]))?;
     let refresh = field(&v, "refresh_token").ok_or("Google sent no refresh token. Remove the app at myaccount.google.com/permissions and run auth again")?;
     cfg["refresh_token"] = Value::String(refresh);
     save_cfg(&cfg)?;
-    if json_out { println!("{}", json!({ "ok": true })); } else { println!("Logged in. Next: birthday-sync sync"); }
+    if json_out {
+        println!("{}", json!({ "ok": true }));
+    } else {
+        println!("Logged in. Next: birthday-sync sync");
+    }
     Ok(())
 }
 
 fn access_token(cfg: &Value) -> Res<String> {
-    let (id, secret, refresh) = match (field(cfg, "client_id"), field(cfg, "client_secret"), field(cfg, "refresh_token")) {
+    let (id, secret, refresh) = match (
+        field(cfg, "client_id"),
+        field(cfg, "client_secret"),
+        field(cfg, "refresh_token"),
+    ) {
         (Some(a), Some(b), Some(c)) => (a, b, c),
-        _ => return Err("not logged in. Run: birthday-sync setup ... then birthday-sync auth".into()),
+        _ => {
+            return Err(
+                "not logged in. Run: birthday-sync setup ... then birthday-sync auth".into(),
+            )
+        }
     };
     let v = read_json(agent().post(TOKEN_URL).send_form(&[
-        ("client_id", &id), ("client_secret", &secret), ("refresh_token", &refresh), ("grant_type", "refresh_token"),
+        ("client_id", &id),
+        ("client_secret", &secret),
+        ("refresh_token", &refresh),
+        ("grant_type", "refresh_token"),
     ]))
     .map_err(|e| {
         if e.contains("invalid_grant") {
-            "Google refused the saved login (expired or revoked). Run: birthday-sync auth".to_string()
+            "Google refused the saved login (expired or revoked). Run: birthday-sync auth"
+                .to_string()
         } else {
             e
         }
@@ -255,8 +339,22 @@ fn access_token(cfg: &Value) -> Res<String> {
 
 fn cmd_status() -> Res<()> {
     let cfg = load_cfg();
-    println!("OAuth client : {}", if field(&cfg, "client_id").is_some() && field(&cfg, "client_secret").is_some() { "stored" } else { "missing (setup)" });
-    println!("Login        : {}", if field(&cfg, "refresh_token").is_some() { "yes" } else { "no (auth)" });
+    println!(
+        "OAuth client : {}",
+        if field(&cfg, "client_id").is_some() && field(&cfg, "client_secret").is_some() {
+            "stored"
+        } else {
+            "missing (setup)"
+        }
+    );
+    println!(
+        "Login        : {}",
+        if field(&cfg, "refresh_token").is_some() {
+            "yes"
+        } else {
+            "no (auth)"
+        }
+    );
     println!("birthdays.txt: {}", birthdays_file().display());
     Ok(())
 }
@@ -273,7 +371,12 @@ fn cmd_logout() -> Res<()> {
 
 // ------------------------------------------------------------------ names
 fn collapse(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn strip_possessive(s: &str) -> &str {
@@ -289,7 +392,9 @@ fn strip_possessive(s: &str) -> &str {
 /// "Sarah's birthday" / "Rahul's 21st Birthday" / "Birthday: Mom" / "🎂 Amit B'day" / "Mom" -> the person
 fn clean_name(summary: &str) -> String {
     let s = collapse(summary);
-    let mut s = s.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string();
+    let mut s = s
+        .trim_start_matches(|c: char| !c.is_alphanumeric())
+        .to_string();
     if s.to_ascii_lowercase().starts_with("happy ") {
         s = s[6..].to_string();
     }
@@ -298,7 +403,14 @@ fn clean_name(summary: &str) -> String {
     for word in ["birthday", "b'day", "bday", "b-day"] {
         if let Some(i) = low.rfind(word) {
             let (before, after) = (s[..i].trim(), s[i + word.len()..].trim());
-            name = if !before.is_empty() { before.to_string() } else { after.trim_start_matches(|c: char| ":-–—".contains(c) || c.is_whitespace()).trim_start_matches("of ").to_string() };
+            name = if !before.is_empty() {
+                before.to_string()
+            } else {
+                after
+                    .trim_start_matches(|c: char| ":-–—".contains(c) || c.is_whitespace())
+                    .trim_start_matches("of ")
+                    .to_string()
+            };
             break;
         }
     }
@@ -306,7 +418,13 @@ fn clean_name(summary: &str) -> String {
     // "Rahul's 21st" -> drop the ordinal, then the possessive again
     if let Some((head, last)) = name.rsplit_once(' ') {
         let digits = last.trim_end_matches(|c: char| c.is_ascii_alphabetic());
-        if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) && matches!(&last[digits.len()..].to_ascii_lowercase()[..], "st" | "nd" | "rd" | "th") {
+        if !digits.is_empty()
+            && digits.chars().all(|c| c.is_ascii_digit())
+            && matches!(
+                &last[digits.len()..].to_ascii_lowercase()[..],
+                "st" | "nd" | "rd" | "th"
+            )
+        {
             name = strip_possessive(head).to_string();
         }
     }
@@ -322,7 +440,10 @@ fn clean_name(summary: &str) -> String {
             _ => {}
         }
     }
-    collapse(&cleaned).trim_start_matches('#').trim().to_string()
+    collapse(&cleaned)
+        .trim_start_matches('#')
+        .trim()
+        .to_string()
 }
 
 // ------------------------------------------------------------------ events -> birthdays
@@ -336,21 +457,39 @@ struct Bday {
 
 impl Bday {
     fn line(&self) -> String {
-        format!("{:02}-{:02} {}{}", self.month, self.day, self.name, self.year.map(|y| format!(" ({y})")).unwrap_or_default())
+        format!(
+            "{:02}-{:02} {}{}",
+            self.month,
+            self.day,
+            self.name,
+            self.year.map(|y| format!(" ({y})")).unwrap_or_default()
+        )
     }
 }
 
 fn event_to_bday(ev: &Value, structured_cal: bool, this_year: i64) -> Option<Bday> {
-    if ev.get("status").and_then(Value::as_str) == Some("cancelled") || ev.get("recurringEventId").is_some() {
+    if ev.get("status").and_then(Value::as_str) == Some("cancelled")
+        || ev.get("recurringEventId").is_some()
+    {
         return None; // a deleted event / a one-off change of a single year
     }
-    let kind = ev.pointer("/birthdayProperties/type").and_then(Value::as_str);
+    let kind = ev
+        .pointer("/birthdayProperties/type")
+        .and_then(Value::as_str);
     if matches!(kind, Some(k) if k != "birthday" && k != "self") {
         return None; // anniversaries and custom dates of a contact
     }
-    let structured = structured_cal || ev.get("eventType").and_then(Value::as_str) == Some("birthday");
-    let start = ev.pointer("/start/date").or_else(|| ev.pointer("/start/dateTime")).and_then(Value::as_str)?;
-    let (y, m, d) = (start.get(0..4)?.parse::<i64>().ok()?, start.get(5..7)?.parse::<u32>().ok()?, start.get(8..10)?.parse::<u32>().ok()?);
+    let structured =
+        structured_cal || ev.get("eventType").and_then(Value::as_str) == Some("birthday");
+    let start = ev
+        .pointer("/start/date")
+        .or_else(|| ev.pointer("/start/dateTime"))
+        .and_then(Value::as_str)?;
+    let (y, m, d) = (
+        start.get(0..4)?.parse::<i64>().ok()?,
+        start.get(5..7)?.parse::<u32>().ok()?,
+        start.get(8..10)?.parse::<u32>().ok()?,
+    );
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
         return None;
     }
@@ -359,23 +498,44 @@ fn event_to_bday(ev: &Value, structured_cal: bool, this_year: i64) -> Option<Bda
         return None;
     }
     // only a real birth year counts: plain events keep no year, and 1604 / current-year placeholders are no year either
-    let year = if structured && (1900..this_year).contains(&y) { Some(y) } else { None };
-    Some(Bday { name, month: m, day: d, year })
+    let year = if structured && (1900..this_year).contains(&y) {
+        Some(y)
+    } else {
+        None
+    };
+    Some(Bday {
+        name,
+        month: m,
+        day: d,
+        year,
+    })
 }
 
 fn get(tok: &str, url: &str, q: &[(&str, &str)]) -> Res<Value> {
-    let mut r = agent().get(url).set("Authorization", &format!("Bearer {tok}"));
+    let mut r = agent()
+        .get(url)
+        .set("Authorization", &format!("Bearer {tok}"));
     for (k, v) in q {
         r = r.query(k, v);
     }
     read_json(r.call())
 }
 
-fn fetch_events(tok: &str, cal_id: &str, only_birthday_type: bool, structured: bool, this_year: i64) -> Res<Vec<Bday>> {
+fn fetch_events(
+    tok: &str,
+    cal_id: &str,
+    only_birthday_type: bool,
+    structured: bool,
+    this_year: i64,
+) -> Res<Vec<Bday>> {
     let url = format!("{API}/calendars/{}/events", pct_encode(cal_id));
     let (mut out, mut page) = (Vec::new(), String::new());
     loop {
-        let mut q = vec![("maxResults", "2500"), ("singleEvents", "false"), ("showDeleted", "false")];
+        let mut q = vec![
+            ("maxResults", "2500"),
+            ("singleEvents", "false"),
+            ("showDeleted", "false"),
+        ];
         if only_birthday_type {
             q.push(("eventTypes", "birthday"));
         }
@@ -383,7 +543,12 @@ fn fetch_events(tok: &str, cal_id: &str, only_birthday_type: bool, structured: b
             q.push(("pageToken", &page));
         }
         let v = get(tok, &url, &q)?;
-        for ev in v.get("items").and_then(Value::as_array).into_iter().flatten() {
+        for ev in v
+            .get("items")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             out.extend(event_to_bday(ev, structured, this_year));
         }
         match v.get("nextPageToken").and_then(Value::as_str) {
@@ -405,24 +570,42 @@ fn fetch_people_contacts(tok: &str, this_year: i64) -> Vec<Bday> {
         let Ok(v) = get(tok, PEOPLE_API, &q) else {
             break;
         };
-        for person in v.get("connections").and_then(Value::as_array).into_iter().flatten() {
+        for person in v
+            .get("connections")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             let raw_name = person
                 .get("names")
                 .and_then(Value::as_array)
-                .and_then(|arr| arr.iter().find_map(|n| n.get("displayName").and_then(Value::as_str)))
+                .and_then(|arr| {
+                    arr.iter()
+                        .find_map(|n| n.get("displayName").and_then(Value::as_str))
+                })
                 .unwrap_or("");
             let name = clean_name(raw_name);
             if name.is_empty() {
                 continue;
             }
-            for b in person.get("birthdays").and_then(Value::as_array).into_iter().flatten() {
+            for b in person
+                .get("birthdays")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 if let Some(d) = b.get("date") {
                     let m = d.get("month").and_then(Value::as_u64).unwrap_or(0) as u32;
                     let day = d.get("day").and_then(Value::as_u64).unwrap_or(0) as u32;
                     let y = d.get("year").and_then(Value::as_i64);
                     if (1..=12).contains(&m) && (1..=31).contains(&day) {
                         let year = y.filter(|&yr| (1900..this_year).contains(&yr));
-                        out.push(Bday { name: name.clone(), month: m, day, year });
+                        out.push(Bday {
+                            name: name.clone(),
+                            month: m,
+                            day,
+                            year,
+                        });
                         break;
                     }
                 }
@@ -447,9 +630,18 @@ fn collect(tok: &str) -> Res<Vec<Bday>> {
             q.push(("pageToken", &page));
         }
         let v = get(tok, &format!("{API}/users/me/calendarList"), &q)?;
-        for c in v.get("items").and_then(Value::as_array).into_iter().flatten() {
+        for c in v
+            .get("items")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             let id = c.get("id").and_then(Value::as_str).unwrap_or("");
-            let name = c.get("summary").and_then(Value::as_str).unwrap_or("").to_lowercase();
+            let name = c
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
             if id == ADDRESSBOOK || name.contains("birthday") {
                 ids.push((id.to_string(), id == ADDRESSBOOK));
             }
@@ -494,7 +686,11 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
             (lines[..a].to_vec(), lines[b + 1..].to_vec())
         }
     };
-    let others: Vec<(String, u32, u32)> = before.iter().chain(after.iter()).filter_map(|l| line_key(l)).collect();
+    let others: Vec<(String, u32, u32)> = before
+        .iter()
+        .chain(after.iter())
+        .filter_map(|l| line_key(l))
+        .collect();
     let mut sorted = found.to_vec();
     sorted.sort_by_key(|a| (a.month, a.day, a.name.to_lowercase()));
     let (mut out, mut seen, mut skipped, mut clashes) = (Vec::new(), Vec::new(), 0, Vec::new());
@@ -505,7 +701,10 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
             continue;
         }
         if let Some(o) = others.iter().find(|o| o.0 == key.0) {
-            clashes.push(format!("{}: {:02}-{:02} in your list, {:02}-{:02} in Google", b.name, o.1, o.2, b.month, b.day));
+            clashes.push(format!(
+                "{}: {:02}-{:02} in your list, {:02}-{:02} in Google",
+                b.name, o.1, o.2, b.month, b.day
+            ));
         }
         seen.push(key);
         out.push(b.line());
@@ -521,7 +720,11 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
     text.push(BEGIN.into());
     text.extend(out.iter().cloned());
     text.push(END.into());
-    let tail: Vec<&str> = after.iter().skip_while(|l| l.trim().is_empty()).cloned().collect();
+    let tail: Vec<&str> = after
+        .iter()
+        .skip_while(|l| l.trim().is_empty())
+        .cloned()
+        .collect();
     if !tail.is_empty() {
         text.push(String::new());
         text.extend(tail.iter().map(|s| s.to_string()));
@@ -530,7 +733,10 @@ fn merge(existing: &str, found: &[Bday]) -> Res<(String, usize, usize, Vec<Strin
 }
 
 fn cmd_sync(flags: &[String]) -> Res<()> {
-    let (dry, json_out) = (flags.iter().any(|f| f == "--dry-run"), flags.iter().any(|f| f == "--json"));
+    let (dry, json_out) = (
+        flags.iter().any(|f| f == "--dry-run"),
+        flags.iter().any(|f| f == "--json"),
+    );
     let tok = access_token(&load_cfg())?;
     let found = collect(&tok)?;
     if found.is_empty() {
@@ -548,9 +754,15 @@ fn cmd_sync(flags: &[String]) -> Res<()> {
     fs::write(&tmp, &text).map_err(err("write birthdays.txt"))?;
     fs::rename(&tmp, &path).map_err(err("write birthdays.txt"))?;
     if json_out {
-        println!("{}", json!({ "ok": true, "count": count, "skipped": skipped, "clashes": clashes }));
+        println!(
+            "{}",
+            json!({ "ok": true, "count": count, "skipped": skipped, "clashes": clashes })
+        );
     } else {
-        println!("{count} birthdays from Google written to {} ({skipped} already in your list)", path.display());
+        println!(
+            "{count} birthdays from Google written to {} ({skipped} already in your list)",
+            path.display()
+        );
         for c in clashes {
             println!("  differs: {c}");
         }
@@ -612,7 +824,10 @@ mod tests {
         assert_eq!(pct_decode("4%2F0Abc%3D+x"), "4/0Abc= x");
         assert_eq!(pct_decode("100%"), "100%");
         assert_eq!(pct_decode("%zz"), "%zz");
-        assert_eq!(pct_encode(ADDRESSBOOK), "addressbook%23contacts%40group.v.calendar.google.com");
+        assert_eq!(
+            pct_encode(ADDRESSBOOK),
+            "addressbook%23contacts%40group.v.calendar.google.com"
+        );
     }
 
     #[test]
@@ -633,7 +848,15 @@ mod tests {
     #[test]
     fn events() {
         let ev = json!({"summary":"Sarah's birthday","start":{"date":"1998-10-25"},"eventType":"birthday","birthdayProperties":{"type":"birthday"}});
-        assert_eq!(event_to_bday(&ev, false, 2026), Some(Bday { name: "Sarah".into(), month: 10, day: 25, year: Some(1998) }));
+        assert_eq!(
+            event_to_bday(&ev, false, 2026),
+            Some(Bday {
+                name: "Sarah".into(),
+                month: 10,
+                day: 25,
+                year: Some(1998)
+            })
+        );
         let noyear = json!({"summary":"Bob's birthday","start":{"date":"1604-03-02"},"eventType":"birthday"});
         assert_eq!(event_to_bday(&noyear, true, 2026).unwrap().year, None);
         let thisyr = json!({"summary":"Bob's birthday","start":{"date":"2026-03-02"}});
@@ -647,24 +870,39 @@ mod tests {
     }
 
     fn b(n: &str, m: u32, d: u32, y: Option<i64>) -> Bday {
-        Bday { name: n.into(), month: m, day: d, year: y }
+        Bday {
+            name: n.into(),
+            month: m,
+            day: d,
+            year: y,
+        }
     }
 
     #[test]
     fn merge_keeps_your_lines_and_is_idempotent() {
         let existing = "# header\n12-28 Linus (1969)\n\n# >>> imported from contacts (x) >>>\n04-14 Mom\n# <<< end of imported contacts <<<\n";
-        let found = vec![b("Mom", 4, 14, None), b("Sarah", 10, 25, Some(1998)), b("Sarah", 10, 25, None), b("Amit", 1, 5, None)];
+        let found = vec![
+            b("Mom", 4, 14, None),
+            b("Sarah", 10, 25, Some(1998)),
+            b("Sarah", 10, 25, None),
+            b("Amit", 1, 5, None),
+        ];
         let (t1, n, skipped, clashes) = merge(existing, &found).unwrap();
         assert_eq!((n, skipped), (2, 2));
         assert!(clashes.is_empty());
         assert!(t1.starts_with("# header\n12-28 Linus (1969)\n\n# >>> imported from contacts (x) >>>\n04-14 Mom\n# <<< end of imported contacts <<<\n\n# >>> imported from Google Calendar"));
-        assert!(t1.contains("\n01-05 Amit\n10-25 Sarah (1998)\n# <<< end of Google Calendar birthdays <<<\n"));
+        assert!(t1.contains(
+            "\n01-05 Amit\n10-25 Sarah (1998)\n# <<< end of Google Calendar birthdays <<<\n"
+        ));
         let (t2, ..) = merge(&t1, &found).unwrap();
         assert_eq!(t1, t2);
         // a block in the middle keeps what follows it
         let mid = format!("a\n{BEGIN}\n01-01 Old\n{END}\n\n# tail\n02-02 Typed\n");
         let (t3, ..) = merge(&mid, &[b("New", 3, 3, None)]).unwrap();
-        assert_eq!(t3, format!("a\n\n{BEGIN}\n03-03 New\n{END}\n\n# tail\n02-02 Typed\n"));
+        assert_eq!(
+            t3,
+            format!("a\n\n{BEGIN}\n03-03 New\n{END}\n\n# tail\n02-02 Typed\n")
+        );
     }
 
     #[test]

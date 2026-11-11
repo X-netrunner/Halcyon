@@ -15,7 +15,11 @@ fn cups_active() -> bool {
 
 fn open_cups_web() {
     if !cups_active() {
-        note("Starting CUPS...", "Attempting to start local print service.", "printer");
+        note(
+            "Starting CUPS...",
+            "Attempting to start local print service.",
+            "printer",
+        );
         // as the user first, then through sudo; -n: there is no terminal to ask on, so it must not wait for a password
         if !util::ok("systemctl", &["start", "cups.service"]) {
             let _ = util::ok("sudo", &["-n", "systemctl", "start", "cups.service"]);
@@ -36,10 +40,18 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
     if util::command_exists("lpstat") {
-        note("Opening CUPS Print Manager", "Connecting to localhost:631 in your browser...", "printer");
+        note(
+            "Opening CUPS Print Manager",
+            "Connecting to localhost:631 in your browser...",
+            "printer",
+        );
         open_cups_web();
     } else if util::out("systemctl", &["list-unit-files"]).contains("cups.service") {
-        note("Starting CUPS", "Starting cups.service and opening browser manager...", "printer");
+        note(
+            "Starting CUPS",
+            "Starting cups.service and opening browser manager...",
+            "printer",
+        );
         open_cups_web();
     } else {
         // the \n is written out as two characters on purpose: notify-send turns it into a line break

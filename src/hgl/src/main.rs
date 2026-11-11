@@ -106,10 +106,16 @@ impl Args {
         self.flags.contains_key(f)
     }
     fn val(&self, f: &str) -> Option<&str> {
-        self.flags.get(f).map(|s| s.as_str()).filter(|s| !s.is_empty())
+        self.flags
+            .get(f)
+            .map(|s| s.as_str())
+            .filter(|s| !s.is_empty())
     }
     fn need(&self, n: usize, what: &str) -> Result<&str, String> {
-        self.pos.get(n).map(|s| s.as_str()).ok_or_else(|| format!("missing {what}\n\n{USAGE}"))
+        self.pos
+            .get(n)
+            .map(|s| s.as_str())
+            .ok_or_else(|| format!("missing {what}\n\n{USAGE}"))
     }
 }
 
@@ -194,7 +200,14 @@ fn game_status(g: &Game, cfg: &Conf, have_umu: bool, have_runtime: bool) -> (&'s
             return ("attention", "flatpak is not installed".into());
         }
         if run::looks_crashed(g.last_exit, g.last_run_secs) {
-            return ("attention", format!("last run ended with code {} after {}s", g.last_exit.unwrap_or(-1), g.last_run_secs));
+            return (
+                "attention",
+                format!(
+                    "last run ended with code {} after {}s",
+                    g.last_exit.unwrap_or(-1),
+                    g.last_run_secs
+                ),
+            );
         }
         return ("ready", String::new());
     }
@@ -208,21 +221,39 @@ fn game_status(g: &Game, cfg: &Conf, have_umu: bool, have_runtime: bool) -> (&'s
         return ("attention", "umu-run is not installed (Doctor)".into());
     }
     if !g.proton.is_empty() && proton::resolve(&g.proton, cfg).is_none() {
-        return ("attention", format!("pinned Proton {} is not installed", g.proton));
+        return (
+            "attention",
+            format!("pinned Proton {} is not installed", g.proton),
+        );
     }
     if g.proton.is_empty() && !have_runtime {
         return ("attention", "no Proton runtime installed".into());
     }
     if run::looks_crashed(g.last_exit, g.last_run_secs) {
-        return ("attention", format!("last run ended with code {} after {}s", g.last_exit.unwrap_or(-1), g.last_run_secs));
+        return (
+            "attention",
+            format!(
+                "last run ended with code {} after {}s",
+                g.last_exit.unwrap_or(-1),
+                g.last_run_secs
+            ),
+        );
     }
     ("ready", String::new())
 }
 
 fn game_json(g: &Game, status: (&str, &str), running: bool, known: &str) -> String {
     let wr: Vec<String> = g.wrappers.iter().map(|w| json_str(w)).collect();
-    let env: Vec<String> = g.env.iter().map(|(k, v)| format!("{}:{}", json_str(k), json_str(v))).collect();
-    let cover = if !g.cover.is_empty() && Path::new(&g.cover).is_file() { g.cover.as_str() } else { "" };
+    let env: Vec<String> = g
+        .env
+        .iter()
+        .map(|(k, v)| format!("{}:{}", json_str(k), json_str(v)))
+        .collect();
+    let cover = if !g.cover.is_empty() && Path::new(&g.cover).is_file() {
+        g.cover.as_str()
+    } else {
+        ""
+    };
     format!(
         "{{\"id\":{},\"name\":{},\"source\":{},\"exe\":{},\"appid\":{},\"proton\":{},\"prefix\":{},\"args\":{},\"wrappers\":[{}],\"gamescope\":{},\"wayland\":{},\"lean\":{},\"fullscreen\":{},\"debug\":{},\"fav\":{},\"umuId\":{},\"env\":{{{}}},\"cover\":{},\"lastPlayed\":{},\"playtime\":{},\"lastExit\":{},\"status\":{},\"statusReason\":{},\"running\":{},\"known\":{}}}",
         json_str(&g.id),
@@ -266,7 +297,12 @@ fn cmd_list(rest: &[String]) -> Result<i32, String> {
             .iter()
             .map(|g| {
                 let (st, why) = game_status(g, &cfg, have_umu, have_rt);
-                game_json(g, (st, &why), running.as_deref() == Some(g.id.as_str()), &db.note_for(g))
+                game_json(
+                    g,
+                    (st, &why),
+                    running.as_deref() == Some(g.id.as_str()),
+                    &db.note_for(g),
+                )
             })
             .collect();
         println!("[{}]", items.join(","));
@@ -278,10 +314,33 @@ fn cmd_list(rest: &[String]) -> Result<i32, String> {
     }
     for g in &games {
         let (st, why) = game_status(g, &cfg, have_umu, have_rt);
-        let when = if g.last_played == 0 { "never".to_string() } else { format!("{} ago", fmt_duration(now().saturating_sub(g.last_played))) };
-        let flag = if running.as_deref() == Some(g.id.as_str()) { " [running]" } else if g.fav { " [fav]" } else { "" };
-        let note = if st == "attention" { format!("  ! {why}") } else { String::new() };
-        println!("{:<28} {:<7} {:<26} played {:>9}  last {}{}{}", g.id, g.source, g.name, fmt_duration(g.playtime), when, flag, note);
+        let when = if g.last_played == 0 {
+            "never".to_string()
+        } else {
+            format!("{} ago", fmt_duration(now().saturating_sub(g.last_played)))
+        };
+        let flag = if running.as_deref() == Some(g.id.as_str()) {
+            " [running]"
+        } else if g.fav {
+            " [fav]"
+        } else {
+            ""
+        };
+        let note = if st == "attention" {
+            format!("  ! {why}")
+        } else {
+            String::new()
+        };
+        println!(
+            "{:<28} {:<7} {:<26} played {:>9}  last {}{}{}",
+            g.id,
+            g.source,
+            g.name,
+            fmt_duration(g.playtime),
+            when,
+            flag,
+            note
+        );
     }
     Ok(0)
 }
@@ -290,14 +349,32 @@ fn cmd_show(rest: &[String]) -> Result<i32, String> {
     let a = Args::parse(rest, &[]);
     let g = Game::load(a.need(0, "game id")?)?;
     let cfg = Conf::load();
-    let (st, why) = game_status(&g, &cfg, have("umu-run"), proton::resolve("", &cfg).is_some());
+    let (st, why) = game_status(
+        &g,
+        &cfg,
+        have("umu-run"),
+        proton::resolve("", &cfg).is_some(),
+    );
     let known = fixes::Db::load().note_for(&g);
     if a.has("json") {
-        println!("{}", game_json(&g, (st, &why), run::running_id().as_deref() == Some(g.id.as_str()), &known));
+        println!(
+            "{}",
+            game_json(
+                &g,
+                (st, &why),
+                run::running_id().as_deref() == Some(g.id.as_str()),
+                &known
+            )
+        );
     } else {
         print!("{}", g.serialize());
-        let rt = proton::resolve(&g.proton, &cfg).map(|r| r.name).unwrap_or_else(|| "(none)".into());
-        println!("# runtime in use: {rt}\n# prefix: {}\n# status: {st} {why}", g.prefix_path().display());
+        let rt = proton::resolve(&g.proton, &cfg)
+            .map(|r| r.name)
+            .unwrap_or_else(|| "(none)".into());
+        println!(
+            "# runtime in use: {rt}\n# prefix: {}\n# status: {st} {why}",
+            g.prefix_path().display()
+        );
         if !known.is_empty() {
             println!("# known: {known}");
         }
@@ -306,7 +383,10 @@ fn cmd_show(rest: &[String]) -> Result<i32, String> {
 }
 
 fn name_from_exe(p: &Path) -> String {
-    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Game".into());
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Game".into());
     let spaced = stem.replace(['_', '-'], " ");
     let mut out = String::new();
     let mut prev_lower = false;
@@ -334,13 +414,23 @@ fn extract_icon(exe: &Path, id: &str) -> Option<PathBuf> {
         if !run_quiet("wrestool", &["-x", "--type=14", "-o", &t, &ex], 20) {
             return None;
         }
-        let mut icos: Vec<PathBuf> = fs::read_dir(&tmp).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "ico").unwrap_or(false)).collect();
+        let mut icos: Vec<PathBuf> = fs::read_dir(&tmp)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "ico").unwrap_or(false))
+            .collect();
         icos.sort();
         let ico = icos.first()?.to_string_lossy().to_string();
         if !run_quiet("icotool", &["-x", "-o", &t, &ico], 20) {
             return None;
         }
-        let mut pngs: Vec<PathBuf> = fs::read_dir(&tmp).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "png").unwrap_or(false)).collect();
+        let mut pngs: Vec<PathBuf> = fs::read_dir(&tmp)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "png").unwrap_or(false))
+            .collect();
         pngs.sort_by_key(|p| fs::metadata(p).map(|m| m.len()).unwrap_or(0));
         let best = pngs.pop()?;
         let dest = covers_dir().join(format!("{id}.png"));
@@ -359,7 +449,10 @@ fn cmd_add(rest: &[String]) -> Result<i32, String> {
     if !exe.is_file() {
         return Err(format!("{} is not a file", exe.display()));
     }
-    let name = a.val("name").map(|s| s.to_string()).unwrap_or_else(|| name_from_exe(&exe));
+    let name = a
+        .val("name")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| name_from_exe(&exe));
     let id = store::unique_id(&name);
     let mut g = Game::new(&id, &name, "exe");
     g.exe = exe.to_string_lossy().to_string();
@@ -385,7 +478,14 @@ fn cmd_add(rest: &[String]) -> Result<i32, String> {
     }
     let applied = fixes::Db::load().apply(&mut g, false);
     g.save()?;
-    println!("Added {name} as '{id}'{}", if g.cover.is_empty() { "" } else { " (icon extracted)" });
+    println!(
+        "Added {name} as '{id}'{}",
+        if g.cover.is_empty() {
+            ""
+        } else {
+            " (icon extracted)"
+        }
+    );
     for c in &applied {
         println!("Known fix applied: {c}");
     }
@@ -407,7 +507,11 @@ fn cmd_set(rest: &[String]) -> Result<i32, String> {
     let val = a.pos.get(2).map(|s| s.as_str()).unwrap_or("");
     g.set(key, val)?;
     g.save()?;
-    println!("{}: {key} = {}", g.id, if val.is_empty() { "(cleared)" } else { val });
+    println!(
+        "{}: {key} = {}",
+        g.id,
+        if val.is_empty() { "(cleared)" } else { val }
+    );
     Ok(0)
 }
 
@@ -466,7 +570,11 @@ fn finish_import(label: &str, r: &store::Imported) -> Result<i32, String> {
         }
     }
     let (found, _) = art::fetch_ids(&r.added, false);
-    let art_note = if found > 0 { format!(", art for {found}") } else { String::new() };
+    let art_note = if found > 0 {
+        format!(", art for {found}")
+    } else {
+        String::new()
+    };
     println!("{label}: {} added, {} updated, {} no longer installed (removed from the library){art_note}", r.added.len(), r.updated, r.removed);
     Ok(0)
 }
@@ -475,13 +583,21 @@ fn finish_import(label: &str, r: &store::Imported) -> Result<i32, String> {
 
 fn cmd_epic(rest: &[String]) -> Result<i32, String> {
     let a = Args::parse(rest, &[]);
-    match a.need(0, "an Epic subcommand (login, logout, status, list, install)")? {
+    match a.need(
+        0,
+        "an Epic subcommand (login, logout, status, list, install)",
+    )? {
         "login" => epic::login(),
         "logout" => epic::logout(),
         "status" => {
             let s = epic::status();
             if a.has("json") {
-                println!("{{\"installed\":{},\"loggedIn\":{},\"account\":{}}}", s.installed, s.logged_in, json_str(&s.account));
+                println!(
+                    "{{\"installed\":{},\"loggedIn\":{},\"account\":{}}}",
+                    s.installed,
+                    s.logged_in,
+                    json_str(&s.account)
+                );
             } else if !s.installed {
                 println!("legendary is not installed (see: hgl doctor)");
             } else if s.logged_in {
@@ -496,7 +612,12 @@ fn cmd_epic(rest: &[String]) -> Result<i32, String> {
                 println!("{}", epic::titles_json()?);
             } else {
                 for t in epic::owned()? {
-                    println!("{:<34} {}{}", t.app, t.title, if t.installed { "  [installed]" } else { "" });
+                    println!(
+                        "{:<34} {}{}",
+                        t.app,
+                        t.title,
+                        if t.installed { "  [installed]" } else { "" }
+                    );
                 }
             }
             Ok(0)
@@ -514,7 +635,10 @@ fn cmd_gog(rest: &[String]) -> Result<i32, String> {
             let present = gog::gogdl_present();
             let logged = gog::logged_in();
             if a.has("json") {
-                println!("{{\"installed\":{present},\"loggedIn\":{logged},\"url\":{}}}", json_str(&gog::login_url()));
+                println!(
+                    "{{\"installed\":{present},\"loggedIn\":{logged},\"url\":{}}}",
+                    json_str(&gog::login_url())
+                );
             } else if !present {
                 println!("gogdl is not installed (see: hgl doctor)");
             } else if logged {
@@ -529,12 +653,20 @@ fn cmd_gog(rest: &[String]) -> Result<i32, String> {
                 println!("{}", gog::titles_json()?);
             } else {
                 for t in gog::owned()? {
-                    println!("{:<12} {}{}", t.id, t.title, if t.installed { "  [installed]" } else { "" });
+                    println!(
+                        "{:<12} {}{}",
+                        t.id,
+                        t.title,
+                        if t.installed { "  [installed]" } else { "" }
+                    );
                 }
             }
             Ok(0)
         }
-        "install" => gog::install(a.need(1, "the GOG product id (hgl gog list)")?, a.val("title")),
+        "install" => gog::install(
+            a.need(1, "the GOG product id (hgl gog list)")?,
+            a.val("title"),
+        ),
         other => Err(format!("unknown gog subcommand '{other}'")),
     }
 }
@@ -549,7 +681,10 @@ fn cmd_art(rest: &[String]) -> Result<i32, String> {
         None => store::list_ids(),
     };
     let (found, tried) = art::fetch_ids(&ids, a.has("force"));
-    println!("Cover art: {found} found, {} of {tried} still without", tried - found);
+    println!(
+        "Cover art: {found} found, {} of {tried} still without",
+        tried - found
+    );
     if tried > found && !art::Ctx::new().has_key() {
         println!("Games from other sources get art from SteamGridDB: get a free key at steamgriddb.com/profile/preferences/api, then: hgl config steamgriddb_key <key>");
     }
@@ -594,7 +729,14 @@ fn cmd_fixes(rest: &[String]) -> Result<i32, String> {
 fn cmd_run(rest: &[String]) -> Result<i32, String> {
     let a = Args::parse(rest, &[]);
     let id = a.need(0, "game id")?;
-    run::run(id, &run::RunOpts { dry: a.has("dry-run"), no_lean: a.has("no-lean"), no_scope: a.has("no-scope") })
+    run::run(
+        id,
+        &run::RunOpts {
+            dry: a.has("dry-run"),
+            no_lean: a.has("no-lean"),
+            no_scope: a.has("no-scope"),
+        },
+    )
 }
 
 fn cmd_stop(rest: &[String]) -> Result<i32, String> {
@@ -610,14 +752,18 @@ fn cmd_logs(rest: &[String]) -> Result<i32, String> {
     Game::load(id)?;
     if a.has("list") {
         let dir = logs_dir().join(id);
-        let mut v: Vec<PathBuf> = fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+        let mut v: Vec<PathBuf> = fs::read_dir(dir)
+            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
         v.sort();
         for p in v.iter().rev() {
             println!("{}", p.display());
         }
         return Ok(0);
     }
-    let Some(p) = triage::latest_log(id) else { return Err(format!("no log yet for {id}")) };
+    let Some(p) = triage::latest_log(id) else {
+        return Err(format!("no log yet for {id}"));
+    };
     println!("{}", p.display());
     let text = fs::read_to_string(&p).unwrap_or_default();
     let lines: Vec<&str> = text.lines().collect();
@@ -656,13 +802,20 @@ fn cmd_fix(rest: &[String]) -> Result<i32, String> {
     let id = a.need(0, "game id")?;
     let fid = a.need(1, "finding id (see: hgl triage <id>)")?;
     let (_, found) = triage::scan_game(id)?;
-    let f = found.iter().find(|f| f.id == fid).ok_or_else(|| format!("'{fid}' was not found in the newest log of {id}"))?;
+    let f = found
+        .iter()
+        .find(|f| f.id == fid)
+        .ok_or_else(|| format!("'{fid}' was not found in the newest log of {id}"))?;
     let mut g = Game::load(id)?;
     match &f.fix {
         triage::Fix::Doctor => {
             let checks = doctor::run_checks();
             doctor::print_human(&checks);
-            return Ok(if doctor::fix(&checks, a.has("yes")) { 0 } else { 1 });
+            return Ok(if doctor::fix(&checks, a.has("yes")) {
+                0
+            } else {
+                1
+            });
         }
         triage::Fix::SetEnv(k, v) => {
             g.set(&format!("env.{k}"), v)?;
@@ -684,7 +837,12 @@ fn cmd_fix(rest: &[String]) -> Result<i32, String> {
             println!("Installed {n}");
             return Ok(0);
         }
-        triage::Fix::Hint => return Err(format!("{}: there is nothing hgl can change for this one. {}", f.title, f.detail)),
+        triage::Fix::Hint => {
+            return Err(format!(
+                "{}: there is nothing hgl can change for this one. {}",
+                f.title, f.detail
+            ))
+        }
     }
     g.save()?;
     println!("Done: {}. Launch again.", triage::fix_label(&f.fix));
@@ -698,13 +856,18 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
     let sub = a.need(0, "proton subcommand")?;
     let mut cfg = Conf::load();
     let fam = match a.val("family") {
-        Some(f) => proton::Family::parse(f).ok_or_else(|| format!("unknown family '{f}' (ge or cachyos)"))?,
+        Some(f) => proton::Family::parse(f)
+            .ok_or_else(|| format!("unknown family '{f}' (ge or cachyos)"))?,
         None => proton::default_family(&cfg),
     };
     match sub {
         "list" => {
             let def = proton::resolve("", &cfg).map(|r| r.name);
-            let pinned: Vec<String> = store::all_games().into_iter().map(|g| g.proton).filter(|p| !p.is_empty()).collect();
+            let pinned: Vec<String> = store::all_games()
+                .into_iter()
+                .map(|g| g.proton)
+                .filter(|p| !p.is_empty())
+                .collect();
             let all = proton::installed();
             if a.has("json") {
                 let items: Vec<String> = all
@@ -725,15 +888,25 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                 println!("No Proton installed. Run: hgl proton install latest");
             } else {
                 for r in all.iter().rev() {
-                    let d = if def.as_deref() == Some(r.name.as_str()) { "  (default)" } else { "" };
-                    let p = if pinned.contains(&r.name) { "  (pinned by a game)" } else { "" };
+                    let d = if def.as_deref() == Some(r.name.as_str()) {
+                        "  (default)"
+                    } else {
+                        ""
+                    };
+                    let p = if pinned.contains(&r.name) {
+                        "  (pinned by a game)"
+                    } else {
+                        ""
+                    };
                     println!("{}{d}{p}", r.name);
                 }
             }
         }
         "available" => {
             for r in proton::available(fam, 10)? {
-                let have = proton::installed().iter().any(|i| r.tarball.starts_with(&i.name));
+                let have = proton::installed()
+                    .iter()
+                    .any(|i| r.tarball.starts_with(&i.name));
                 println!("{}{}", r.tag, if have { "  (installed)" } else { "" });
             }
         }
@@ -773,7 +946,9 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
             } else {
                 cfg.set("steam_link", "1")?;
                 let n = proton::link_steam_all();
-                println!("{n} runtime(s) linked. Restart Steam to see them in its compatibility list.");
+                println!(
+                    "{n} runtime(s) linked. Restart Steam to see them in its compatibility list."
+                );
             }
         }
         other => return Err(format!("unknown proton subcommand '{other}'")),
@@ -813,12 +988,28 @@ fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
     if a.has("json") {
         let ch: Vec<String> = changes
             .iter()
-            .map(|c| format!("{{\"key\":{},\"value\":{},\"why\":{}}}", json_str(&c.key), json_str(&c.value), json_str(&c.why)))
+            .map(|c| {
+                format!(
+                    "{{\"key\":{},\"value\":{},\"why\":{}}}",
+                    json_str(&c.key),
+                    json_str(&c.value),
+                    json_str(&c.why)
+                )
+            })
             .collect();
         let tips: Vec<String> = game_tips.iter().map(|t| json_str(t)).collect();
         let pj = ptip
             .as_ref()
-            .map(|t| format!("{{\"family\":{},\"action\":{},\"current\":{},\"why\":{},\"alt\":{}}}", json_str(&t.family), json_str(&t.action), json_str(&t.current), json_str(&t.why), json_str(&t.alt)))
+            .map(|t| {
+                format!(
+                    "{{\"family\":{},\"action\":{},\"current\":{},\"why\":{},\"alt\":{}}}",
+                    json_str(&t.family),
+                    json_str(&t.action),
+                    json_str(&t.current),
+                    json_str(&t.why),
+                    json_str(&t.alt)
+                )
+            })
             .unwrap_or_else(|| "null".into());
         println!(
             "{{\"machine\":{},\"changes\":[{}],\"inGame\":[{}],\"proton\":{},\"applied\":{}}}",
@@ -830,17 +1021,46 @@ fn cmd_suggest(rest: &[String]) -> Result<i32, String> {
         );
         return Ok(0);
     }
-    println!("{} on a class {} machine ({})", g.name, m.class, class::class_label(m.class));
+    println!(
+        "{} on a class {} machine ({})",
+        g.name,
+        m.class,
+        class::class_label(m.class)
+    );
     if changes.is_empty() {
         println!("  hgl settings: nothing to change");
     } else {
-        println!("  hgl settings{}:", if a.has("apply") { " (applied)" } else { " (hgl suggest <id> --apply sets them)" });
+        println!(
+            "  hgl settings{}:",
+            if a.has("apply") {
+                " (applied)"
+            } else {
+                " (hgl suggest <id> --apply sets them)"
+            }
+        );
         for c in &changes {
-            println!("    {} = {}    {}", c.key, if c.value.is_empty() { "(off)" } else { &c.value }, c.why);
+            println!(
+                "    {} = {}    {}",
+                c.key,
+                if c.value.is_empty() {
+                    "(off)"
+                } else {
+                    &c.value
+                },
+                c.why
+            );
         }
     }
     if let Some(t) = &ptip {
-        println!("  Proton: {}{}", t.why, if t.action == "install" { format!("  (hgl proton install latest --family {})", t.family) } else { String::new() });
+        println!(
+            "  Proton: {}{}",
+            t.why,
+            if t.action == "install" {
+                format!("  (hgl proton install latest --family {})", t.family)
+            } else {
+                String::new()
+            }
+        );
         if !t.alt.is_empty() {
             println!("          {}", t.alt);
         }
@@ -867,8 +1087,14 @@ fn cmd_doctor(rest: &[String]) -> Result<i32, String> {
         doctor::print_human(&after);
         return Ok(if ok { 0 } else { 1 });
     }
-    let bad = checks.iter().filter(|c| c.level == doctor::Level::Fail).count();
-    if checks.iter().any(|c| c.level != doctor::Level::Ok && (!c.pkgs.is_empty() || c.cmd.is_some())) {
+    let bad = checks
+        .iter()
+        .filter(|c| c.level == doctor::Level::Fail)
+        .count();
+    if checks
+        .iter()
+        .any(|c| c.level != doctor::Level::Ok && (!c.pkgs.is_empty() || c.cmd.is_some()))
+    {
         println!("\nRun: hgl doctor --fix");
     }
     Ok(if bad > 0 { 1 } else { 0 })
@@ -896,13 +1122,24 @@ fn cmd_config(rest: &[String]) -> Result<i32, String> {
             for k in keys {
                 // an API key is not printed in full
                 let v = cfg.get(k).unwrap_or("");
-                println!("{k} = {}", if k.ends_with("_key") && !v.is_empty() { "(set)" } else { v });
+                println!(
+                    "{k} = {}",
+                    if k.ends_with("_key") && !v.is_empty() {
+                        "(set)"
+                    } else {
+                        v
+                    }
+                );
             }
         }
         1 => println!("{}", cfg.get(&rest[0]).unwrap_or("")),
         _ => {
             if !keys.contains(&rest[0].as_str()) {
-                return Err(format!("unknown option '{}' (known: {})", rest[0], keys.join(", ")));
+                return Err(format!(
+                    "unknown option '{}' (known: {})",
+                    rest[0],
+                    keys.join(", ")
+                ));
             }
             if rest[1].contains('\n') {
                 return Err("a value cannot contain a line break".into());
@@ -921,12 +1158,18 @@ mod tests {
     #[test]
     fn exe_names() {
         assert_eq!(name_from_exe(Path::new("/g/HadesII.exe")), "Hades II");
-        assert_eq!(name_from_exe(Path::new("/g/my_cool-game.exe")), "my cool game");
+        assert_eq!(
+            name_from_exe(Path::new("/g/my_cool-game.exe")),
+            "my cool game"
+        );
     }
 
     #[test]
     fn arg_parsing() {
-        let raw: Vec<String> = ["a.exe", "--name", "X Y", "--wayland", "-y"].iter().map(|s| s.to_string()).collect();
+        let raw: Vec<String> = ["a.exe", "--name", "X Y", "--wayland", "-y"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let a = Args::parse(&raw, &["name"]);
         assert_eq!(a.pos, vec!["a.exe"]);
         assert_eq!(a.val("name"), Some("X Y"));

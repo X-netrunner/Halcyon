@@ -18,7 +18,10 @@ fn notify_power(summary: &str, body: &str, icon: &str) {
 }
 
 pub fn run() -> i32 {
-    let is_active = crate::util::ok("systemctl", &["--user", "is-active", "--quiet", "power-manager.service"]);
+    let is_active = crate::util::ok(
+        "systemctl",
+        &["--user", "is-active", "--quiet", "power-manager.service"],
+    );
     if is_active {
         let _ = crate::util::ok("systemctl", &["--user", "stop", "power-manager.service"]);
         notify_power("Power Manager", "Disabled (Manual Mode)", "battery-caution");

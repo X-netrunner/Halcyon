@@ -46,7 +46,10 @@ fn on(mins_str: Option<&str>) -> i32 {
     };
 
     if is_on() {
-        let cur = util::out("systemctl", &["--user", "show", "-p", "RuntimeMaxUSec", "--value", UNIT]);
+        let cur = util::out(
+            "systemctl",
+            &["--user", "show", "-p", "RuntimeMaxUSec", "--value", UNIT],
+        );
         let cur = cur.trim();
         if mins.is_none() && (cur.is_empty() || cur == "infinity") {
             return 0;
@@ -95,7 +98,11 @@ fn on(mins_str: Option<&str>) -> i32 {
 
 pub fn run(args: &[String]) -> i32 {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("toggle");
-    let rest = if args.len() > 1 { Some(args[1].as_str()) } else { None };
+    let rest = if args.len() > 1 {
+        Some(args[1].as_str())
+    } else {
+        None
+    };
     match cmd {
         "on" => on(rest),
         "off" => off(),

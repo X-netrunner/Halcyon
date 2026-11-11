@@ -102,7 +102,11 @@ impl DirectBackend {
         cache: Cache,
         events: broadcast::Sender<protocol::Event>,
     ) -> Self {
-        Self { player, cache, events }
+        Self {
+            player,
+            cache,
+            events,
+        }
     }
 }
 
@@ -113,7 +117,11 @@ impl PlaybackBackend for DirectBackend {
 
     fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
         Box::pin(async move {
-            let DirectBackend { player, cache, events } = *self;
+            let DirectBackend {
+                player,
+                cache,
+                events,
+            } = *self;
             let engine = Arc::new(AudioEngine::new(player, cache, events));
             engine.run_loop().await;
             Ok(())
@@ -133,7 +141,11 @@ impl SpircBackend {
         cache: Cache,
         events: broadcast::Sender<protocol::Event>,
     ) -> Self {
-        Self { player, cache, events }
+        Self {
+            player,
+            cache,
+            events,
+        }
     }
 }
 
@@ -144,7 +156,11 @@ impl PlaybackBackend for SpircBackend {
 
     fn run(self: Box<Self>) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
         Box::pin(async move {
-            let SpircBackend { player, cache, events } = *self;
+            let SpircBackend {
+                player,
+                cache,
+                events,
+            } = *self;
             loop {
                 match run_once(player.clone(), cache.clone(), events.clone()).await {
                     Ok(RunEnd::Restart) => {
@@ -154,8 +170,11 @@ impl PlaybackBackend for SpircBackend {
                     Err(RunError::Unsupported(why)) => {
                         // Keep the app playing music: the old engine does not need Connect.
                         warn!("Spotify Connect is not available ({why}); using the direct engine");
-                        let _ = events.send(protocol::event(EventBody::ConnectDevice { name: None }));
-                        return Box::new(DirectBackend::new(player, cache, events)).run().await;
+                        let _ =
+                            events.send(protocol::event(EventBody::ConnectDevice { name: None }));
+                        return Box::new(DirectBackend::new(player, cache, events))
+                            .run()
+                            .await;
                     }
                     Err(RunError::Failed(why)) => return Err(anyhow::anyhow!(why)),
                 }
@@ -227,7 +246,12 @@ pub enum TransportCmd {
     /// Make this device the active one (needed before the first load).
     Activate,
     /// Load this list and start at `index`.
-    Load { uris: Vec<String>, index: usize, start_playing: bool, position_ms: u32 },
+    Load {
+        uris: Vec<String>,
+        index: usize,
+        start_playing: bool,
+        position_ms: u32,
+    },
     Play,
     Pause,
     Next,
@@ -314,9 +338,17 @@ pub fn plan_commands(state: &PlayerState, m: &mut Mirror, now_ms: u64) -> Vec<Tr
                 let delta = state.queue_pos as i64 - m.index as i64;
                 if delta == 1 || delta == -1 {
                     let left = m.track_id.clone();
-                    out.push(if delta == 1 { TransportCmd::Next } else { TransportCmd::Prev });
+                    out.push(if delta == 1 {
+                        TransportCmd::Next
+                    } else {
+                        TransportCmd::Prev
+                    });
                     // What Spirc does to the play state on a skip is not documented: say it.
-                    out.push(if state.playing { TransportCmd::Play } else { TransportCmd::Pause });
+                    out.push(if state.playing {
+                        TransportCmd::Play
+                    } else {
+                        TransportCmd::Pause
+                    });
                     m.index = state.queue_pos;
                     m.track_id = Some(cur.id.clone());
                     m.playing = state.playing;
@@ -327,11 +359,17 @@ pub fn plan_commands(state: &PlayerState, m: &mut Mirror, now_ms: u64) -> Vec<Tr
                 }
             } else {
                 if state.playing != m.playing {
-                    out.push(if state.playing { TransportCmd::Play } else { TransportCmd::Pause });
+                    out.push(if state.playing {
+                        TransportCmd::Play
+                    } else {
+                        TransportCmd::Pause
+                    });
                     m.playing = state.playing;
                 }
                 if is_user_seek(state.position_ms, m.position_ms) {
-                    out.push(TransportCmd::Seek(u32::try_from(state.position_ms).unwrap_or(u32::MAX)));
+                    out.push(TransportCmd::Seek(
+                        u32::try_from(state.position_ms).unwrap_or(u32::MAX),
+                    ));
                     m.position_ms = state.position_ms;
                 }
             }
@@ -377,7 +415,9 @@ fn push_load(
     ids: Vec<String>,
     now_ms: u64,
 ) {
-    let Some(cur) = state.track.as_ref() else { return };
+    let Some(cur) = state.track.as_ref() else {
+        return;
+    };
     if !m.active {
         out.push(TransportCmd::Activate);
     }
@@ -438,11 +478,24 @@ fn command_name(cmd: &TransportCmd) -> &'static str {
 /// What the device told us, free of librespot types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceEvent {
-    Playing { track_id: String, position_ms: u64 },
-    Paused { track_id: String, position_ms: u64 },
-    Position { track_id: String, position_ms: u64 },
-    EndOfTrack { track_id: String },
-    Unavailable { track_id: String },
+    Playing {
+        track_id: String,
+        position_ms: u64,
+    },
+    Paused {
+        track_id: String,
+        position_ms: u64,
+    },
+    Position {
+        track_id: String,
+        position_ms: u64,
+    },
+    EndOfTrack {
+        track_id: String,
+    },
+    Unavailable {
+        track_id: String,
+    },
     Stopped,
     /// Connect scale, 0..=65535.
     Volume(u16),
@@ -501,12 +554,7 @@ pub fn locate(state: &PlayerState, id: &str) -> Option<usize> {
 }
 
 /// Turn one device event into a state edit and update the mirror to match.
-pub fn event_to_edit(
-    state: &PlayerState,
-    m: &mut Mirror,
-    ev: &DeviceEvent,
-    now_ms: u64,
-) -> Edit {
+pub fn event_to_edit(state: &PlayerState, m: &mut Mirror, ev: &DeviceEvent, now_ms: u64) -> Edit {
     let mut edit = Edit::default();
     match ev {
         DeviceEvent::Volume(raw) => {
@@ -532,9 +580,18 @@ pub fn event_to_edit(
         DeviceEvent::Unavailable { track_id } => {
             edit.unavailable = Some(track_id.clone());
         }
-        DeviceEvent::Playing { track_id, position_ms }
-        | DeviceEvent::Paused { track_id, position_ms }
-        | DeviceEvent::Position { track_id, position_ms } => {
+        DeviceEvent::Playing {
+            track_id,
+            position_ms,
+        }
+        | DeviceEvent::Paused {
+            track_id,
+            position_ms,
+        }
+        | DeviceEvent::Position {
+            track_id,
+            position_ms,
+        } => {
             if is_stale(m, track_id, now_ms) {
                 return edit;
             }
@@ -545,7 +602,8 @@ pub fn event_to_edit(
             };
             match locate(state, track_id) {
                 Some(idx) => {
-                    let current = state.track.as_ref().map(|t| t.id.as_str()) == Some(track_id.as_str())
+                    let current = state.track.as_ref().map(|t| t.id.as_str())
+                        == Some(track_id.as_str())
                         && state.queue_pos == idx;
                     if !current {
                         edit.select = Some((idx, track_id.clone()));
@@ -584,7 +642,9 @@ pub fn event_to_edit(
 }
 
 fn is_stale(m: &mut Mirror, track_id: &str, now_ms: u64) -> bool {
-    let Some((old, until)) = m.stale.clone() else { return false };
+    let Some((old, until)) = m.stale.clone() else {
+        return false;
+    };
     if now_ms < until && old == track_id {
         return true;
     }
@@ -597,7 +657,11 @@ fn is_stale(m: &mut Mirror, track_id: &str, now_ms: u64) -> bool {
 /// the ones that follow are appended, so the queue drawer shows what played on the phone.
 /// Returns the edit that installs it, and updates the mirror so no command is sent back.
 pub fn adopt_foreign(state: &PlayerState, m: &mut Mirror, track: Track, u: &Unknown) -> Edit {
-    let mut queue = if m.foreign { state.queue.clone() } else { Vec::new() };
+    let mut queue = if m.foreign {
+        state.queue.clone()
+    } else {
+        Vec::new()
+    };
     queue.push(track.clone());
     if queue.len() > FOREIGN_HISTORY_MAX {
         let extra = queue.len() - FOREIGN_HISTORY_MAX;
@@ -686,7 +750,11 @@ mod tests {
     impl ConnectTransport for Mock {
         fn send(&mut self, cmd: &TransportCmd) -> Result<(), String> {
             self.sent.push(cmd.clone());
-            if self.fail { Err("boom".into()) } else { Ok(()) }
+            if self.fail {
+                Err("boom".into())
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -709,7 +777,10 @@ mod tests {
 
     #[test]
     fn track_ids_come_only_from_track_uris() {
-        assert_eq!(track_id_from_uri("spotify:track:abc123"), Some("abc123".into()));
+        assert_eq!(
+            track_id_from_uri("spotify:track:abc123"),
+            Some("abc123".into())
+        );
         assert_eq!(track_id_from_uri("spotify:episode:abc"), None);
         assert_eq!(track_id_from_uri("spotify:track:"), None);
         assert_eq!(track_id_from_uri("spotify:track:a:b"), None);
@@ -743,7 +814,12 @@ mod tests {
         assert_eq!(cmds.len(), 2, "{cmds:?}");
         assert_eq!(cmds.first(), Some(&TransportCmd::Activate));
         match cmds.get(1) {
-            Some(TransportCmd::Load { uris, index, start_playing, position_ms }) => {
+            Some(TransportCmd::Load {
+                uris,
+                index,
+                start_playing,
+                position_ms,
+            }) => {
                 assert_eq!(uris.len(), 3);
                 assert_eq!(*index, 1);
                 assert!(*start_playing);
@@ -775,7 +851,10 @@ mod tests {
         assert_eq!(plan_commands(&s, &mut m, 500), vec![TransportCmd::Play]);
 
         s.position_ms = 90_000;
-        assert_eq!(plan_commands(&s, &mut m, 750), vec![TransportCmd::Seek(90_000)]);
+        assert_eq!(
+            plan_commands(&s, &mut m, 750),
+            vec![TransportCmd::Seek(90_000)]
+        );
         // normal drift is not a seek
         s.position_ms = 90_900;
         assert!(plan_commands(&s, &mut m, 1000).is_empty());
@@ -816,7 +895,10 @@ mod tests {
         s.queue_pos = 3;
         s.track = s.queue.get(3).cloned();
         let cmds = plan_commands(&s, &mut m, 250);
-        assert!(matches!(cmds.first(), Some(TransportCmd::Load { index: 3, .. })), "{cmds:?}");
+        assert!(
+            matches!(cmds.first(), Some(TransportCmd::Load { index: 3, .. })),
+            "{cmds:?}"
+        );
     }
 
     #[test]
@@ -829,7 +911,12 @@ mod tests {
         s.enqueue(track("z"));
         let cmds = plan_commands(&s, &mut m, 250);
         match cmds.first() {
-            Some(TransportCmd::Load { uris, index, position_ms, start_playing }) => {
+            Some(TransportCmd::Load {
+                uris,
+                index,
+                position_ms,
+                start_playing,
+            }) => {
                 assert_eq!(uris.len(), 3);
                 assert_eq!(*index, 0);
                 assert_eq!(*position_ms, 30_000);
@@ -884,7 +971,10 @@ mod tests {
     fn reconcile_sends_through_the_transport_and_survives_errors() {
         let s = state(&["a", "b"], 0, true);
         let mut m = Mirror::new(50);
-        let mut t = Mock { fail: true, ..Mock::default() };
+        let mut t = Mock {
+            fail: true,
+            ..Mock::default()
+        };
         let cmds = reconcile(&s, &mut m, &mut t, 0);
         assert_eq!(t.sent, cmds);
         assert!(!cmds.is_empty());
@@ -895,7 +985,10 @@ mod tests {
     // --- device -> GUI --------------------------------------------------------------------
 
     fn playing(id: &str, pos: u64) -> DeviceEvent {
-        DeviceEvent::Playing { track_id: id.into(), position_ms: pos }
+        DeviceEvent::Playing {
+            track_id: id.into(),
+            position_ms: pos,
+        }
     }
 
     #[test]
@@ -904,13 +997,19 @@ mod tests {
         let mut m = Mirror::new(50);
         let _ = plan_commands(&s, &mut m, 0);
 
-        let paused = DeviceEvent::Paused { track_id: "a".into(), position_ms: 5_000 };
+        let paused = DeviceEvent::Paused {
+            track_id: "a".into(),
+            position_ms: 5_000,
+        };
         let edit = event_to_edit(&s, &mut m, &paused, 100);
         assert_eq!(edit.playing, Some(false));
         apply_edit(&mut s, &edit);
         assert!(!s.playing);
         assert_eq!(s.position_ms, 5_000);
-        assert!(plan_commands(&s, &mut m, 250).is_empty(), "no command echoed back");
+        assert!(
+            plan_commands(&s, &mut m, 250).is_empty(),
+            "no command echoed back"
+        );
 
         let edit = event_to_edit(&s, &mut m, &playing("a", 5_000), 300);
         apply_edit(&mut s, &edit);
@@ -951,7 +1050,10 @@ mod tests {
         let _ = plan_commands(&s, &mut m, 1_000); // Next sent, "a" is now stale until 5_000
 
         // the device still reports "a": must not move the GUI back or trigger Prev
-        let late = DeviceEvent::Position { track_id: "a".into(), position_ms: 40_000 };
+        let late = DeviceEvent::Position {
+            track_id: "a".into(),
+            position_ms: 40_000,
+        };
         let edit = event_to_edit(&s, &mut m, &late, 1_100);
         assert_eq!(edit, Edit::default());
         assert!(plan_commands(&s, &mut m, 1_250).is_empty());
@@ -972,7 +1074,10 @@ mod tests {
         let _ = plan_commands(&s, &mut m, 0);
         assert!(s.advance_next());
         let _ = plan_commands(&s, &mut m, 1_000);
-        let late = DeviceEvent::Position { track_id: "a".into(), position_ms: 1 };
+        let late = DeviceEvent::Position {
+            track_id: "a".into(),
+            position_ms: 1,
+        };
         // after the window the device is believed
         let edit = event_to_edit(&s, &mut m, &late, 1_000 + STALE_GRACE_MS + 1);
         assert_eq!(edit.select, Some((0, "a".into())));
@@ -983,13 +1088,23 @@ mod tests {
         let mut s = state(&["a"], 0, true);
         let mut m = Mirror::new(50);
         let _ = plan_commands(&s, &mut m, 0);
-        let edit = event_to_edit(&s, &mut m, &DeviceEvent::Volume(percent_to_connect(30)), 100);
+        let edit = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::Volume(percent_to_connect(30)),
+            100,
+        );
         assert_eq!(edit.volume, Some(30));
         apply_edit(&mut s, &edit);
         assert_eq!(s.volume, 30);
         assert!(plan_commands(&s, &mut m, 250).is_empty(), "no echo");
         // the same volume again is not an edit
-        let edit = event_to_edit(&s, &mut m, &DeviceEvent::Volume(percent_to_connect(30)), 300);
+        let edit = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::Volume(percent_to_connect(30)),
+            300,
+        );
         assert!(edit.volume.is_none());
     }
 
@@ -998,11 +1113,30 @@ mod tests {
         let mut s = state(&["a"], 0, true);
         let mut m = Mirror::new(50);
         let _ = plan_commands(&s, &mut m, 0);
-        let _ = event_to_edit(&s, &mut m, &DeviceEvent::Position { track_id: "a".into(), position_ms: 10_000 }, 100);
+        let _ = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::Position {
+                track_id: "a".into(),
+                position_ms: 10_000,
+            },
+            100,
+        );
         s.position_ms = 120_000; // the user dragged the slider
-        let edit = event_to_edit(&s, &mut m, &DeviceEvent::Position { track_id: "a".into(), position_ms: 10_250 }, 200);
+        let edit = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::Position {
+                track_id: "a".into(),
+                position_ms: 10_250,
+            },
+            200,
+        );
         assert!(edit.position_ms.is_none());
-        assert_eq!(plan_commands(&s, &mut m, 250), vec![TransportCmd::Seek(120_000)]);
+        assert_eq!(
+            plan_commands(&s, &mut m, 250),
+            vec![TransportCmd::Seek(120_000)]
+        );
     }
 
     #[test]
@@ -1014,11 +1148,20 @@ mod tests {
         apply_edit(&mut s, &edit);
         assert!(!s.playing);
         assert!(!m.active);
-        assert!(plan_commands(&s, &mut m, 250).is_empty(), "paused and inactive: stay quiet");
+        assert!(
+            plan_commands(&s, &mut m, 250).is_empty(),
+            "paused and inactive: stay quiet"
+        );
         s.playing = true; // the user presses play
         let cmds = plan_commands(&s, &mut m, 500);
         assert_eq!(cmds.first(), Some(&TransportCmd::Activate));
-        assert!(matches!(cmds.get(1), Some(TransportCmd::Load { start_playing: true, .. })));
+        assert!(matches!(
+            cmds.get(1),
+            Some(TransportCmd::Load {
+                start_playing: true,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -1036,7 +1179,10 @@ mod tests {
         assert!(s.playing);
         assert_eq!(s.position_ms, 1_000);
         assert!(m.foreign);
-        assert!(plan_commands(&s, &mut m, 250).is_empty(), "adopting must not send a load");
+        assert!(
+            plan_commands(&s, &mut m, 250).is_empty(),
+            "adopting must not send a load"
+        );
 
         // the next track of the phone's context is appended, history stays
         let edit = event_to_edit(&s, &mut m, &playing("y", 0), 5_000);
@@ -1058,7 +1204,11 @@ mod tests {
         let mut s = PlayerState::default();
         let mut m = Mirror::new(50);
         for i in 0..(FOREIGN_HISTORY_MAX + 30) {
-            let u = Unknown { track_id: format!("t{i}"), playing: Some(true), position_ms: 0 };
+            let u = Unknown {
+                track_id: format!("t{i}"),
+                playing: Some(true),
+                position_ms: 0,
+            };
             let e = adopt_foreign(&s, &mut m, track(&format!("t{i}")), &u);
             apply_edit(&mut s, &e);
         }
@@ -1071,13 +1221,20 @@ mod tests {
     fn gui_picking_something_after_phone_music_makes_the_queue_ours_again() {
         let mut s = PlayerState::default();
         let mut m = Mirror::new(50);
-        let u = Unknown { track_id: "x".into(), playing: Some(true), position_ms: 0 };
+        let u = Unknown {
+            track_id: "x".into(),
+            playing: Some(true),
+            position_ms: 0,
+        };
         let e = adopt_foreign(&s, &mut m, track("x"), &u);
         apply_edit(&mut s, &e);
         assert!(m.foreign);
         s.play_context(vec![track("p"), track("q")], 0);
         let cmds = plan_commands(&s, &mut m, 1_000);
-        assert!(cmds.iter().any(|c| matches!(c, TransportCmd::Load { .. })), "{cmds:?}");
+        assert!(
+            cmds.iter().any(|c| matches!(c, TransportCmd::Load { .. })),
+            "{cmds:?}"
+        );
         assert!(!m.foreign);
     }
 
@@ -1085,22 +1242,42 @@ mod tests {
     fn end_of_track_is_reported_only_for_known_tracks() {
         let s = state(&["a", "b"], 0, true);
         let mut m = Mirror::new(50);
-        let e = event_to_edit(&s, &mut m, &DeviceEvent::EndOfTrack { track_id: "a".into() }, 0);
+        let e = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::EndOfTrack {
+                track_id: "a".into(),
+            },
+            0,
+        );
         assert_eq!(e.ended.as_deref(), Some("a"));
-        let e = event_to_edit(&s, &mut m, &DeviceEvent::EndOfTrack { track_id: "zzz".into() }, 0);
+        let e = event_to_edit(
+            &s,
+            &mut m,
+            &DeviceEvent::EndOfTrack {
+                track_id: "zzz".into(),
+            },
+            0,
+        );
         assert!(e.ended.is_none());
     }
 
     #[test]
     fn apply_edit_survives_a_queue_that_changed_meanwhile() {
         let mut s = state(&["a", "b", "c"], 0, true);
-        let edit = Edit { select: Some((2, "c".into())), ..Edit::default() };
+        let edit = Edit {
+            select: Some((2, "c".into())),
+            ..Edit::default()
+        };
         s.dequeue(1); // "c" is now at index 1
         apply_edit(&mut s, &edit);
         assert_eq!(s.track.as_ref().map(|t| t.id.as_str()), Some("c"));
         assert_eq!(s.queue_pos, 1);
         // a track that vanished is simply not selected
-        let edit = Edit { select: Some((0, "gone".into())), ..Edit::default() };
+        let edit = Edit {
+            select: Some((0, "gone".into())),
+            ..Edit::default()
+        };
         let before = s.clone();
         apply_edit(&mut s, &edit);
         assert_eq!(s, before);
@@ -1122,7 +1299,15 @@ mod tests {
     #[test]
     fn edits_report_whether_the_view_changed() {
         assert!(!Edit::default().changes_view());
-        assert!(Edit { playing: Some(true), ..Edit::default() }.changes_view());
-        assert!(!Edit { position_ms: Some(5), ..Edit::default() }.changes_view());
+        assert!(Edit {
+            playing: Some(true),
+            ..Edit::default()
+        }
+        .changes_view());
+        assert!(!Edit {
+            position_ms: Some(5),
+            ..Edit::default()
+        }
+        .changes_view());
     }
 }

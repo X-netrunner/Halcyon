@@ -31,7 +31,13 @@ pub trait Generator: Send + Sync {
     fn available(&self) -> bool;
     /// Run one request to the end (blocking). `cancel` is checked between tokens; when it is set the
     /// call stops and returns `Err(LlmError::Timeout)`.
-    fn generate(&self, model_file: &Path, model_id: &str, req: &LlmRequest, cancel: &AtomicBool) -> Result<String, LlmError>;
+    fn generate(
+        &self,
+        model_file: &Path,
+        model_id: &str,
+        req: &LlmRequest,
+        cancel: &AtomicBool,
+    ) -> Result<String, LlmError>;
     /// Drop the loaded model if it has not been used for `idle`. True when something was unloaded.
     fn unload_if_idle(&self, idle: Duration) -> bool;
     /// Drop the loaded model now.
@@ -52,7 +58,13 @@ impl Generator for NoEngine {
     fn available(&self) -> bool {
         false
     }
-    fn generate(&self, _: &Path, _: &str, _: &LlmRequest, _: &AtomicBool) -> Result<String, LlmError> {
+    fn generate(
+        &self,
+        _: &Path,
+        _: &str,
+        _: &LlmRequest,
+        _: &AtomicBool,
+    ) -> Result<String, LlmError> {
         Err(LlmError::EngineMissing)
     }
     fn unload_if_idle(&self, _: Duration) -> bool {
@@ -135,7 +147,11 @@ pub struct LocalGgufBackend {
 
 impl LocalGgufBackend {
     pub fn new(dir: PathBuf, model_id: &str, generator: Arc<dyn Generator>) -> Self {
-        Self { dir, model_id: model_id.to_string(), generator }
+        Self {
+            dir,
+            model_id: model_id.to_string(),
+            generator,
+        }
     }
 
     /// The real thing: the models folder and the process-wide engine.
@@ -145,7 +161,8 @@ impl LocalGgufBackend {
 
     /// The model's file, when it is downloaded and complete.
     fn file(&self) -> Result<PathBuf, LlmError> {
-        let spec = models::find(&self.model_id).ok_or_else(|| LlmError::LocalModelMissing(self.model_id.clone()))?;
+        let spec = models::find(&self.model_id)
+            .ok_or_else(|| LlmError::LocalModelMissing(self.model_id.clone()))?;
         if models::disk_status(&self.dir, spec.file).installed {
             Ok(models::model_path(&self.dir, spec.file))
         } else {
@@ -172,7 +189,10 @@ impl TasteLlm for LocalGgufBackend {
             start_reaper(&self.generator);
 
             let cancel = Arc::new(AtomicBool::new(false));
-            let mut guard = CancelOnDrop { flag: cancel.clone(), armed: true };
+            let mut guard = CancelOnDrop {
+                flag: cancel.clone(),
+                armed: true,
+            };
             let (tx, rx) = tokio::sync::oneshot::channel();
             let gen = self.generator.clone();
             let id = self.model_id.clone();
@@ -184,8 +204,12 @@ impl TasteLlm for LocalGgufBackend {
                 .spawn(move || {
                     let _ = tx.send(gen.generate(&file, &id, &request, &cancel));
                 })
-                .map_err(|e| LlmError::BadResponse(format!("could not start the model thread: {e}")))?;
-            let result = rx.await.map_err(|_| LlmError::BadResponse("the model stopped unexpectedly".to_string()))?;
+                .map_err(|e| {
+                    LlmError::BadResponse(format!("could not start the model thread: {e}"))
+                })?;
+            let result = rx
+                .await
+                .map_err(|_| LlmError::BadResponse("the model stopped unexpectedly".to_string()))?;
             guard.armed = false;
             result
         })
@@ -263,8 +287,15 @@ pub mod engine {
 
     impl LlamaGenerator {
         pub fn new() -> Self {
-            let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
-            Self { backend: OnceLock::new(), state: Mutex::new(None), reaper: AtomicBool::new(false), threads: inference_threads(cores) }
+            let cores = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(2);
+            Self {
+                backend: OnceLock::new(),
+                state: Mutex::new(None),
+                reaper: AtomicBool::new(false),
+                threads: inference_threads(cores),
+            }
         }
 
         fn backend(&self) -> Result<&LlamaBackend, LlmError> {
@@ -307,7 +338,11 @@ pub mod engine {
         let mut prompt = templated.unwrap_or_else(|| chatml_prompt(&system, &user));
         // Qwen3 writes a hidden "thinking" block unless told not to; the grammar would cut it off
         // mid-thought, so close the block ourselves (the format its own non-thinking mode uses).
-        if model.meta_val_str("general.architecture").map(|a| a.starts_with("qwen3")).unwrap_or(false) {
+        if model
+            .meta_val_str("general.architecture")
+            .map(|a| a.starts_with("qwen3"))
+            .unwrap_or(false)
+        {
             prompt.push_str("<think>\n\n</think>\n\n");
         }
         prompt
@@ -334,7 +369,9 @@ pub mod engine {
         }
         let n_ctx = N_CTX as usize;
         if tokens.is_empty() || tokens.len() + 16 > n_ctx {
-            return Err(LlmError::BadResponse("the request was too long for the model".to_string()));
+            return Err(LlmError::BadResponse(
+                "the request was too long for the model".to_string(),
+            ));
         }
         let max_new = (req.max_tokens as usize).min(n_ctx - tokens.len()).max(1);
 
@@ -343,13 +380,18 @@ pub mod engine {
             .with_n_batch(N_BATCH as u32)
             .with_n_threads(threads)
             .with_n_threads_batch(threads);
-        let mut ctx = model
-            .new_context(backend, params)
-            .map_err(|e| LlmError::BadResponse(format!("not enough memory to run the model ({e})")))?;
+        let mut ctx = model.new_context(backend, params).map_err(|e| {
+            LlmError::BadResponse(format!("not enough memory to run the model ({e})"))
+        })?;
 
         let grammar_text = grammar::grammar_for(&req.shape);
-        let mut chain = vec![LlamaSampler::grammar(model, &grammar_text, "root")
-            .map_err(|e| LlmError::BadResponse(format!("the answer format was rejected by the engine: {e:?}")))?];
+        let mut chain = vec![
+            LlamaSampler::grammar(model, &grammar_text, "root").map_err(|e| {
+                LlmError::BadResponse(format!(
+                    "the answer format was rejected by the engine: {e:?}"
+                ))
+            })?,
+        ];
         if req.temperature > 0.01 {
             chain.push(LlamaSampler::temp(req.temperature));
             chain.push(LlamaSampler::dist(SEED));
@@ -369,10 +411,17 @@ pub mod engine {
             for (i, t) in chunk.iter().enumerate() {
                 let pos = ci * N_BATCH + i;
                 batch
-                    .add(*t, i32::try_from(pos).unwrap_or(i32::MAX), &[0], pos == last)
+                    .add(
+                        *t,
+                        i32::try_from(pos).unwrap_or(i32::MAX),
+                        &[0],
+                        pos == last,
+                    )
                     .map_err(|e| LlmError::BadResponse(e.to_string()))?;
             }
-            ctx.decode(&mut batch).map_err(|e| LlmError::BadResponse(format!("the model could not read the request ({e})")))?;
+            ctx.decode(&mut batch).map_err(|e| {
+                LlmError::BadResponse(format!("the model could not read the request ({e})"))
+            })?;
         }
 
         let mut out: Vec<u8> = Vec::with_capacity(512);
@@ -394,7 +443,9 @@ pub mod engine {
             batch
                 .add(tok, i32::try_from(pos).unwrap_or(i32::MAX), &[0], true)
                 .map_err(|e| LlmError::BadResponse(e.to_string()))?;
-            ctx.decode(&mut batch).map_err(|e| LlmError::BadResponse(format!("the model stopped while answering ({e})")))?;
+            ctx.decode(&mut batch).map_err(|e| {
+                LlmError::BadResponse(format!("the model stopped while answering ({e})"))
+            })?;
             pos += 1;
             idx = 0;
         }
@@ -410,7 +461,13 @@ pub mod engine {
             true
         }
 
-        fn generate(&self, model_file: &Path, model_id: &str, req: &LlmRequest, cancel: &AtomicBool) -> Result<String, LlmError> {
+        fn generate(
+            &self,
+            model_file: &Path,
+            model_id: &str,
+            req: &LlmRequest,
+            cancel: &AtomicBool,
+        ) -> Result<String, LlmError> {
             lower_priority();
             let backend = self.backend()?;
             // One job at a time; a poisoned lock only means an earlier job panicked.
@@ -421,7 +478,11 @@ pub mod engine {
                 let params = LlamaModelParams::default();
                 let model = LlamaModel::load_from_file(backend, model_file, &params)
                     .map_err(|e| LlmError::LocalModelBroken(e.to_string()))?;
-                *state = Some(Loaded { path: model_file.to_path_buf(), model, last_used: Instant::now() });
+                *state = Some(Loaded {
+                    path: model_file.to_path_buf(),
+                    model,
+                    last_used: Instant::now(),
+                });
             }
             let Some(loaded) = state.as_mut() else {
                 return Err(LlmError::LocalModelBroken("model not loaded".to_string()));
@@ -433,8 +494,13 @@ pub mod engine {
 
         fn unload_if_idle(&self, idle: Duration) -> bool {
             // Never wait for a running job: if the lock is busy the model is in use.
-            let Ok(mut state) = self.state.try_lock() else { return false };
-            let expired = state.as_ref().map(|l| l.last_used.elapsed() >= idle).unwrap_or(false);
+            let Ok(mut state) = self.state.try_lock() else {
+                return false;
+            };
+            let expired = state
+                .as_ref()
+                .map(|l| l.last_used.elapsed() >= idle)
+                .unwrap_or(false);
             if expired {
                 *state = None;
             }
@@ -447,10 +513,14 @@ pub mod engine {
         }
 
         fn loaded(&self) -> Option<String> {
-            self.state
-                .try_lock()
-                .ok()
-                .and_then(|s| s.as_ref().map(|l| l.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))
+            self.state.try_lock().ok().and_then(|s| {
+                s.as_ref().map(|l| {
+                    l.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                })
+            })
         }
 
         fn reaper_flag(&self) -> &AtomicBool {
@@ -494,7 +564,9 @@ mod tests {
             })
         }
         fn slow(delay: Duration) -> Arc<Self> {
-            let mut f = Arc::try_unwrap(Self::new(Ok("{}".into()))).ok().expect("unique");
+            let mut f = Arc::try_unwrap(Self::new(Ok("{}".into())))
+                .ok()
+                .expect("unique");
             f.delay = delay;
             Arc::new(f)
         }
@@ -504,7 +576,13 @@ mod tests {
         fn available(&self) -> bool {
             true
         }
-        fn generate(&self, _f: &Path, id: &str, _r: &LlmRequest, cancel: &AtomicBool) -> Result<String, LlmError> {
+        fn generate(
+            &self,
+            _f: &Path,
+            id: &str,
+            _r: &LlmRequest,
+            cancel: &AtomicBool,
+        ) -> Result<String, LlmError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let now = self.running.fetch_add(1, Ordering::SeqCst) + 1;
             self.max_running.fetch_max(now, Ordering::SeqCst);
@@ -537,7 +615,13 @@ mod tests {
     }
 
     fn req() -> LlmRequest {
-        LlmRequest { system: "s".into(), user: "u".into(), temperature: 0.2, max_tokens: 50, shape: Shape::AnyJson }
+        LlmRequest {
+            system: "s".into(),
+            user: "u".into(),
+            temperature: 0.2,
+            max_tokens: 50,
+            shape: Shape::AnyJson,
+        }
     }
 
     /// A models folder holding a believable file for the default model.
@@ -558,7 +642,10 @@ mod tests {
         assert_eq!(b.backend_name(), "local");
         assert_eq!(b.model(), id);
         assert!(b.probe().await.is_ok());
-        assert_eq!(b.complete(&req()).await, Ok("{\"picks\":[\"t1\"]}".to_string()));
+        assert_eq!(
+            b.complete(&req()).await,
+            Ok("{\"picks\":[\"t1\"]}".to_string())
+        );
         assert_eq!(fake.calls.load(Ordering::SeqCst), 1);
         assert_eq!(fake.loaded(), Some(id.to_string()));
     }
@@ -567,16 +654,26 @@ mod tests {
     async fn a_missing_file_is_a_plain_error_and_never_reaches_the_engine() {
         let dir = tempfile::tempdir().expect("tempdir");
         let fake = Fake::new(Ok("{}".into()));
-        let b = LocalGgufBackend::new(dir.path().to_path_buf(), models::DEFAULT_LOCAL_MODEL, fake.clone());
+        let b = LocalGgufBackend::new(
+            dir.path().to_path_buf(),
+            models::DEFAULT_LOCAL_MODEL,
+            fake.clone(),
+        );
         let e = b.complete(&req()).await.expect_err("missing");
         assert!(matches!(e, LlmError::LocalModelMissing(_)));
         assert!(e.is_permanent());
         assert!(e.to_string().contains("Download"));
-        assert!(matches!(b.probe().await, Err(LlmError::LocalModelMissing(_))));
+        assert!(matches!(
+            b.probe().await,
+            Err(LlmError::LocalModelMissing(_))
+        ));
         assert_eq!(fake.calls.load(Ordering::SeqCst), 0);
         // an unknown id is the same error, not a path lookup
         let weird = LocalGgufBackend::new(dir.path().to_path_buf(), "../../etc/passwd", fake);
-        assert!(matches!(weird.probe().await, Err(LlmError::LocalModelMissing(_))));
+        assert!(matches!(
+            weird.probe().await,
+            Err(LlmError::LocalModelMissing(_))
+        ));
     }
 
     #[tokio::test]
@@ -613,7 +710,10 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        assert!(fake.saw_cancel.load(Ordering::SeqCst), "engine was never told to stop");
+        assert!(
+            fake.saw_cancel.load(Ordering::SeqCst),
+            "engine was never told to stop"
+        );
     }
 
     #[tokio::test]

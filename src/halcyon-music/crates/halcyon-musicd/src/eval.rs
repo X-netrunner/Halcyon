@@ -112,13 +112,23 @@ impl Ranker for CurrentEngine {
             .iter()
             .map(|id| {
                 let artist = artist_of.get(id.as_str()).copied().unwrap_or("");
-                Track::simple(id.clone(), String::new(), artist.to_string(), String::new(), 0)
+                Track::simple(
+                    id.clone(),
+                    String::new(),
+                    artist.to_string(),
+                    String::new(),
+                    0,
+                )
             })
             .collect();
         let taste = crate::suggestions::learn_taste(ctx.plays, &liked, ctx.now);
         let n_songs = taste.songs.len().max(1) as f64;
-        let song_pos: HashMap<&str, usize> =
-            taste.songs.iter().enumerate().map(|(i, s)| (s.as_str(), i)).collect();
+        let song_pos: HashMap<&str, usize> = taste
+            .songs
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.as_str(), i))
+            .collect();
         let n_art = taste.artists.len().max(1) as f64;
         let artist_pos: HashMap<String, usize> = taste
             .artists
@@ -132,7 +142,9 @@ impl Ranker for CurrentEngine {
                 if let Some(&i) = song_pos.get(it.track_id.as_str()) {
                     // Songs you listen to come first, best first.
                     2.0 + (1.0 - i as f64 / n_songs)
-                } else if let Some(&i) = artist_pos.get(&crate::suggestions::normalize_string(&it.artist)) {
+                } else if let Some(&i) =
+                    artist_pos.get(&crate::suggestions::normalize_string(&it.artist))
+                {
                     // Then songs by artists you listen to.
                     1.0 + (1.0 - i as f64 / n_art)
                 } else {
@@ -155,7 +167,10 @@ impl Ranker for MostPlayed {
         for p in ctx.plays.iter().filter(|p| p.completed) {
             *n.entry(p.track_id.as_str()).or_insert(0.0) += 1.0;
         }
-        items.iter().map(|it| n.get(it.track_id.as_str()).copied().unwrap_or(0.0)).collect()
+        items
+            .iter()
+            .map(|it| n.get(it.track_id.as_str()).copied().unwrap_or(0.0))
+            .collect()
     }
 }
 
@@ -239,7 +254,11 @@ pub fn auc(positives: &[f64], negatives: &[f64]) -> Option<f64> {
 /// NDCG@k with graded gains. `ranked_gains` is in the engine's order; `ideal` are all gains of the day.
 pub fn ndcg(ranked_gains: &[f64], ideal: &[f64], k: usize) -> Option<f64> {
     let dcg = |g: &[f64]| -> f64 {
-        g.iter().take(k).enumerate().map(|(i, g)| g / ((i + 2) as f64).log2()).sum()
+        g.iter()
+            .take(k)
+            .enumerate()
+            .map(|(i, g)| g / ((i + 2) as f64).log2())
+            .sum()
     };
     let mut best: Vec<f64> = ideal.to_vec();
     best.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
@@ -264,25 +283,42 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
     // Catalogue: every track seen anywhere, with its artist (first seen wins).
     let mut catalogue: BTreeMap<String, String> = BTreeMap::new();
     for p in &chronological {
-        catalogue.entry(p.track_id.clone()).or_insert_with(|| p.artist.clone());
+        catalogue
+            .entry(p.track_id.clone())
+            .or_insert_with(|| p.artist.clone());
     }
     let items: Vec<Item> = catalogue
         .iter()
-        .map(|(id, artist)| Item { track_id: id.clone(), artist: artist.clone() })
+        .map(|(id, artist)| Item {
+            track_id: id.clone(),
+            artist: artist.clone(),
+        })
         .collect();
     let all_artists: BTreeSet<&str> = items.iter().map(|i| i.artist.as_str()).collect();
 
     // Candidate test days: the most recent days with enough data.
-    let mut days: BTreeSet<u64> = chronological.iter().map(|p| day_start(p.started_at)).collect();
+    let mut days: BTreeSet<u64> = chronological
+        .iter()
+        .map(|p| day_start(p.started_at))
+        .collect();
     days.retain(|d| {
-        let on_day = chronological.iter().filter(|p| day_start(p.started_at) == *d).count();
+        let on_day = chronological
+            .iter()
+            .filter(|p| day_start(p.started_at) == *d)
+            .count();
         let before = chronological.iter().filter(|p| p.started_at < *d).count();
         on_day >= MIN_DAY_PLAYS && before >= MIN_TRAIN_PLAYS
     });
     let test_days: Vec<u64> = days.into_iter().rev().take(TEST_DAYS).collect();
 
-    let (mut recalls, mut ndcgs, mut aucs, mut divs, mut novs, mut reps) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut recalls, mut ndcgs, mut aucs, mut divs, mut novs, mut reps) = (
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
     let mut shown_artists: BTreeSet<String> = BTreeSet::new();
 
     for &d in &test_days {
@@ -305,7 +341,11 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
             }
         }
 
-        let ctx = TrainCtx { plays: train, liked, now: d };
+        let ctx = TrainCtx {
+            plays: train,
+            liked,
+            now: d,
+        };
         let scores = ranker.scores(&ctx, &items);
         if scores.len() != items.len() {
             continue;
@@ -316,7 +356,12 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
             let sb = scores.get(b).copied().unwrap_or(0.0);
             sb.partial_cmp(&sa)
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| items.get(a).map(|i| &i.track_id).cmp(&items.get(b).map(|i| &i.track_id)))
+                .then_with(|| {
+                    items
+                        .get(a)
+                        .map(|i| &i.track_id)
+                        .cmp(&items.get(b).map(|i| &i.track_id))
+                })
         });
         let top: Vec<&Item> = order.iter().take(K).filter_map(|&i| items.get(i)).collect();
 
@@ -327,11 +372,18 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
             .map(|(id, _)| *id)
             .collect();
         if !relevant.is_empty() {
-            let hit = top.iter().filter(|i| relevant.contains(i.track_id.as_str())).count();
+            let hit = top
+                .iter()
+                .filter(|i| relevant.contains(i.track_id.as_str()))
+                .count();
             recalls.push(hit as f64 / relevant.len().min(K) as f64);
             let gains: Vec<f64> = top
                 .iter()
-                .map(|i| per_track.get(i.track_id.as_str()).map_or(0.0, |(l, _)| l.gain()))
+                .map(|i| {
+                    per_track
+                        .get(i.track_id.as_str())
+                        .map_or(0.0, |(l, _)| l.gain())
+                })
                 .collect();
             let ideal: Vec<f64> = per_track.values().map(|(l, _)| l.gain()).collect();
             if let Some(v) = ndcg(&gains, &ideal, K) {
@@ -376,8 +428,10 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
             divs.push(1.0 - same as f64 / pairs.max(1) as f64);
         }
         if !top.is_empty() {
-            let heard: HashSet<String> =
-                train.iter().map(|p| crate::suggestions::normalize_string(&p.artist)).collect();
+            let heard: HashSet<String> = train
+                .iter()
+                .map(|p| crate::suggestions::normalize_string(&p.artist))
+                .collect();
             let unheard = top
                 .iter()
                 .filter(|i| !heard.contains(&crate::suggestions::normalize_string(&i.artist)))
@@ -388,7 +442,10 @@ pub fn evaluate(ranker: &dyn Ranker, plays: &[PlayLogEntry], liked: &HashSet<Str
                 .filter(|p| p.started_at + REPEAT_WINDOW_DAYS * DAY >= d)
                 .map(|p| p.track_id.as_str())
                 .collect();
-            let repeated = top.iter().filter(|i| recent.contains(i.track_id.as_str())).count();
+            let repeated = top
+                .iter()
+                .filter(|i| recent.contains(i.track_id.as_str()))
+                .count();
             reps.push(repeated as f64 / top.len() as f64);
             for i in &top {
                 shown_artists.insert(i.artist.clone());
@@ -447,11 +504,18 @@ pub const FIXTURE_NOW: u64 = 1_800_000_000 - 1_800_000_000 % DAY;
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0 >> 33
     }
     fn below(&mut self, n: u64) -> u64 {
-        if n == 0 { 0 } else { self.next() % n }
+        if n == 0 {
+            0
+        } else {
+            self.next() % n
+        }
     }
 }
 
@@ -463,23 +527,36 @@ pub fn fixture(kind: Listener) -> (Vec<PlayLogEntry>, HashSet<String>) {
         Listener::Shift => 33,
     });
     // (artist, tracks, liked: loved?) per phase.
-    let artists = |names: &[&str]| -> Vec<String> { names.iter().map(|s| (*s).to_string()).collect() };
+    let artists =
+        |names: &[&str]| -> Vec<String> { names.iter().map(|s| (*s).to_string()).collect() };
     let mut plays = Vec::new();
     let mut liked = HashSet::new();
     let mut id = 0i64;
     for day in 0..80u64 {
         let d0 = FIXTURE_NOW - (80 - day) * DAY;
         let (loved, hated): (Vec<String>, Vec<String>) = match kind {
-            Listener::Narrow => (artists(&["Ash", "Birch", "Cedar"]), artists(&["Dust", "Ember", "Flint", "Gale"])),
+            Listener::Narrow => (
+                artists(&["Ash", "Birch", "Cedar"]),
+                artists(&["Dust", "Ember", "Flint", "Gale"]),
+            ),
             Listener::Broad => (
-                artists(&["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18"]),
+                artists(&[
+                    "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
+                    "A13", "A14", "A15", "A16", "A17", "A18",
+                ]),
                 artists(&["Z1", "Z2"]),
             ),
             Listener::Shift => {
                 if day < 60 {
-                    (artists(&["Ash", "Birch", "Cedar"]), artists(&["Dune", "Elm", "Fern"]))
+                    (
+                        artists(&["Ash", "Birch", "Cedar"]),
+                        artists(&["Dune", "Elm", "Fern"]),
+                    )
                 } else {
-                    (artists(&["Dune", "Elm", "Fern"]), artists(&["Ash", "Birch", "Cedar"]))
+                    (
+                        artists(&["Dune", "Elm", "Fern"]),
+                        artists(&["Ash", "Birch", "Cedar"]),
+                    )
                 }
             }
         };
@@ -487,10 +564,17 @@ pub fn fixture(kind: Listener) -> (Vec<PlayLogEntry>, HashSet<String>) {
             id += 1;
             let hate = rng.below(100) < 18;
             let pool = if hate { &hated } else { &loved };
-            let artist = pool.get(rng.below(pool.len() as u64) as usize).cloned().unwrap_or_default();
+            let artist = pool
+                .get(rng.below(pool.len() as u64) as usize)
+                .cloned()
+                .unwrap_or_default();
             // Few tracks per artist, so tracks repeat over the weeks.
             let track_id = format!("{artist}-{}", rng.below(6));
-            let (ms, done) = if hate { (4_000 + rng.below(20_000), false) } else { (200_000, true) };
+            let (ms, done) = if hate {
+                (4_000 + rng.below(20_000), false)
+            } else {
+                (200_000, true)
+            };
             if !hate && rng.below(100) < 15 {
                 liked.insert(track_id.clone());
             }
@@ -546,8 +630,15 @@ pub fn markdown_section(title: &str, reports: &[Report]) -> String {
         let m = &r.metrics;
         s.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
-            r.engine, m.days, fmt(m.recall_at_k), fmt(m.ndcg_at_k), fmt(m.skip_auc),
-            fmt(m.diversity), fmt(m.novelty), fmt(m.coverage), fmt(m.repeat_rate)
+            r.engine,
+            m.days,
+            fmt(m.recall_at_k),
+            fmt(m.ndcg_at_k),
+            fmt(m.skip_auc),
+            fmt(m.diversity),
+            fmt(m.novelty),
+            fmt(m.coverage),
+            fmt(m.repeat_rate)
         ));
     }
     s.push('\n');
@@ -578,7 +669,9 @@ pub struct EvalOutput {
     pub real_json: Option<String>,
 }
 
-pub fn build_output(real: Option<(&[PlayLogEntry], &HashSet<String>)>) -> Result<EvalOutput, String> {
+pub fn build_output(
+    real: Option<(&[PlayLogEntry], &HashSet<String>)>,
+) -> Result<EvalOutput, String> {
     let fixtures = run_fixtures();
     let fixtures_json = serde_json::to_string_pretty(&fixtures).map_err(|e| e.to_string())?;
     let (real_md, real_json) = match real {
@@ -595,7 +688,12 @@ pub fn build_output(real: Option<(&[PlayLogEntry], &HashSet<String>)>) -> Result
         }
         None => (None, None),
     };
-    Ok(EvalOutput { fixtures_md: fixtures_markdown(&fixtures), fixtures_json, real_md, real_json })
+    Ok(EvalOutput {
+        fixtures_md: fixtures_markdown(&fixtures),
+        fixtures_json,
+        real_md,
+        real_json,
+    })
 }
 
 /// Write the fixture report next to the docs and the real-history report under the state dir
@@ -653,12 +751,30 @@ mod tests {
     #[test]
     fn labels_follow_the_rules() {
         let liked: HashSet<String> = ["l".to_string()].into();
-        assert_eq!(label_play(&e(1, "a", "x", 0, 200_000, true), &liked), Label::Positive);
-        assert_eq!(label_play(&e(1, "l", "x", 0, 200_000, true), &liked), Label::Strong);
-        assert_eq!(label_play(&e(1, "a", "x", 0, 5_000, false), &liked), Label::Skipped);
-        assert_eq!(label_play(&e(1, "a", "x", 0, 90_000, false), &liked), Label::WeakSkip);
-        assert_eq!(label_play(&e(1, "l", "x", 0, 5_000, false), &liked), Label::Skipped, "a like does not save a skip");
-        assert!(Label::Skipped.is_skip() && Label::WeakSkip.is_skip() && !Label::Positive.is_skip());
+        assert_eq!(
+            label_play(&e(1, "a", "x", 0, 200_000, true), &liked),
+            Label::Positive
+        );
+        assert_eq!(
+            label_play(&e(1, "l", "x", 0, 200_000, true), &liked),
+            Label::Strong
+        );
+        assert_eq!(
+            label_play(&e(1, "a", "x", 0, 5_000, false), &liked),
+            Label::Skipped
+        );
+        assert_eq!(
+            label_play(&e(1, "a", "x", 0, 90_000, false), &liked),
+            Label::WeakSkip
+        );
+        assert_eq!(
+            label_play(&e(1, "l", "x", 0, 5_000, false), &liked),
+            Label::Skipped,
+            "a like does not save a skip"
+        );
+        assert!(
+            Label::Skipped.is_skip() && Label::WeakSkip.is_skip() && !Label::Positive.is_skip()
+        );
     }
 
     #[test]
@@ -683,9 +799,14 @@ mod tests {
         // A ranker that panics if it is shown any play from the test day or later.
         struct Spy;
         impl Ranker for Spy {
-            fn name(&self) -> &'static str { "spy" }
+            fn name(&self) -> &'static str {
+                "spy"
+            }
             fn scores(&self, ctx: &TrainCtx<'_>, items: &[Item]) -> Vec<f64> {
-                assert!(ctx.plays.iter().all(|p| p.started_at < ctx.now), "future play leaked");
+                assert!(
+                    ctx.plays.iter().all(|p| p.started_at < ctx.now),
+                    "future play leaked"
+                );
                 vec![0.0; items.len()]
             }
         }
@@ -696,7 +817,9 @@ mod tests {
 
     #[test]
     fn too_little_history_gives_no_days_and_no_numbers() {
-        let plays: Vec<PlayLogEntry> = (0..10).map(|i| e(i, "t", "a", 1000 + i as u64, 200_000, true)).collect();
+        let plays: Vec<PlayLogEntry> = (0..10)
+            .map(|i| e(i, "t", "a", 1000 + i as u64, 200_000, true))
+            .collect();
         let r = evaluate(&CurrentEngine, &plays, &HashSet::new());
         assert_eq!(r.metrics.days, 0);
         assert_eq!(r.metrics.recall_at_k, None);
@@ -715,7 +838,10 @@ mod tests {
             assert_eq!(a.len(), 80 * 12);
             assert!(a.iter().any(|p| !p.completed) && a.iter().any(|p| p.completed));
         }
-        assert_eq!(serde_json::to_string(&run_fixtures()).ok(), serde_json::to_string(&run_fixtures()).ok());
+        assert_eq!(
+            serde_json::to_string(&run_fixtures()).ok(),
+            serde_json::to_string(&run_fixtures()).ok()
+        );
     }
 
     #[test]
@@ -732,7 +858,12 @@ mod tests {
     fn real_style_history_without_skips_has_no_skip_auc() {
         let (plays, liked) = fixture(Listener::Broad);
         let only_done: Vec<PlayLogEntry> = plays.into_iter().filter(|p| p.completed).collect();
-        assert_eq!(evaluate(&CurrentEngine, &only_done, &liked).metrics.skip_auc, None);
+        assert_eq!(
+            evaluate(&CurrentEngine, &only_done, &liked)
+                .metrics
+                .skip_auc,
+            None
+        );
     }
 
     #[test]
@@ -740,7 +871,10 @@ mod tests {
         let (plays, liked) = fixture(Listener::Shift);
         let out = build_output(Some((&plays, &liked))).unwrap_or_else(|e| panic!("{e}"));
         let tmp = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let dirs = OutputDirs { docs: tmp.path().join("docs"), private: tmp.path().join("private") };
+        let dirs = OutputDirs {
+            docs: tmp.path().join("docs"),
+            private: tmp.path().join("private"),
+        };
         let files = write_all(&dirs, &out, true).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(files.len(), 5);
         assert!(dirs.docs.join("eval-baseline.json").exists());
@@ -756,6 +890,8 @@ mod tests {
         assert!(out.real_md.as_deref().unwrap_or("").contains("my history"));
         assert!(!out.fixtures_md.contains("my history"));
         assert!(serde_json::from_str::<serde_json::Value>(&out.fixtures_json).is_ok());
-        assert!(build_output(None).map(|o| o.real_md.is_none()).unwrap_or(false));
+        assert!(build_output(None)
+            .map(|o| o.real_md.is_none())
+            .unwrap_or(false));
     }
 }

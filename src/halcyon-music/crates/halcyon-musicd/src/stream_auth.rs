@@ -35,7 +35,8 @@ pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
 /// the token is checked within this time of resuming.
 const KEEP_FRESH_INTERVAL: Duration = Duration::from_secs(30);
 /// Shown in the browser tab after the redirect.
-const CALLBACK_MESSAGE: &str = "Signed in to Halcyon Music. You can close this tab and go back to the app.";
+const CALLBACK_MESSAGE: &str =
+    "Signed in to Halcyon Music. You can close this tab and go back to the app.";
 
 // ----------------------------------------------------------------------
 // Using the stored token
@@ -68,8 +69,12 @@ impl fmt::Display for StreamAuthError {
             StreamAuthError::SignInRequired => {
                 "No streaming sign-in found; user must log in with Spotify again"
             }
-            StreamAuthError::Unreadable => "No usable streaming token: the saved sign-in could not be read",
-            StreamAuthError::Network => "No usable streaming token: could not reach Spotify to renew the sign-in",
+            StreamAuthError::Unreadable => {
+                "No usable streaming token: the saved sign-in could not be read"
+            }
+            StreamAuthError::Network => {
+                "No usable streaming token: could not reach Spotify to renew the sign-in"
+            }
             StreamAuthError::Other => "No usable streaming token: renewing the sign-in failed",
         })
     }
@@ -117,7 +122,10 @@ pub async fn fresh_streaming_token() -> Result<LibrespotToken, StreamAuthError> 
 
     match refresh_and_store_librespot_token(&token).await {
         Ok(fresh) => {
-            info!(seconds_left = fresh.seconds_left(), "streaming token renewed");
+            info!(
+                seconds_left = fresh.seconds_left(),
+                "streaming token renewed"
+            );
             Ok(fresh)
         }
         Err(RefreshError::Rejected) => {
@@ -142,7 +150,10 @@ pub async fn fresh_streaming_token() -> Result<LibrespotToken, StreamAuthError> 
                     StreamAuthError::Other
                 })
             } else {
-                warn!(?kind, "could not renew the streaming token yet; using the current one");
+                warn!(
+                    ?kind,
+                    "could not renew the streaming token yet; using the current one"
+                );
                 Ok(token)
             }
         }
@@ -226,7 +237,9 @@ impl std::error::Error for SignInError {}
 
 /// The loopback port of the redirect URI.
 fn callback_port() -> Option<u16> {
-    url::Url::parse(LIBRESPOT_REDIRECT_URI).ok().and_then(|u| u.port())
+    url::Url::parse(LIBRESPOT_REDIRECT_URI)
+        .ok()
+        .and_then(|u| u.port())
 }
 
 /// Log-safe name of an OAuth error (the crate's `Display` can echo server text).
@@ -261,7 +274,12 @@ fn into_stored(token: OAuthToken) -> Result<LibrespotToken, SignInError> {
     if token.refresh_token.is_empty() {
         warn!("Spotify returned no refresh token; the sign-in will expire in about an hour");
     }
-    let stored = LibrespotToken::new(token.access_token, token.refresh_token, expires_in, token.scopes);
+    let stored = LibrespotToken::new(
+        token.access_token,
+        token.refresh_token,
+        expires_in,
+        token.scopes,
+    );
     if !stored.can_stream() {
         return Err(SignInError::Failed(
             "Spotify did not grant the playback permission; try signing in again",
@@ -339,7 +357,10 @@ pub async fn sign_in(mut cancel: oneshot::Receiver<()>) -> Result<LibrespotToken
 fn store(token: LibrespotToken) -> Result<LibrespotToken, SignInError> {
     match save_librespot_token(&token) {
         Ok(()) => {
-            info!(seconds_left = token.seconds_left(), "streaming sign-in stored");
+            info!(
+                seconds_left = token.seconds_left(),
+                "streaming sign-in stored"
+            );
             Ok(token)
         }
         Err(e) => {
@@ -375,7 +396,8 @@ mod tests {
         // audio::describe_engine_start_error keys on these phrases.
         let text = StreamAuthError::SignInRequired.to_string().to_lowercase();
         assert!(text.contains("must log in"));
-        let hint = crate::audio::describe_engine_start_error(&StreamAuthError::SignInRequired.to_string());
+        let hint =
+            crate::audio::describe_engine_start_error(&StreamAuthError::SignInRequired.to_string());
         assert!(hint.to_lowercase().contains("sign in"));
     }
 

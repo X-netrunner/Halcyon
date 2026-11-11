@@ -46,7 +46,8 @@ pub fn run() {
     let decoy_wifi = util::read("/etc/sysmode.decoy-wifi").trim().to_string();
 
     // the Rust daemons (`hx deceive`, `hx ids`) and the Python ones that may still be around
-    let honeypot = running(Some("hx-deceiver"), Some("recon-deceiver")) || running(None, Some("hx\0deceive"));
+    let honeypot =
+        running(Some("hx-deceiver"), Some("recon-deceiver")) || running(None, Some("hx\0deceive"));
     let ids = running(Some("hx-ids"), Some("log-analyst")) || running(None, Some("hx\0ids"));
     let cowrie = std::path::Path::new("/run/cowrie.active").exists();
 
@@ -75,7 +76,9 @@ pub fn run() {
             }
             if let Some(ip) = line
                 .split(|c: char| !(c.is_ascii_digit() || c == '.'))
-                .find(|t| t.split('.').count() == 4 && t.split('.').all(|p| !p.is_empty() && p.len() <= 3))
+                .find(|t| {
+                    t.split('.').count() == 4 && t.split('.').all(|p| !p.is_empty() && p.len() <= 3)
+                })
             {
                 ips.insert(ip.to_string());
             }

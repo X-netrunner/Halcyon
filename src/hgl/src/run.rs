@@ -52,8 +52,12 @@ pub fn gamescope_args(preset: &str) -> Vec<String> {
         "native" => w(&["-f"]),
         "1080p" => w(&["-W", "1920", "-H", "1080", "-f"]),
         "1440p" => w(&["-W", "2560", "-H", "1440", "-f"]),
-        "fsr1080" => w(&["-w", "1280", "-h", "720", "-W", "1920", "-H", "1080", "-F", "fsr", "-f"]),
-        "fsr1440" => w(&["-w", "1920", "-h", "1080", "-W", "2560", "-H", "1440", "-F", "fsr", "-f"]),
+        "fsr1080" => w(&[
+            "-w", "1280", "-h", "720", "-W", "1920", "-H", "1080", "-F", "fsr", "-f",
+        ]),
+        "fsr1440" => w(&[
+            "-w", "1920", "-h", "1080", "-W", "2560", "-H", "1440", "-F", "fsr", "-f",
+        ]),
         raw => shell_split(raw),
     }
 }
@@ -65,16 +69,28 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
             return Err("flatpak is not installed".into());
         }
         if !flatpak::valid_app_id(&g.appid) {
-            return Err(format!("{} has no valid Flatpak app id (run: hgl import flatpak)", g.name));
+            return Err(format!(
+                "{} has no valid Flatpak app id (run: hgl import flatpak)",
+                g.name
+            ));
         }
         let mut argv: Vec<String> = vec!["flatpak".into(), "run".into()];
         argv.extend(g.env.iter().map(|(k, v)| format!("--env={k}={v}")));
         argv.push(g.appid.clone());
         argv.extend(shell_split(&g.args));
-        return Ok(Plan { argv, env: vec![], cwd: None, unit: String::new(), notes: vec![] });
+        return Ok(Plan {
+            argv,
+            env: vec![],
+            cwd: None,
+            unit: String::new(),
+            notes: vec![],
+        });
     }
     if g.exe.is_empty() {
-        return Err(format!("{} has no .exe set (hgl set {} exe /path/to/game.exe)", g.name, g.id));
+        return Err(format!(
+            "{} has no .exe set (hgl set {} exe /path/to/game.exe)",
+            g.name, g.id
+        ));
     }
     let exe = PathBuf::from(&g.exe);
     if !exe.is_file() {
@@ -90,13 +106,21 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
             return Err("legendary is not installed (hgl doctor shows how)".into());
         }
         if g.appid.is_empty() {
-            return Err(format!("{} has no Epic app name (run: hgl import epic)", g.name));
+            return Err(format!(
+                "{} has no Epic app name (run: hgl import epic)",
+                g.name
+            ));
         }
     }
     let mut notes = Vec::new();
     let proton_path = match proton::resolve(&g.proton, cfg) {
         Some(r) => r.path.to_string_lossy().to_string(),
-        None if !g.proton.is_empty() => return Err(format!("{} is pinned to {}, which is not installed (hgl proton install {})", g.name, g.proton, g.proton)),
+        None if !g.proton.is_empty() => {
+            return Err(format!(
+                "{} is pinned to {}, which is not installed (hgl proton install {})",
+                g.name, g.proton, g.proton
+            ))
+        }
         None => {
             notes.push("no Proton installed: umu will download its own GE-Proton (run: hgl proton install latest)".to_string());
             "GE-Proton".to_string()
@@ -107,7 +131,14 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
     let mut env: Vec<(String, String)> = vec![
         ("WINEPREFIX".into(), prefix.to_string_lossy().to_string()),
         ("PROTONPATH".into(), proton_path),
-        ("GAMEID".into(), if g.umu_id.is_empty() { "0".into() } else { g.umu_id.clone() }),
+        (
+            "GAMEID".into(),
+            if g.umu_id.is_empty() {
+                "0".into()
+            } else {
+                g.umu_id.clone()
+            },
+        ),
     ];
     // umu looks a game up by store + id; with no id it still runs the game, just without the per-game fixes
     if !g.umu_id.is_empty() {
@@ -127,7 +158,10 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
     }
     if g.debug {
         env.push(("PROTON_LOG".into(), "1".into()));
-        env.push(("PROTON_LOG_DIR".into(), logs_dir().join(&g.id).to_string_lossy().to_string()));
+        env.push((
+            "PROTON_LOG_DIR".into(),
+            logs_dir().join(&g.id).to_string_lossy().to_string(),
+        ));
     }
     for (k, v) in &g.env {
         env.retain(|(ek, _)| ek != k);
@@ -173,7 +207,11 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
     }
     if is_epic {
         wrap.push("umu-run".into());
-        let wrapper = wrap.iter().map(|a| quote(a)).collect::<Vec<String>>().join(" ");
+        let wrapper = wrap
+            .iter()
+            .map(|a| quote(a))
+            .collect::<Vec<String>>()
+            .join(" ");
         for a in ["legendary", "launch"] {
             argv.push(a.into());
         }
@@ -189,11 +227,20 @@ pub fn build_plan(g: &Game, cfg: &Conf, scope: bool) -> Result<Plan, String> {
     }
     argv.extend(shell_split(&g.args));
 
-    Ok(Plan { argv, env, cwd: exe.parent().map(|p| p.to_path_buf()), unit, notes })
+    Ok(Plan {
+        argv,
+        env,
+        cwd: exe.parent().map(|p| p.to_path_buf()),
+        unit,
+        notes,
+    })
 }
 
 fn quote(s: &str) -> String {
-    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "/._-=:+,@%".contains(c)) {
+    if !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/._-=:+,@%".contains(c))
+    {
         s.to_string()
     } else {
         format!("'{}'", s.replace('\'', "'\\''"))
@@ -204,7 +251,11 @@ pub fn print_plan(p: &Plan) {
     if let Some(c) = &p.cwd {
         println!("cwd: {}", c.display());
     }
-    let envs: Vec<String> = p.env.iter().map(|(k, v)| format!("{k}={}", quote(v))).collect();
+    let envs: Vec<String> = p
+        .env
+        .iter()
+        .map(|(k, v)| format!("{k}={}", quote(v)))
+        .collect();
     println!("env: {}", envs.join(" "));
     let cmd: Vec<String> = p.argv.iter().map(|a| quote(a)).collect();
     println!("cmd: {}", cmd.join(" "));
@@ -236,12 +287,19 @@ fn state_path() -> PathBuf {
 }
 
 fn safe_unit(s: &str) -> bool {
-    !s.is_empty() && s.len() < 200 && s.chars().all(|c| c.is_ascii_alphanumeric() || "@:._-".contains(c))
+    !s.is_empty()
+        && s.len() < 200
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "@:._-".contains(c))
 }
 
 impl Session {
     fn serialize(&self) -> String {
-        let aff: Vec<String> = self.affinity.iter().map(|(p, l)| format!("{p}:{l}")).collect();
+        let aff: Vec<String> = self
+            .affinity
+            .iter()
+            .map(|(p, l)| format!("{p}:{l}"))
+            .collect();
         format!(
             "pid={}\nid={}\nname={}\nunit={}\nappid={}\nflatpak={}\nstarted={}\ngm={}\nthrottled={}\naffinity={}\nlog={}\n",
             self.pid,
@@ -287,12 +345,21 @@ impl Session {
                 }
                 "started" => s.started = v.parse().unwrap_or(0),
                 "gm" => s.gm = v == "1",
-                "throttled" => s.throttled = v.split_whitespace().filter(|u| safe_unit(u)).map(|u| u.to_string()).collect(),
+                "throttled" => {
+                    s.throttled = v
+                        .split_whitespace()
+                        .filter(|u| safe_unit(u))
+                        .map(|u| u.to_string())
+                        .collect()
+                }
                 "affinity" => {
                     for e in v.split(';') {
                         if let Some((p, l)) = e.split_once(':') {
                             if let Ok(pid) = p.parse::<u32>() {
-                                if !l.is_empty() && l.chars().all(|c| c.is_ascii_digit() || c == ',' || c == '-') {
+                                if !l.is_empty()
+                                    && l.chars()
+                                        .all(|c| c.is_ascii_digit() || c == ',' || c == '-')
+                                {
                                     s.affinity.push((pid, l.to_string()));
                                 }
                             }
@@ -331,7 +398,11 @@ fn take_state() -> Option<Session> {
     if !state_safe() {
         return None;
     }
-    let mine = PathBuf::from(format!("{}.take.{}", state_path().display(), std::process::id()));
+    let mine = PathBuf::from(format!(
+        "{}.take.{}",
+        state_path().display(),
+        std::process::id()
+    ));
     fs::rename(state_path(), &mine).ok()?;
     let t = fs::read_to_string(&mine).ok();
     let _ = fs::remove_file(&mine);
@@ -340,31 +411,54 @@ fn take_state() -> Option<Session> {
 
 fn claim(first: &Session) -> Result<(), String> {
     let p = state_path();
-    let mut f = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&p).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::AlreadyExists {
-            match read_state() {
-                Some(s) if !s.name.is_empty() => format!("{} is already running (hgl stop {})", s.name, s.id),
-                Some(_) => "a game session is already active".to_string(),
-                None => format!("{} exists and is not yours: remove it as root", p.display()),
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&p)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                match read_state() {
+                    Some(s) if !s.name.is_empty() => {
+                        format!("{} is already running (hgl stop {})", s.name, s.id)
+                    }
+                    Some(_) => "a game session is already active".to_string(),
+                    None => format!("{} exists and is not yours: remove it as root", p.display()),
+                }
+            } else {
+                format!("cannot create {}: {e}", p.display())
             }
-        } else {
-            format!("cannot create {}: {e}", p.display())
-        }
-    })?;
-    f.write_all(first.serialize().as_bytes()).map_err(|e| e.to_string())
+        })?;
+    f.write_all(first.serialize().as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 fn supervisor_alive(s: &Session) -> bool {
-    s.pid != 0 && pid_alive(s.pid) && fs::read_to_string(format!("/proc/{}/comm", s.pid)).map(|c| c.trim() == "hgl").unwrap_or(false)
+    s.pid != 0
+        && pid_alive(s.pid)
+        && fs::read_to_string(format!("/proc/{}/comm", s.pid))
+            .map(|c| c.trim() == "hgl")
+            .unwrap_or(false)
 }
 
 fn game_alive(s: &Session) -> bool {
     if !s.unit.is_empty() {
-        run_quiet("systemctl", &["--user", "is-active", "--quiet", &format!("{}.scope", s.unit)], 5)
+        run_quiet(
+            "systemctl",
+            &[
+                "--user",
+                "is-active",
+                "--quiet",
+                &format!("{}.scope", s.unit),
+            ],
+            5,
+        )
     } else if !s.appid.is_empty() {
         !steam::game_pids(&s.appid).is_empty()
     } else if !s.flatpak.is_empty() {
-        out("flatpak", &["ps", "--columns=application"]).map(|t| t.lines().any(|l| l.trim() == s.flatpak)).unwrap_or(false)
+        out("flatpak", &["ps", "--columns=application"])
+            .map(|t| t.lines().any(|l| l.trim() == s.flatpak))
+            .unwrap_or(false)
     } else {
         false
     }
@@ -395,13 +489,19 @@ fn island_call(func: &str, args: &[&str]) {
 }
 
 fn gm_on_now(script: &Path) -> bool {
-    out("bash", &[&script.to_string_lossy(), "status"]).map(|s| s.trim() == "on").unwrap_or(false)
+    out("bash", &[&script.to_string_lossy(), "status"])
+        .map(|s| s.trim() == "on")
+        .unwrap_or(false)
 }
 
 fn cgroup_unit(pid: u32) -> Option<String> {
     let t = fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
     let line = t.lines().find(|l| l.starts_with("0::"))?;
-    let last = line.trim_start_matches("0::").rsplit('/').next()?.to_string();
+    let last = line
+        .trim_start_matches("0::")
+        .rsplit('/')
+        .next()?
+        .to_string();
     if (last.ends_with(".service") || last.ends_with(".scope")) && safe_unit(&last) {
         Some(last)
     } else {
@@ -412,11 +512,17 @@ fn cgroup_unit(pid: u32) -> Option<String> {
 /// Only units that are clearly Halcyon's shell: never a session scope or the compositor's unit, which would slow the whole desktop.
 fn unit_is_halcyon(unit: &str) -> bool {
     let l = unit.to_ascii_lowercase();
-    !l.starts_with("session-") && !l.contains("hyprland") && UNIT_HINTS.iter().any(|h| l.contains(h))
+    !l.starts_with("session-")
+        && !l.contains("hyprland")
+        && UNIT_HINTS.iter().any(|h| l.contains(h))
 }
 
 fn halcyon_pids() -> Vec<u32> {
-    processes().into_iter().filter(|(_, c)| HALCYON_COMMS.contains(&c.as_str())).map(|(p, _)| p).collect()
+    processes()
+        .into_iter()
+        .filter(|(_, c)| HALCYON_COMMS.contains(&c.as_str()))
+        .map(|(p, _)| p)
+        .collect()
 }
 
 /// Lower the CPU weight of the units Halcyon's shell runs in (only units that are clearly Halcyon's: never the whole session).
@@ -434,7 +540,17 @@ fn throttle_halcyon(cfg: &Conf, s: &mut Session) {
         }
     }
     for u in units {
-        if run_quiet("systemctl", &["--user", "set-property", "--runtime", &u, &format!("CPUWeight={weight}")], 8) {
+        if run_quiet(
+            "systemctl",
+            &[
+                "--user",
+                "set-property",
+                "--runtime",
+                &u,
+                &format!("CPUWeight={weight}"),
+            ],
+            8,
+        ) {
             s.throttled.push(u);
         }
     }
@@ -443,7 +559,11 @@ fn throttle_halcyon(cfg: &Conf, s: &mut Session) {
         if core.chars().all(|c| c.is_ascii_digit()) && have("taskset") {
             for pid in halcyon_pids() {
                 let st = fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
-                let cur = st.lines().find_map(|l| l.strip_prefix("Cpus_allowed_list:")).map(|v| v.trim().to_string()).unwrap_or_default();
+                let cur = st
+                    .lines()
+                    .find_map(|l| l.strip_prefix("Cpus_allowed_list:"))
+                    .map(|v| v.trim().to_string())
+                    .unwrap_or_default();
                 if !cur.is_empty() && run_quiet("taskset", &["-acp", core, &pid.to_string()], 5) {
                     s.affinity.push((pid, cur));
                 }
@@ -455,11 +575,19 @@ fn throttle_halcyon(cfg: &Conf, s: &mut Session) {
 /// Put everything back. `stop_scope` is true when the game has ended and its leftovers (wineserver) should go with it.
 pub fn restore(s: &Session, stop_scope: bool) {
     if stop_scope && !s.unit.is_empty() {
-        run_quiet("systemctl", &["--user", "stop", &format!("{}.scope", s.unit)], 12);
+        run_quiet(
+            "systemctl",
+            &["--user", "stop", &format!("{}.scope", s.unit)],
+            12,
+        );
     }
     for u in &s.throttled {
         // an empty value resets the property to the unit's own default
-        run_quiet("systemctl", &["--user", "set-property", "--runtime", u, "CPUWeight="], 8);
+        run_quiet(
+            "systemctl",
+            &["--user", "set-property", "--runtime", u, "CPUWeight="],
+            8,
+        );
     }
     for (pid, list) in &s.affinity {
         let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
@@ -498,7 +626,10 @@ fn proc_ticks(pid: u32) -> Option<u64> {
 
 fn proc_rss_kb(pid: u32) -> Option<u64> {
     let t = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    t.lines().find_map(|l| l.strip_prefix("VmRSS:")).and_then(|v| v.split_whitespace().next()).and_then(|v| v.parse().ok())
+    t.lines()
+        .find_map(|l| l.strip_prefix("VmRSS:"))
+        .and_then(|v| v.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
 }
 
 impl Sampler {
@@ -549,8 +680,14 @@ fn open_log(g: &Game, plan: Option<&Plan>) -> Result<(fs::File, PathBuf), String
     let dir = logs_dir().join(&g.id);
     fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let path = dir.join(format!("{}.log", now()));
-    let mut f = fs::File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
-    let mut head = format!("hgl {} — {} ({})\n", env!("CARGO_PKG_VERSION"), g.name, g.id);
+    let mut f =
+        fs::File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+    let mut head = format!(
+        "hgl {} — {} ({})\n",
+        env!("CARGO_PKG_VERSION"),
+        g.name,
+        g.id
+    );
     if let Some(p) = plan {
         if let Some(c) = &p.cwd {
             head.push_str(&format!("cwd: {}\n", c.display()));
@@ -565,7 +702,11 @@ fn open_log(g: &Game, plan: Option<&Plan>) -> Result<(fs::File, PathBuf), String
     let _ = f.write_all(head.as_bytes());
     // keep the newest 8 logs per game
     if let Ok(rd) = fs::read_dir(&dir) {
-        let mut logs: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "log").unwrap_or(false)).collect();
+        let mut logs: Vec<PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "log").unwrap_or(false))
+            .collect();
         logs.sort();
         while logs.len() > 8 {
             let old = logs.remove(0);
@@ -592,10 +733,24 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
         }
         None
     } else {
-        let scope = !o.no_scope && have("systemd-run") && run_quiet("systemd-run", &["--user", "--scope", "--quiet", "-p", "CPUWeight=100", "true"], 8);
+        let scope = !o.no_scope
+            && have("systemd-run")
+            && run_quiet(
+                "systemd-run",
+                &[
+                    "--user",
+                    "--scope",
+                    "--quiet",
+                    "-p",
+                    "CPUWeight=100",
+                    "true",
+                ],
+                8,
+            );
         let mut p = build_plan(&g, &cfg, scope)?;
         if !o.no_scope && !scope {
-            p.notes.push("systemd user scopes are not available: starting without a scope".into());
+            p.notes
+                .push("systemd user scopes are not available: starting without a scope".into());
         }
         Some(p)
     };
@@ -610,7 +765,8 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
 
     if let Some(p) = &plan {
         if g.source != "flatpak" {
-            fs::create_dir_all(g.prefix_path()).map_err(|e| format!("cannot create the prefix folder: {e}"))?;
+            fs::create_dir_all(g.prefix_path())
+                .map_err(|e| format!("cannot create the prefix folder: {e}"))?;
         }
         for n in &p.notes {
             eprintln!("note: {n}");
@@ -624,8 +780,16 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
         id: g.id.clone(),
         name: g.name.clone(),
         unit: plan.as_ref().map(|p| p.unit.clone()).unwrap_or_default(),
-        appid: if is_steam { g.appid.clone() } else { String::new() },
-        flatpak: if g.source == "flatpak" { g.appid.clone() } else { String::new() },
+        appid: if is_steam {
+            g.appid.clone()
+        } else {
+            String::new()
+        },
+        flatpak: if g.source == "flatpak" {
+            g.appid.clone()
+        } else {
+            String::new()
+        },
         started,
         log: logpath.to_string_lossy().to_string(),
         ..Session::default()
@@ -647,13 +811,39 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
     spawn_watchdog(s.pid, s.started);
 
     let since = started.to_string();
-    island_call("gamestart", &[g.id.as_str(), g.name.as_str(), since.as_str(), if lean { "true" } else { "false" }]);
+    island_call(
+        "gamestart",
+        &[
+            g.id.as_str(),
+            g.name.as_str(),
+            since.as_str(),
+            if lean { "true" } else { "false" },
+        ],
+    );
 
     println!("Launching {} ...\nlog: {}", g.name, logpath.display());
-    if let Some(n) = plan.as_ref().filter(|_| g.source != "flatpak").and_then(|_| first_start_note(&g)) {
+    if let Some(n) = plan
+        .as_ref()
+        .filter(|_| g.source != "flatpak")
+        .and_then(|_| first_start_note(&g))
+    {
         eprintln!("note: {n}");
         if have("notify-send") {
-            let _ = Command::new("notify-send").args(["-a", "Halcyon", "-i", "applications-games", "-t", "15000", "Setting up the game", &n]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+            let _ = Command::new("notify-send")
+                .args([
+                    "-a",
+                    "Halcyon",
+                    "-i",
+                    "applications-games",
+                    "-t",
+                    "15000",
+                    "Setting up the game",
+                    &n,
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
         }
     }
     let t0 = Instant::now();
@@ -699,10 +889,19 @@ pub fn run(id: &str, o: &RunOpts) -> Result<i32, String> {
 /// umu's Steam Runtime is unpacked (umu downloads it, a few hundred MB, on the first game start and checks it on every start).
 pub fn umu_runtime_ready() -> bool {
     let root = data_home().join("umu");
-    let Ok(rd) = fs::read_dir(&root) else { return false };
-    rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("steamrt")).any(|e| {
-        fs::read_dir(e.path()).map(|d| d.flatten().any(|f| f.file_name().to_string_lossy().contains("_platform_"))).unwrap_or(false)
-    })
+    let Ok(rd) = fs::read_dir(&root) else {
+        return false;
+    };
+    rd.flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("steamrt"))
+        .any(|e| {
+            fs::read_dir(e.path())
+                .map(|d| {
+                    d.flatten()
+                        .any(|f| f.file_name().to_string_lossy().contains("_platform_"))
+                })
+                .unwrap_or(false)
+        })
 }
 
 /// A first start looks like nothing happens for minutes (the runtime download, a new Wine prefix): say so, so it is not stopped.
@@ -720,19 +919,27 @@ fn first_start_note(g: &Game) -> Option<String> {
 fn spawn_game(p: &Plan, log: fs::File) -> Result<Child, String> {
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&p.argv[0]);
-    cmd.args(&p.argv[1..]).envs(p.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    cmd.args(&p.argv[1..])
+        .envs(p.env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(c) = &p.cwd {
         cmd.current_dir(c);
     }
     // Drop shell/compositor isolation variables that restrict Vulkan/EGL to integrated GPUs.
     // Games and Proton need access to discrete GPUs and PRIME offload without iGPU locks.
-    for var in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES"] {
+    for var in [
+        "VK_DRIVER_FILES",
+        "VK_ICD_FILENAMES",
+        "__EGL_VENDOR_LIBRARY_FILENAMES",
+    ] {
         if !p.env.iter().any(|(k, _)| k == var) {
             cmd.env_remove(var);
         }
     }
     // own process group: closing the terminal or Ctrl-C on hgl does not take the game down; the watchdog restores afterwards
-    cmd.stdin(Stdio::null()).stdout(Stdio::from(log)).stderr(Stdio::from(err)).process_group(0);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(err))
+        .process_group(0);
     cmd.spawn().map_err(|e| format!("{}: {e}", p.argv[0]))
 }
 
@@ -748,25 +955,41 @@ fn game_tree_pids(root: u32, unit: &str) -> Vec<u32> {
     processes()
         .into_iter()
         .map(|(p, _)| p)
-        .filter(|&p| proc_pgrp(p) == Some(root) || (unit != ".scope" && cgroup_unit(p).as_deref() == Some(unit)))
+        .filter(|&p| {
+            proc_pgrp(p) == Some(root)
+                || (unit != ".scope" && cgroup_unit(p).as_deref() == Some(unit))
+        })
         .collect()
 }
 
 fn proc_pgrp(pid: u32) -> Option<u32> {
     let t = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     // the command name is in parentheses and may contain spaces: the fields after it start at the last ')'
-    t.rsplit_once(')')?.1.split_whitespace().nth(2)?.parse().ok()
+    t.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(2)?
+        .parse()
+        .ok()
 }
 
 /// Windows (address) from `hyprctl clients -j` that belong to one of `pids` and are not floating.
 pub fn game_windows(clients: &str, pids: &[u32]) -> Vec<String> {
-    let Some(j) = crate::json::parse(clients) else { return Vec::new() };
+    let Some(j) = crate::json::parse(clients) else {
+        return Vec::new();
+    };
     j.items()
         .iter()
-        .filter(|c| c.num("pid").map(|p| p >= 0.0 && pids.contains(&(p as u32))).unwrap_or(false))
+        .filter(|c| {
+            c.num("pid")
+                .map(|p| p >= 0.0 && pids.contains(&(p as u32)))
+                .unwrap_or(false)
+        })
         .filter(|c| !matches!(c.get("floating"), Some(crate::json::Json::Bool(true))))
         .filter_map(|c| c.str("address").map(|a| a.to_string()))
-        .filter(|a| a.starts_with("0x") && a.len() > 2 && a[2..].chars().all(|c| c.is_ascii_hexdigit()))
+        .filter(|a| {
+            a.starts_with("0x") && a.len() > 2 && a[2..].chars().all(|c| c.is_ascii_hexdigit())
+        })
         .collect()
 }
 
@@ -799,7 +1022,9 @@ fn supervise_child(mut child: Child, sampler: &mut Sampler) -> Option<i32> {
     let mut last = Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(st)) => return Some(st.code().unwrap_or_else(|| 128 + st.signal().unwrap_or(0))),
+            Ok(Some(st)) => {
+                return Some(st.code().unwrap_or_else(|| 128 + st.signal().unwrap_or(0)))
+            }
             Ok(None) => {}
             Err(_) => return None,
         }
@@ -819,7 +1044,11 @@ fn supervise_steam(g: &Game, sampler: &mut Sampler) -> Option<i32> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .process_group(0);
-    for var in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES"] {
+    for var in [
+        "VK_DRIVER_FILES",
+        "VK_ICD_FILENAMES",
+        "__EGL_VENDOR_LIBRARY_FILENAMES",
+    ] {
         cmd.env_remove(var);
     }
     let spawned = cmd.spawn();
@@ -875,9 +1104,21 @@ fn finish(g: &Game, secs: u64, code: Option<i32>, sm: &Sampler, gm_by_us: bool, 
         sm.avg_ram_mb(),
         sm.peak_ram_mb()
     );
-    println!("  Gaming mode: {}", if gm_by_us { "on during the session, restored" } else { "left as it was" });
+    println!(
+        "  Gaming mode: {}",
+        if gm_by_us {
+            "on during the session, restored"
+        } else {
+            "left as it was"
+        }
+    );
     if crashed {
-        println!("  The game exited with code {} after {}s. Run: hgl triage {}", code.unwrap_or(-1), secs, g.id);
+        println!(
+            "  The game exited with code {} after {}s. Run: hgl triage {}",
+            code.unwrap_or(-1),
+            secs,
+            g.id
+        );
     }
     let _ = is_steam;
     let json = format!(
@@ -892,8 +1133,20 @@ fn finish(g: &Game, secs: u64, code: Option<i32>, sm: &Sampler, gm_by_us: bool, 
         now()
     );
     let _ = atomic_write(&state_dir().join("last-session.json"), &format!("{json}\n"));
-    let line = format!("{}\t{}\t{}s\texit={}\tha_cpu={:.2}%\tha_ram={:.0}MB\n", now(), g.id, secs, code.map(|c| c.to_string()).unwrap_or_else(|| "-".into()), sm.avg_cpu_pct(), sm.avg_ram_mb());
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(state_dir().join("sessions.log")) {
+    let line = format!(
+        "{}\t{}\t{}s\texit={}\tha_cpu={:.2}%\tha_ram={:.0}MB\n",
+        now(),
+        g.id,
+        secs,
+        code.map(|c| c.to_string()).unwrap_or_else(|| "-".into()),
+        sm.avg_cpu_pct(),
+        sm.avg_ram_mb()
+    );
+    if let Ok(mut f) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(state_dir().join("sessions.log"))
+    {
         let _ = f.write_all(line.as_bytes());
     }
 }
@@ -911,7 +1164,13 @@ pub fn looks_crashed(code: Option<i32>, secs: u64) -> bool {
 
 fn spawn_watchdog(pid: u32, started: u64) {
     if let Ok(exe) = std::env::current_exe() {
-        let _ = Command::new(exe).args(["__watch", &pid.to_string(), &started.to_string()]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0).spawn();
+        let _ = Command::new(exe)
+            .args(["__watch", &pid.to_string(), &started.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn();
     }
 }
 
@@ -941,7 +1200,10 @@ pub fn recover_stale() -> bool {
     }
     if let Some(taken) = take_state() {
         restore(&taken, true);
-        eprintln!("Restored Halcyon after an earlier session ({}) that did not finish cleanly.", taken.name);
+        eprintln!(
+            "Restored Halcyon after an earlier session ({}) that did not finish cleanly.",
+            taken.name
+        );
         return true;
     }
     false
@@ -955,7 +1217,11 @@ pub fn stop(id: Option<&str>) -> Result<(), String> {
         }
     }
     if !s.unit.is_empty() {
-        if !run_quiet("systemctl", &["--user", "stop", &format!("{}.scope", s.unit)], 15) {
+        if !run_quiet(
+            "systemctl",
+            &["--user", "stop", &format!("{}.scope", s.unit)],
+            15,
+        ) {
             return Err("could not stop the game's scope".into());
         }
         return Ok(());
@@ -1031,10 +1297,15 @@ mod tests {
         assert_eq!(t.id, "hades");
         assert_eq!(t.unit, "hgl-hades-42");
         assert_eq!(t.flatpak, "org.vinegarhq.Sober");
-        assert!(Session::parse("flatpak=org.x; rm -rf ~\n").flatpak.is_empty());
+        assert!(Session::parse("flatpak=org.x; rm -rf ~\n")
+            .flatpak
+            .is_empty());
         assert!(t.gm);
         assert_eq!(t.throttled, vec!["app-quickshell.service"]);
-        assert_eq!(t.affinity, vec![(10, "0-15".to_string()), (11, "0,2".to_string())]);
+        assert_eq!(
+            t.affinity,
+            vec![(10, "0-15".to_string()), (11, "0,2".to_string())]
+        );
     }
 
     #[test]
@@ -1067,8 +1338,14 @@ mod tests {
 
     #[test]
     fn gamescope_presets() {
-        assert_eq!(gamescope_args("1080p"), vec!["-W", "1920", "-H", "1080", "-f"]);
-        assert_eq!(gamescope_args("-W 800 -H 600"), vec!["-W", "800", "-H", "600"]);
+        assert_eq!(
+            gamescope_args("1080p"),
+            vec!["-W", "1920", "-H", "1080", "-f"]
+        );
+        assert_eq!(
+            gamescope_args("-W 800 -H 600"),
+            vec!["-W", "800", "-H", "600"]
+        );
     }
 
     #[test]

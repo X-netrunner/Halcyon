@@ -73,7 +73,10 @@ pub fn release_recency(released: Option<u64>, now: u64) -> f64 {
 
 /// The features of one candidate for this listener.
 pub fn extract(c: &Candidate, profile: &TasteProfile, ctx: &FeatureCtx) -> Features {
-    let actx = AffinityCtx { now: ctx.now, bucket: ctx.bucket };
+    let actx = AffinityCtx {
+        now: ctx.now,
+        bucket: ctx.bucket,
+    };
     let v = profile.artist_view(&c.artist, &actx);
     let cluster = if !c.tags.is_empty() {
         profile.cluster_fit(&c.tags).map_or(0.0, |(_, sim)| sim)
@@ -82,7 +85,10 @@ pub fn extract(c: &Candidate, profile: &TasteProfile, ctx: &FeatureCtx) -> Featu
     } else {
         0.0
     };
-    let track = c.track_id.as_deref().map_or(0.0, |id| profile.track_view(id).0);
+    let track = c
+        .track_id
+        .as_deref()
+        .map_or(0.0, |id| profile.track_view(id).0);
     [
         v.slow,
         v.fast,
@@ -100,7 +106,15 @@ pub fn extract(c: &Candidate, profile: &TasteProfile, ctx: &FeatureCtx) -> Featu
 
 /// Whether the listener has ever played this artist (the reranker's "unheard").
 pub fn is_unheard(c: &Candidate, profile: &TasteProfile) -> bool {
-    !profile.artist_view(&c.artist, &AffinityCtx { now: 0, bucket: None }).known
+    !profile
+        .artist_view(
+            &c.artist,
+            &AffinityCtx {
+                now: 0,
+                bucket: None,
+            },
+        )
+        .known
 }
 
 pub fn dot(weights: &[f64], f: &Features) -> f64 {
@@ -127,7 +141,11 @@ pub fn contributions(weights: &[f64], f: &Features) -> Vec<Contribution> {
         .iter()
         .zip(f.iter())
         .enumerate()
-        .map(|(i, (name, value))| Contribution { name, value: *value, weight: weights.get(i).copied().unwrap_or(0.0) })
+        .map(|(i, (name, value))| Contribution {
+            name,
+            value: *value,
+            weight: weights.get(i).copied().unwrap_or(0.0),
+        })
         .collect()
 }
 
@@ -135,15 +153,31 @@ pub fn contributions(weights: &[f64], f: &Features) -> Vec<Contribution> {
 /// and the total. Plain text, for `halcyon-musicd --reco-explain`.
 pub fn explain_text(weights: &[f64], bias: f64, f: &Features) -> String {
     let mut s = String::new();
-    s.push_str(&format!("{:<18} {:>7} {:>8} {:>8} {:>8}\n", "feature", "value", "weight", "prior", "adds"));
+    s.push_str(&format!(
+        "{:<18} {:>7} {:>8} {:>8} {:>8}\n",
+        "feature", "value", "weight", "prior", "adds"
+    ));
     let mut total = bias;
     for (i, c) in contributions(weights, f).iter().enumerate() {
         let prior = PRIOR_WEIGHTS.get(i).copied().unwrap_or(0.0);
         total += c.part();
-        s.push_str(&format!("{:<18} {:>7.3} {:>8.3} {:>8.3} {:>+8.3}\n", c.name, c.value, c.weight, prior, c.part()));
+        s.push_str(&format!(
+            "{:<18} {:>7.3} {:>8.3} {:>8.3} {:>+8.3}\n",
+            c.name,
+            c.value,
+            c.weight,
+            prior,
+            c.part()
+        ));
     }
-    s.push_str(&format!("{:<18} {:>7} {:>8} {:>8} {:>+8.3}\n", "bias", "", "", "", bias));
-    s.push_str(&format!("{:<18} {:>7} {:>8} {:>8} {:>+8.3}\n", "score", "", "", "", total));
+    s.push_str(&format!(
+        "{:<18} {:>7} {:>8} {:>8} {:>+8.3}\n",
+        "bias", "", "", "", bias
+    ));
+    s.push_str(&format!(
+        "{:<18} {:>7} {:>8} {:>8} {:>+8.3}\n",
+        "score", "", "", "", total
+    ));
     s
 }
 
@@ -158,7 +192,14 @@ mod tests {
     const NOW: u64 = 1_800_000_000;
     const D: u64 = 86_400;
 
-    fn play(id: i64, track: &str, artist: &str, days_ago: f64, ms: u64, done: bool) -> PlayLogEntry {
+    fn play(
+        id: i64,
+        track: &str,
+        artist: &str,
+        days_ago: f64,
+        ms: u64,
+        done: bool,
+    ) -> PlayLogEntry {
         PlayLogEntry {
             id,
             track_id: track.into(),
@@ -176,7 +217,10 @@ mod tests {
     }
 
     fn ctx() -> FeatureCtx {
-        FeatureCtx { now: NOW, bucket: None }
+        FeatureCtx {
+            now: NOW,
+            bucket: None,
+        }
     }
 
     #[test]
@@ -185,7 +229,11 @@ mod tests {
         assert_eq!(PRIOR_WEIGHTS.len(), NF);
         assert_eq!(FEATURE_NAMES.get(SKIP_RATE), Some(&"recent skip rate"));
         let skip = FEATURE_NAMES.iter().position(|n| *n == "recent skip rate");
-        assert!(skip.and_then(|i| PRIOR_WEIGHTS.get(i)).is_some_and(|w| *w < 0.0), "a skip rate must count against");
+        assert!(
+            skip.and_then(|i| PRIOR_WEIGHTS.get(i))
+                .is_some_and(|w| *w < 0.0),
+            "a skip rate must count against"
+        );
     }
 
     #[test]
@@ -218,8 +266,14 @@ mod tests {
         let sa = dot(&w, &extract(&ash, &p, &ctx()));
         let sd = dot(&w, &extract(&dust, &p, &ctx()));
         assert!(sa > sd + 0.5, "ash {sa} vs dust {sd}");
-        assert!(extract(&dust, &p, &ctx())[8] > 0.5, "skip rate of an artist you keep skipping");
-        assert!(extract(&dust, &p, &ctx())[9] < 0.0, "a track you only skipped");
+        assert!(
+            extract(&dust, &p, &ctx())[8] > 0.5,
+            "skip rate of an artist you keep skipping"
+        );
+        assert!(
+            extract(&dust, &p, &ctx())[9] < 0.0,
+            "a track you only skipped"
+        );
     }
 
     #[test]
@@ -243,7 +297,10 @@ mod tests {
         assert!((release_recency(Some(NOW - 30 * D), NOW) - 0.5).abs() < 1e-9);
         assert!((release_recency(Some(NOW - 60 * D), NOW) - 0.25).abs() < 1e-9);
         assert_eq!(release_recency(None, NOW), 0.0);
-        assert!((release_recency(Some(NOW + 5 * D), NOW) - 1.0).abs() < 1e-9, "a future date is not older than today");
+        assert!(
+            (release_recency(Some(NOW + 5 * D), NOW) - 1.0).abs() < 1e-9,
+            "a future date is not older than today"
+        );
     }
 
     #[test]
@@ -260,8 +317,15 @@ mod tests {
     fn tags_that_fit_a_cluster_raise_cluster_fit() {
         let mut tags = TagTable::default();
         let mut plays = Vec::new();
-        for (i, a) in ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"].iter().enumerate() {
-            let t: &[(&str, f64)] = if a.starts_with('a') { &[("lo-fi", 1.0), ("chillhop", 0.8)] } else { &[("metal", 1.0), ("thrash", 0.7)] };
+        for (i, a) in ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"]
+            .iter()
+            .enumerate()
+        {
+            let t: &[(&str, f64)] = if a.starts_with('a') {
+                &[("lo-fi", 1.0), ("chillhop", 0.8)]
+            } else {
+                &[("metal", 1.0), ("thrash", 0.7)]
+            };
             tags.insert(a, t);
             plays.push(play(i as i64 + 1, a, a, 1.0, 200_000, true));
         }
@@ -285,7 +349,10 @@ mod tests {
         let total = dot(&PRIOR_WEIGHTS, &f) + 0.25;
         assert!(text.contains("fast affinity"));
         assert!(text.contains(&format!("{total:+.3}")), "{text}");
-        let sum: f64 = contributions(&PRIOR_WEIGHTS, &f).iter().map(Contribution::part).sum();
+        let sum: f64 = contributions(&PRIOR_WEIGHTS, &f)
+            .iter()
+            .map(Contribution::part)
+            .sum();
         assert!((sum + 0.25 - total).abs() < 1e-12);
     }
 }

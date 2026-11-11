@@ -62,7 +62,12 @@ pub fn clean_meta(s: &str, max: usize) -> String {
 pub fn clean_output(s: &str, max: usize) -> String {
     let stripped: String = s
         .chars()
-        .filter(|c| !matches!(c, '<' | '>' | '`' | '*' | '#' | '[' | ']' | '{' | '}' | '|' | '\\' | '~'))
+        .filter(|c| {
+            !matches!(
+                c,
+                '<' | '>' | '`' | '*' | '#' | '[' | ']' | '{' | '}' | '|' | '\\' | '~'
+            )
+        })
         .collect();
     let one_line = squash_whitespace(&stripped);
     let no_links: Vec<&str> = one_line
@@ -118,14 +123,27 @@ struct RawEntry {
 
 /// Check the words for one mix. `None` when the reason is unusable; a missing or too-short title
 /// falls back to the mix's own title.
-pub fn check_blurb(mix_id: &str, original_title: &str, title: &str, reason: &str) -> Option<MixBlurb> {
+pub fn check_blurb(
+    mix_id: &str,
+    original_title: &str,
+    title: &str,
+    reason: &str,
+) -> Option<MixBlurb> {
     let reason = clean_output(reason, MAX_REASON_CHARS);
     if reason.chars().count() < MIN_REASON_CHARS {
         return None;
     }
     let title = clean_output(title, MAX_TITLE_CHARS);
-    let title = if title.chars().count() < MIN_TITLE_CHARS { original_title.to_string() } else { title };
-    Some(MixBlurb { mix_id: mix_id.to_string(), title, reason })
+    let title = if title.chars().count() < MIN_TITLE_CHARS {
+        original_title.to_string()
+    } else {
+        title
+    };
+    Some(MixBlurb {
+        mix_id: mix_id.to_string(),
+        title,
+        reason,
+    })
 }
 
 /// Parse and check the model's answer for "Why this mix".
@@ -170,7 +188,12 @@ pub struct Picked {
 /// Keep only returned ids that are real candidates (no repeats, model's order), at most `max`.
 /// If fewer than `min_valid` survive, return the engine's original order (also capped at `max`).
 /// A song the catalogue did not return can never come out of this function.
-pub fn filter_ids(returned: &[String], candidates: &[String], min_valid: usize, max: usize) -> Picked {
+pub fn filter_ids(
+    returned: &[String],
+    candidates: &[String],
+    min_valid: usize,
+    max: usize,
+) -> Picked {
     let allowed: HashSet<&str> = candidates.iter().map(String::as_str).collect();
     let mut seen: HashSet<&str> = HashSet::new();
     let mut ids: Vec<String> = Vec::new();
@@ -184,9 +207,15 @@ pub fn filter_ids(returned: &[String], candidates: &[String], min_valid: usize, 
         }
     }
     if ids.len() < min_valid {
-        return Picked { ids: candidates.iter().take(max).cloned().collect(), fell_back: true };
+        return Picked {
+            ids: candidates.iter().take(max).cloned().collect(),
+            fell_back: true,
+        };
     }
-    Picked { ids, fell_back: false }
+    Picked {
+        ids,
+        fell_back: false,
+    }
 }
 
 // ---------------------------------------------------------------- prompt to playlist: the search plan
@@ -302,7 +331,12 @@ fn year_of(s: &str) -> Option<u32> {
 
 /// `1990s`, `90s`, `1994` or `1985-1995` as a clean era label; anything else is `None`.
 pub fn parse_era(raw: &str) -> Option<String> {
-    let s: String = raw.trim().to_lowercase().chars().filter(|c| !matches!(c, '\'' | '’' | '"')).collect();
+    let s: String = raw
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '’' | '"'))
+        .collect();
     let s = s.replace('–', "-");
     if let Some((a, b)) = s.split_once('-') {
         let (a, b) = (year_of(a)?, year_of(b)?);
@@ -334,8 +368,10 @@ pub fn parse_query(raw: &str) -> Option<QuerySpec> {
     let obj = extract_json_object(raw)?;
     let parsed: RawQuery = serde_json::from_str(obj).ok()?;
     let seed_artists = texts_from(parsed.seed_artists.as_ref(), MAX_SEED_ARTISTS, 40);
-    let genres: Vec<String> =
-        texts_from(parsed.genres.as_ref(), MAX_GENRES, 30).into_iter().map(|g| g.to_lowercase()).collect();
+    let genres: Vec<String> = texts_from(parsed.genres.as_ref(), MAX_GENRES, 30)
+        .into_iter()
+        .map(|g| g.to_lowercase())
+        .collect();
     if seed_artists.is_empty() && genres.is_empty() {
         return None;
     }
@@ -345,7 +381,11 @@ pub fn parse_query(raw: &str) -> Option<QuerySpec> {
         .and_then(Value::as_str)
         .map(|t| clean_output(t, MAX_TITLE_CHARS))
         .unwrap_or_default();
-    let era = parsed.era.as_ref().and_then(Value::as_str).and_then(parse_era);
+    let era = parsed
+        .era
+        .as_ref()
+        .and_then(Value::as_str)
+        .and_then(parse_era);
     Some(QuerySpec {
         title,
         seed_artists,
@@ -419,9 +459,18 @@ pub fn parse_pick(raw: &str, aliases: &HashMap<String, String>) -> Option<PickAn
     if ids.is_empty() {
         return None;
     }
-    let title = parsed.title.as_ref().and_then(Value::as_str).map(|t| clean_output(t, MAX_TITLE_CHARS)).unwrap_or_default();
-    let reason =
-        parsed.reason.as_ref().and_then(Value::as_str).map(|r| clean_output(r, MAX_REASON_CHARS)).unwrap_or_default();
+    let title = parsed
+        .title
+        .as_ref()
+        .and_then(Value::as_str)
+        .map(|t| clean_output(t, MAX_TITLE_CHARS))
+        .unwrap_or_default();
+    let reason = parsed
+        .reason
+        .as_ref()
+        .and_then(Value::as_str)
+        .map(|r| clean_output(r, MAX_REASON_CHARS))
+        .unwrap_or_default();
     Some(PickAnswer { title, reason, ids })
 }
 
@@ -431,14 +480,23 @@ mod tests {
 
     fn aliases() -> HashMap<String, (String, String)> {
         let mut m = HashMap::new();
-        m.insert("m1".to_string(), ("on-repeat".to_string(), "On Repeat".to_string()));
-        m.insert("m2".to_string(), ("rediscover".to_string(), "Rediscover".to_string()));
+        m.insert(
+            "m1".to_string(),
+            ("on-repeat".to_string(), "On Repeat".to_string()),
+        );
+        m.insert(
+            "m2".to_string(),
+            ("rediscover".to_string(), "Rediscover".to_string()),
+        );
         m
     }
 
     #[test]
     fn clean_output_strips_markup_links_and_newlines() {
-        let s = clean_output("**Late** night <b>synths</b>\nsee https://evil.example/x `now`", 90);
+        let s = clean_output(
+            "**Late** night <b>synths</b>\nsee https://evil.example/x `now`",
+            90,
+        );
         assert_eq!(s, "Late night bsynths/b see now");
         assert!(!s.contains('<') && !s.contains('*') && !s.contains("http"));
     }
@@ -459,8 +517,14 @@ mod tests {
 
     #[test]
     fn extract_json_handles_fences_prose_and_nothing() {
-        assert_eq!(extract_json_object("```json\n{\"a\":1}\n```"), Some("{\"a\":1}"));
-        assert_eq!(extract_json_object("Sure! {\"a\":1} Hope that helps"), Some("{\"a\":1}"));
+        assert_eq!(
+            extract_json_object("```json\n{\"a\":1}\n```"),
+            Some("{\"a\":1}")
+        );
+        assert_eq!(
+            extract_json_object("Sure! {\"a\":1} Hope that helps"),
+            Some("{\"a\":1}")
+        );
         assert_eq!(extract_json_object("no json here"), None);
         assert_eq!(extract_json_object("} backwards {"), None);
     }
@@ -500,7 +564,10 @@ mod tests {
             "{\"mixes\":[{\"id\":null,\"title\":null,\"reason\":null}]}",
             "{\"mixes\":[{\"id\":\"m1\"",
         ] {
-            assert!(parse_why_mix(raw, &aliases()).is_empty(), "should be empty for {raw:?}");
+            assert!(
+                parse_why_mix(raw, &aliases()).is_empty(),
+                "should be empty for {raw:?}"
+            );
         }
     }
 
@@ -517,7 +584,10 @@ mod tests {
     #[test]
     fn filter_ids_drops_invented_ids_and_repeats() {
         let cands: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
-        let returned: Vec<String> = ["c", "zzz", "a", "c", " b "].iter().map(|s| s.to_string()).collect();
+        let returned: Vec<String> = ["c", "zzz", "a", "c", " b "]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let p = filter_ids(&returned, &cands, 2, 10);
         assert_eq!(p.ids, vec!["c", "a", "b"]);
         assert!(!p.fell_back);
@@ -566,7 +636,11 @@ mod tests {
         {"title":"Late Focus","seed_artists":"Nova, Echo, Nova","genres":"lo-fi","energy":"7","instrumental":"yes","era":"90's"}
         ```"#;
         let q = parse_query(raw).expect("plan");
-        assert_eq!(q.seed_artists, vec!["Nova", "Echo"], "a comma list is split and repeats dropped");
+        assert_eq!(
+            q.seed_artists,
+            vec!["Nova", "Echo"],
+            "a comma list is split and repeats dropped"
+        );
         assert_eq!(q.energy, Some(0.7), "0..10 scale is scaled down");
         assert_eq!(q.instrumental, Some(true));
         assert_eq!(q.era.as_deref(), Some("1990s"));
@@ -602,7 +676,10 @@ mod tests {
         assert!(!q.title.contains('<') && !q.title.contains("http"));
         assert!(q.genres.iter().all(|g| g.chars().count() <= 30));
         assert!(q.genres.contains(&"rock".to_string()));
-        assert!(!q.genres.contains(&"x".to_string()), "one-character tags are noise");
+        assert!(
+            !q.genres.contains(&"x".to_string()),
+            "one-character tags are noise"
+        );
     }
 
     #[test]
@@ -628,7 +705,16 @@ mod tests {
         assert_eq!(parse_era("1994").as_deref(), Some("1990s"));
         assert_eq!(parse_era("1985-1995").as_deref(), Some("1985-1995"));
         assert_eq!(parse_era("1985–1995").as_deref(), Some("1985-1995"));
-        for bad in ["", "recent", "1995-1985", "19999", "3000s", "9s", "now", "2010sx"] {
+        for bad in [
+            "",
+            "recent",
+            "1995-1985",
+            "19999",
+            "3000s",
+            "9s",
+            "now",
+            "2010sx",
+        ] {
             assert_eq!(parse_era(bad), None, "{bad:?}");
         }
     }
@@ -636,7 +722,10 @@ mod tests {
     // ---- prompt to playlist: the song pick
 
     fn pick_aliases() -> HashMap<String, String> {
-        [("t1", "id-a"), ("t2", "id-b"), ("t3", "id-c")].iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+        [("t1", "id-a"), ("t2", "id-b"), ("t3", "id-c")]
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
     }
 
     #[test]
@@ -667,7 +756,10 @@ mod tests {
             r#"{"picks":["t7","t8"]}"#,
             r#"{"picks":["t1""#,
         ] {
-            assert!(parse_pick(raw, &pick_aliases()).is_none(), "should be unusable: {raw:?}");
+            assert!(
+                parse_pick(raw, &pick_aliases()).is_none(),
+                "should be unusable: {raw:?}"
+            );
         }
     }
 

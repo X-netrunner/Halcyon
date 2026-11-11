@@ -28,7 +28,12 @@ pub fn view<'a, Message: Clone + 'static>(
 
     // 1. Header & Month Navigation. Halcyon's own picture sits in a soft glowing ring beside
     // the title; the month arrows are quiet icon buttons instead of boxed capsules.
-    let prev_btn = crate::views::icon_action(Icon::ChevronLeft, "Previous month", palette, Some(on_prev_month));
+    let prev_btn = crate::views::icon_action(
+        Icon::ChevronLeft,
+        "Previous month",
+        palette,
+        Some(on_prev_month),
+    );
     let next_btn = crate::views::icon_action(
         Icon::ChevronRight,
         "Next month",
@@ -38,18 +43,23 @@ pub fn view<'a, Message: Clone + 'static>(
 
     let month_title = format!("{} {}", capsule.month_name, capsule.year);
 
-    let pfp = container(crate::views::account::avatar(halcyon_name, halcyon_pfp, 52.0, palette))
-        .padding(3)
-        .style(move |_t| container::Style {
-            background: None,
-            border: iced::Border {
-                color: crate::theme::alpha(palette.accent, 0.55),
-                width: 1.5,
-                radius: 36.0.into(),
-            },
-            shadow: palette.glow_shadow(0.35, 18.0),
-            ..Default::default()
-        });
+    let pfp = container(crate::views::account::avatar(
+        halcyon_name,
+        halcyon_pfp,
+        52.0,
+        palette,
+    ))
+    .padding(3)
+    .style(move |_t| container::Style {
+        background: None,
+        border: iced::Border {
+            color: crate::theme::alpha(palette.accent, 0.55),
+            width: 1.5,
+            radius: 36.0.into(),
+        },
+        shadow: palette.glow_shadow(0.35, 18.0),
+        ..Default::default()
+    });
 
     let header = row![
         pfp,
@@ -136,13 +146,14 @@ pub fn view<'a, Message: Clone + 'static>(
         palette,
     );
 
-    let (most_rep_title, most_rep_sub) = if let Some((ref tr, count)) = capsule.most_replayed_track {
-        (
-            tr.title.clone(),
-            format!("{} plays in a single day", count),
-        )
+    let (most_rep_title, most_rep_sub) = if let Some((ref tr, count)) = capsule.most_replayed_track
+    {
+        (tr.title.clone(), format!("{} plays in a single day", count))
     } else {
-        ("None yet".to_string(), "Play more music to unlock".to_string())
+        (
+            "None yet".to_string(),
+            "Play more music to unlock".to_string(),
+        )
     };
 
     let card_replayed = view_metric_card(
@@ -204,13 +215,21 @@ pub fn view<'a, Message: Clone + 'static>(
                     ),
                     Space::with_width(10),
                     column![
-                        text(super::ellipsize(&track.title, 56)).size(13).color(palette.text),
-                        text(super::ellipsize(&track.artist, 44)).size(11).color(palette.text_muted),
+                        text(super::ellipsize(&track.title, 56))
+                            .size(13)
+                            .color(palette.text),
+                        text(super::ellipsize(&track.artist, 44))
+                            .size(11)
+                            .color(palette.text_muted),
                     ]
                     .width(Length::Fill),
-                    text(format!("{} plays", count)).size(12).color(palette.text_muted),
+                    text(format!("{} plays", count))
+                        .size(12)
+                        .color(palette.text_muted),
                     Space::with_width(10),
-                    text(format_duration(track.duration_ms)).size(11).color(palette.text_muted),
+                    text(format_duration(track.duration_ms))
+                        .size(11)
+                        .color(palette.text_muted),
                     Space::with_width(8),
                     icon(Icon::Play, 15.0, palette.accent),
                 ]
@@ -221,7 +240,11 @@ pub fn view<'a, Message: Clone + 'static>(
             .on_press(on_play_track(tr_clone))
             .style(move |_t, s| button::Style {
                 background: Some(
-                    if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
+                    if s == button::Status::Hovered {
+                        crate::theme::mix(palette.surface, palette.accent, 0.16)
+                    } else {
+                        crate::theme::alpha(palette.surface, 0.62)
+                    }
                     .into(),
                 ),
                 border: iced::Border {
@@ -258,8 +281,13 @@ pub fn view<'a, Message: Clone + 'static>(
                     Space::with_width(8),
                     artist_picture(capsule, artist, halcyon_name, halcyon_pfp, palette),
                     Space::with_width(10),
-                    text(artist).size(13).color(palette.text).width(Length::Fill),
-                    text(format!("{} mins", minutes)).size(12).color(palette.text_muted),
+                    text(artist)
+                        .size(13)
+                        .color(palette.text)
+                        .width(Length::Fill),
+                    text(format!("{} mins", minutes))
+                        .size(12)
+                        .color(palette.text_muted),
                 ]
                 .align_y(Alignment::Center)
                 .padding([6, 8]),
@@ -325,7 +353,9 @@ pub fn view<'a, Message: Clone + 'static>(
                     Space::with_width(6),
                     text(g).size(12).color(palette.text),
                     Space::with_width(6),
-                    text(format!("({})", count)).size(11).color(palette.text_muted),
+                    text(format!("({})", count))
+                        .size(11)
+                        .color(palette.text_muted),
                 ]
                 .align_y(Alignment::Center),
             )
@@ -449,8 +479,8 @@ fn view_hourly_chart<'a, Message: 'static>(
         let is_peak = h == peak_hour && peak_count > 0;
 
         let bar_container = column![
-            container(Space::new(Length::Fixed(14.0), Length::Fixed(bar_height)))
-                .style(move |_t| container::Style {
+            container(Space::new(Length::Fixed(14.0), Length::Fixed(bar_height))).style(
+                move |_t| container::Style {
                     background: Some(
                         if is_peak {
                             palette.accent
@@ -464,7 +494,8 @@ fn view_hourly_chart<'a, Message: 'static>(
                         ..Default::default()
                     },
                     ..Default::default()
-                }),
+                }
+            ),
             Space::with_height(4),
             text(format!("{:02}", h)).size(9).color(if is_peak {
                 palette.accent
@@ -478,7 +509,10 @@ fn view_hourly_chart<'a, Message: 'static>(
     }
 
     let peak_desc = if peak_count > 0 {
-        format!("Peak listening window: {:02}:00 - {:02}:59 ({} plays)", peak_hour, peak_hour, peak_count)
+        format!(
+            "Peak listening window: {:02}:00 - {:02}:59 ({} plays)",
+            peak_hour, peak_hour, peak_count
+        )
     } else {
         "Start listening to build your hourly activity map".to_string()
     };
@@ -486,7 +520,9 @@ fn view_hourly_chart<'a, Message: 'static>(
     container(
         column![
             row![
-                text("24-Hour Listening Distribution").size(15).color(palette.text),
+                text("24-Hour Listening Distribution")
+                    .size(15)
+                    .color(palette.text),
                 Space::with_width(Length::Fill),
                 text(peak_desc).size(12).color(palette.accent),
             ]

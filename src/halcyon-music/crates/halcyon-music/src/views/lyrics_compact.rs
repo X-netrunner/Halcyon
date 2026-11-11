@@ -60,21 +60,36 @@ pub fn view<'a, M: 'a>(
     } else {
         (0..lrc.lines.len().min(PLAIN_MAX), None)
     };
-    let mut col = column![].spacing(8).width(Length::Fill).padding(iced::Padding {
-        top: 4.0,
-        right: 10.0,
-        bottom: 16.0,
-        left: 10.0,
-    });
+    let mut col = column![]
+        .spacing(8)
+        .width(Length::Fill)
+        .padding(iced::Padding {
+            top: 4.0,
+            right: 10.0,
+            bottom: 16.0,
+            left: 10.0,
+        });
     for idx in range {
         let line = &lrc.lines[idx];
         let current = active == Some(idx);
-        let (size, colour) = if current { (13.0, palette.text) } else { (12.0, palette.text_muted) };
-        col = col.push(text(&line.text).size(size).color(colour).width(Length::Fill));
+        let (size, colour) = if current {
+            (13.0, palette.text)
+        } else {
+            (12.0, palette.text_muted)
+        };
+        col = col.push(
+            text(&line.text)
+                .size(size)
+                .color(colour)
+                .width(Length::Fill),
+        );
     }
     scrollable(col)
         .direction(scrollable::Direction::Vertical(
-            scrollable::Scrollbar::new().width(0).scroller_width(0).margin(0),
+            scrollable::Scrollbar::new()
+                .width(0)
+                .scroller_width(0)
+                .margin(0),
         ))
         .height(Length::Fill)
         .width(Length::Fill)
@@ -88,7 +103,11 @@ mod tests {
     fn lines(starts: &[u64]) -> Vec<LyricLine> {
         starts
             .iter()
-            .map(|s| LyricLine { start_ms: *s, text: format!("line {s}"), ..Default::default() })
+            .map(|s| LyricLine {
+                start_ms: *s,
+                text: format!("line {s}"),
+                ..Default::default()
+            })
             .collect()
     }
 
@@ -124,7 +143,12 @@ mod tests {
     fn the_panel_builds_without_lyrics_with_synced_and_with_plain_lyrics() {
         let palette = HalcyonPalette::for_mood(crate::theme::Mood::Dusk);
         let _: Element<'_, ()> = view(None, 0, palette);
-        let mut l = Lyrics { track_id: "t".into(), synced: true, lines: lines(&[0, 1000, 2000]), offset_ms: 0 };
+        let mut l = Lyrics {
+            track_id: "t".into(),
+            synced: true,
+            lines: lines(&[0, 1000, 2000]),
+            offset_ms: 0,
+        };
         let _: Element<'_, ()> = view(Some(&l), 1500, palette);
         l.synced = false;
         let _: Element<'_, ()> = view(Some(&l), 0, palette);

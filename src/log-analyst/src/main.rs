@@ -49,7 +49,10 @@ fn sys_user() -> String {
             }
         }
     }
-    std::env::var("LOGNAME").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "root".to_string())
+    std::env::var("LOGNAME")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "root".to_string())
 }
 
 #[allow(dead_code)] // the logs moved to /var/log/halcyon; kept for the SYS_HOME setting
@@ -158,7 +161,7 @@ fn run_notify_send(title: &str, message: &str, urgency: &str, icon: &str) {
         c
     };
 
-    cmd.args(["-u", urgency, "-i", icon, "--", title, message]);      // "--": text from a log line that starts with "-" is not an option
+    cmd.args(["-u", urgency, "-i", icon, "--", title, message]); // "--": text from a log line that starts with "-" is not an option
     thread::spawn(move || {
         if let Ok(mut child) = cmd.spawn() {
             let _ = child.wait();
@@ -212,7 +215,9 @@ fn main() {
         ),
         (
             "Directory Brute Force Attempt",
-            build_sig(r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)"),
+            build_sig(
+                r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)",
+            ),
         ),
         (
             "Automated SSH Scanner Footprint",
@@ -294,10 +299,14 @@ mod tests {
     #[test]
     fn test_signatures() {
         let metasploit_sig = build_sig(r"CREDENTIALS HARVESTED.*(Username|USER)=(admin|root|1234)");
-        assert!(metasploit_sig.is_match("[ALERT] CREDENTIALS HARVESTED (FTP) from 1.2.3.4: USER=admin, PASS=secret"));
+        assert!(metasploit_sig
+            .is_match("[ALERT] CREDENTIALS HARVESTED (FTP) from 1.2.3.4: USER=admin, PASS=secret"));
 
-        let dir_sig = build_sig(r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)");
-        assert!(dir_sig.is_match("Directory brute-force detected from 10.0.0.1 requesting: GET /wp-admin"));
+        let dir_sig = build_sig(
+            r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)",
+        );
+        assert!(dir_sig
+            .is_match("Directory brute-force detected from 10.0.0.1 requesting: GET /wp-admin"));
         assert!(dir_sig.is_match("GET /phpmyadmin/index.php HTTP/1.1"));
 
         let ssh_sig = build_sig(r"\[PAYLOAD\] SSH packet.*(libssh|Paramiko|Go-SSH)");

@@ -13,7 +13,7 @@
 //! - **catch-up**: afterwards, every new play or skip the daemon sees is one more step.
 
 use super::bandit::Bandit;
-use super::features::{dot, extract, Features, FeatureCtx, NF, PRIOR_WEIGHTS, SKIP_RATE};
+use super::features::{dot, extract, FeatureCtx, Features, NF, PRIOR_WEIGHTS, SKIP_RATE};
 use super::{Candidate, Source};
 use crate::cache::PlayLogEntry;
 use crate::eval::{label_play, Label};
@@ -52,7 +52,11 @@ impl Default for OnlineModel {
 impl OnlineModel {
     /// The transparent starting point.
     pub fn prior() -> Self {
-        OnlineModel { weights: PRIOR_WEIGHTS.to_vec(), bias: 0.0, updates: 0 }
+        OnlineModel {
+            weights: PRIOR_WEIGHTS.to_vec(),
+            bias: 0.0,
+            updates: 0,
+        }
     }
 
     pub fn reset(&mut self) {
@@ -62,7 +66,9 @@ impl OnlineModel {
     /// A model from an older build (another number of features) or with a broken number is not
     /// used: the caller falls back to the prior.
     pub fn is_valid(&self) -> bool {
-        self.weights.len() == NF && self.weights.iter().all(|w| w.is_finite()) && self.bias.is_finite()
+        self.weights.len() == NF
+            && self.weights.iter().all(|w| w.is_finite())
+            && self.bias.is_finite()
     }
 
     /// The rank score.
@@ -142,11 +148,19 @@ pub struct ReplayCfg {
 
 impl ReplayCfg {
     pub fn eval() -> Self {
-        ReplayCfg { tz_offset_secs: 0, use_time: false, epochs: 1 }
+        ReplayCfg {
+            tz_offset_secs: 0,
+            use_time: false,
+            epochs: 1,
+        }
     }
 
     pub fn live(tz_offset_secs: i64) -> Self {
-        ReplayCfg { tz_offset_secs, use_time: true, epochs: 1 }
+        ReplayCfg {
+            tz_offset_secs,
+            use_time: true,
+            epochs: 1,
+        }
     }
 }
 
@@ -174,7 +188,11 @@ pub fn replay_samples(
     tags: &TagTable,
     cfg: &ReplayCfg,
 ) -> Vec<Sample> {
-    let mut chron: Vec<PlayLogEntry> = plays.iter().filter(|p| p.started_at < now).cloned().collect();
+    let mut chron: Vec<PlayLogEntry> = plays
+        .iter()
+        .filter(|p| p.started_at < now)
+        .cloned()
+        .collect();
     chron.sort_by_key(|p| (p.started_at, p.id));
     let from = now.saturating_sub(REPLAY_DAYS * DAY);
     let days: BTreeSet<u64> = chron
@@ -191,10 +209,22 @@ pub fn replay_samples(
         }
         let profile = TasteProfile::build(past, liked, d, tags, cfg.tz_offset_secs);
         for e in rest.iter().take_while(|p| p.started_at < d + DAY) {
-            let bucket = if cfg.use_time { Some(bucket_of(e.started_at, cfg.tz_offset_secs)) } else { None };
-            let f = extract(&candidate_of_play(e, tags), &profile, &FeatureCtx { now: d, bucket });
+            let bucket = if cfg.use_time {
+                Some(bucket_of(e.started_at, cfg.tz_offset_secs))
+            } else {
+                None
+            };
+            let f = extract(
+                &candidate_of_play(e, tags),
+                &profile,
+                &FeatureCtx { now: d, bucket },
+            );
             let (y, weight) = label_target(label_play(e, liked));
-            out.push(Sample { features: f, y, weight });
+            out.push(Sample {
+                features: f,
+                y,
+                weight,
+            });
         }
     }
     out
@@ -301,14 +331,27 @@ pub fn catch_up(
     now: u64,
     tz_offset_secs: i64,
 ) -> CatchUp {
-    let max_play = plays.iter().map(|p| p.id).max().unwrap_or(0).max(state.last_play_id);
-    let max_skip = skips.iter().map(|p| p.id).max().unwrap_or(0).max(state.last_skip_id);
+    let max_play = plays
+        .iter()
+        .map(|p| p.id)
+        .max()
+        .unwrap_or(0)
+        .max(state.last_play_id);
+    let max_skip = skips
+        .iter()
+        .map(|p| p.id)
+        .max()
+        .unwrap_or(0)
+        .max(state.last_skip_id);
     let mut report = CatchUp::default();
 
     if !state.bootstrapped {
         let mut all: Vec<PlayLogEntry> = plays.to_vec();
         all.extend(skips.iter().cloned());
-        report.examples = state.model.train_replay(&all, liked, now, tags, &ReplayCfg::live(tz_offset_secs));
+        report.examples =
+            state
+                .model
+                .train_replay(&all, liked, now, tags, &ReplayCfg::live(tz_offset_secs));
         state.bootstrapped = true;
         state.last_play_id = max_play;
         state.last_skip_id = max_skip;
@@ -316,7 +359,11 @@ pub fn catch_up(
         return report;
     }
 
-    let mut fresh: Vec<PlayLogEntry> = plays.iter().filter(|p| p.id > state.last_play_id).cloned().collect();
+    let mut fresh: Vec<PlayLogEntry> = plays
+        .iter()
+        .filter(|p| p.id > state.last_play_id)
+        .cloned()
+        .collect();
     fresh.extend(skips.iter().filter(|p| p.id > state.last_skip_id).cloned());
     if fresh.is_empty() {
         return report;
@@ -335,7 +382,10 @@ pub fn catch_up(
         let f = extract(
             &candidate_of_play(e, tags),
             &profile,
-            &FeatureCtx { now, bucket: Some(bucket_of(e.started_at, tz_offset_secs)) },
+            &FeatureCtx {
+                now,
+                bucket: Some(bucket_of(e.started_at, tz_offset_secs)),
+            },
         );
         state.model.observe(&f, label);
         report.examples += 1;
@@ -355,7 +405,14 @@ mod tests {
 
     const NOW: u64 = 1_800_000_000;
 
-    fn play(id: i64, track: &str, artist: &str, days_ago: f64, ms: u64, done: bool) -> PlayLogEntry {
+    fn play(
+        id: i64,
+        track: &str,
+        artist: &str,
+        days_ago: f64,
+        ms: u64,
+        done: bool,
+    ) -> PlayLogEntry {
         PlayLogEntry {
             id,
             track_id: track.into(),
@@ -382,9 +439,17 @@ mod tests {
         assert!(m.is_valid());
         let f = f_of(&[(1, 1.0), (8, 0.5)]);
         assert!((m.logit(&f) - (PRIOR_WEIGHTS[1] + 0.5 * PRIOR_WEIGHTS[8])).abs() < 1e-12);
-        let wrong = OnlineModel { weights: vec![0.0; NF - 1], bias: 0.0, updates: 0 };
+        let wrong = OnlineModel {
+            weights: vec![0.0; NF - 1],
+            bias: 0.0,
+            updates: 0,
+        };
         assert!(!wrong.is_valid());
-        let nan = OnlineModel { weights: vec![f64::NAN; NF], bias: 0.0, updates: 0 };
+        let nan = OnlineModel {
+            weights: vec![f64::NAN; NF],
+            bias: 0.0,
+            updates: 0,
+        };
         assert!(!nan.is_valid());
     }
 
@@ -396,7 +461,12 @@ mod tests {
         for _ in 0..30 {
             m.observe(&f, Label::Skipped);
         }
-        assert!(m.logit(&f) < before - 0.2, "after skips {} vs {}", m.logit(&f), before);
+        assert!(
+            m.logit(&f) < before - 0.2,
+            "after skips {} vs {}",
+            m.logit(&f),
+            before
+        );
         let mut m2 = OnlineModel::prior();
         for _ in 0..30 {
             m2.observe(&f, Label::Positive);
@@ -436,12 +506,25 @@ mod tests {
         for d in 2..=30 {
             for n in 0..3 {
                 id += 1;
-                plays.push(play(id, "ash-1", "Ash", d as f64 - n as f64 * 0.01, 200_000, true));
+                plays.push(play(
+                    id,
+                    "ash-1",
+                    "Ash",
+                    d as f64 - n as f64 * 0.01,
+                    200_000,
+                    true,
+                ));
             }
         }
         id += 1;
         plays.push(play(id, "dust-1", "Dust", 0.5, 3_000, false));
-        let s = replay_samples(&plays, &HashSet::new(), NOW, &TagTable::default(), &ReplayCfg::eval());
+        let s = replay_samples(
+            &plays,
+            &HashSet::new(),
+            NOW,
+            &TagTable::default(),
+            &ReplayCfg::eval(),
+        );
         assert!(!s.is_empty());
         // The Dust skip is the last sample; Dust was unknown before that day, so novelty is 1 and
         // the affinity features are 0: the replay did not look at the skip itself.
@@ -454,20 +537,50 @@ mod tests {
 
     #[test]
     fn replay_ignores_days_without_enough_history_and_the_far_past() {
-        let few = vec![play(1, "a", "Ash", 1.0, 200_000, true), play(2, "b", "Ash", 0.9, 200_000, true)];
-        assert!(replay_samples(&few, &HashSet::new(), NOW, &TagTable::default(), &ReplayCfg::eval()).is_empty());
+        let few = vec![
+            play(1, "a", "Ash", 1.0, 200_000, true),
+            play(2, "b", "Ash", 0.9, 200_000, true),
+        ];
+        assert!(replay_samples(
+            &few,
+            &HashSet::new(),
+            NOW,
+            &TagTable::default(),
+            &ReplayCfg::eval()
+        )
+        .is_empty());
         let mut old = Vec::new();
         for i in 0..40 {
-            old.push(play(i + 1, "a", "Ash", 100.0 + i as f64 * 0.001, 200_000, true));
+            old.push(play(
+                i + 1,
+                "a",
+                "Ash",
+                100.0 + i as f64 * 0.001,
+                200_000,
+                true,
+            ));
         }
-        assert!(replay_samples(&old, &HashSet::new(), NOW, &TagTable::default(), &ReplayCfg::eval()).is_empty());
+        assert!(replay_samples(
+            &old,
+            &HashSet::new(),
+            NOW,
+            &TagTable::default(),
+            &ReplayCfg::eval()
+        )
+        .is_empty());
     }
 
     #[test]
     fn replay_training_teaches_a_listener_who_changed_taste() {
         let (plays, liked) = fixture(Listener::Shift);
         let mut m = OnlineModel::prior();
-        let n = m.train_replay(&plays, &liked, FIXTURE_NOW, &TagTable::default(), &ReplayCfg::eval());
+        let n = m.train_replay(
+            &plays,
+            &liked,
+            FIXTURE_NOW,
+            &TagTable::default(),
+            &ReplayCfg::eval(),
+        );
         assert!(n > 100, "{n} examples");
         assert_ne!(m, OnlineModel::prior());
         assert!(m.is_valid());
@@ -529,9 +642,23 @@ mod tests {
         let mut skips = Vec::new();
         for d in 2..=25 {
             for n in 0..4 {
-                plays.push(play(d * 10 + n, &format!("ash-{n}"), "Ash", d as f64 - n as f64 * 0.01, 200_000, true));
+                plays.push(play(
+                    d * 10 + n,
+                    &format!("ash-{n}"),
+                    "Ash",
+                    d as f64 - n as f64 * 0.01,
+                    200_000,
+                    true,
+                ));
             }
-            skips.push(play(d * 10, &format!("dust-{d}"), "Dust", d as f64 - 0.3, 3_000, false));
+            skips.push(play(
+                d * 10,
+                &format!("dust-{d}"),
+                "Dust",
+                d as f64 - 0.3,
+                3_000,
+                false,
+            ));
         }
         (plays, skips)
     }
@@ -540,14 +667,36 @@ mod tests {
     fn the_first_pass_replays_and_marks_the_logs_as_learned() {
         let (plays, skips) = history();
         let mut state = RecoState::default();
-        let r = catch_up(&mut state, &plays, &skips, &HashSet::new(), &TagTable::default(), NOW, 0);
+        let r = catch_up(
+            &mut state,
+            &plays,
+            &skips,
+            &HashSet::new(),
+            &TagTable::default(),
+            NOW,
+            0,
+        );
         assert!(r.bootstrapped_now && r.examples > 20);
         assert!(state.bootstrapped);
-        assert_eq!(state.last_play_id, plays.iter().map(|p| p.id).max().unwrap_or(0));
-        assert_eq!(state.last_skip_id, skips.iter().map(|p| p.id).max().unwrap_or(0));
+        assert_eq!(
+            state.last_play_id,
+            plays.iter().map(|p| p.id).max().unwrap_or(0)
+        );
+        assert_eq!(
+            state.last_skip_id,
+            skips.iter().map(|p| p.id).max().unwrap_or(0)
+        );
         // Nothing new: nothing happens.
         let before = state.clone();
-        let again = catch_up(&mut state, &plays, &skips, &HashSet::new(), &TagTable::default(), NOW, 0);
+        let again = catch_up(
+            &mut state,
+            &plays,
+            &skips,
+            &HashSet::new(),
+            &TagTable::default(),
+            NOW,
+            0,
+        );
         assert_eq!(again, CatchUp::default());
         assert_eq!(state, before);
     }
@@ -556,13 +705,33 @@ mod tests {
     fn later_passes_learn_only_what_is_new_and_settle_exploration_songs() {
         let (mut plays, mut skips) = history();
         let mut state = RecoState::default();
-        catch_up(&mut state, &plays, &skips, &HashSet::new(), &TagTable::default(), NOW, 0);
+        catch_up(
+            &mut state,
+            &plays,
+            &skips,
+            &HashSet::new(),
+            &TagTable::default(),
+            NOW,
+            0,
+        );
         let updates = state.model.updates;
-        state.bandit.note_served("new-song", "home", Source::Similar, NOW - 100);
-        state.bandit.note_served("other-song", "home", Source::Chart, NOW - 100);
+        state
+            .bandit
+            .note_served("new-song", "home", Source::Similar, NOW - 100);
+        state
+            .bandit
+            .note_served("other-song", "home", Source::Chart, NOW - 100);
         plays.push(play(9_000, "new-song", "Newcomer", 0.01, 200_000, true));
         skips.push(play(9_001, "other-song", "Other", 0.005, 2_000, false));
-        let r = catch_up(&mut state, &plays, &skips, &HashSet::new(), &TagTable::default(), NOW, 0);
+        let r = catch_up(
+            &mut state,
+            &plays,
+            &skips,
+            &HashSet::new(),
+            &TagTable::default(),
+            NOW,
+            0,
+        );
         assert_eq!(r.examples, 2);
         assert_eq!(r.explored, 2);
         assert_eq!(state.model.updates, updates + 2);

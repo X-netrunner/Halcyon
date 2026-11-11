@@ -9,7 +9,11 @@ use std::process::Command;
 pub fn run() -> i32 {
     let island = util::rice_dir().join("quickshell/island");
     let island = island.to_string_lossy().to_string();
-    if util::ok_timeout("quickshell", &["ipc", "-p", &island, "call", "island", "lock"], 2000) {
+    if util::ok_timeout(
+        "quickshell",
+        &["ipc", "-p", &island, "call", "island", "lock"],
+        2000,
+    ) {
         return 0;
     }
     if util::command_exists("hyprlock") {
@@ -18,6 +22,11 @@ pub fn run() -> i32 {
         eprintln!("lock: could not start hyprlock: {}", err);
         return 1;
     }
-    util::notify("Lock screen", "The island is not running and hyprlock is not installed", None, 5000);
+    util::notify(
+        "Lock screen",
+        "The island is not running and hyprlock is not installed",
+        None,
+        5000,
+    );
     1
 }

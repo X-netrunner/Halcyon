@@ -18,7 +18,12 @@ fn say(msg: &str) {
 
 /// One property of a login session (loginctl show-session ID -p NAME --value).
 fn prop(session: &str, name: &str) -> String {
-    util::out("loginctl", &["show-session", session, "-p", name, "--value"]).trim().to_string()
+    util::out(
+        "loginctl",
+        &["show-session", session, "-p", name, "--value"],
+    )
+    .trim()
+    .to_string()
 }
 
 /// This session's id: XDG_SESSION_ID, else the first word of `loginctl session-status`.
@@ -78,7 +83,10 @@ fn list(me: &str) -> i32 {
 }
 
 fn to(id: &str) -> i32 {
-    let valid = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let valid = !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !valid {
         return 2;
     }
@@ -132,7 +140,10 @@ fn greeter(me: &str) -> i32 {
         ) {
             return 0;
         }
-        say(&format!("Could not open a login screen. Press Ctrl+Alt+F{} instead.", n));
+        say(&format!(
+            "Could not open a login screen. Press Ctrl+Alt+F{} instead.",
+            n
+        ));
         return 1;
     }
     say("Every text console is in use. Press Ctrl+Alt+F2 to reach one.");

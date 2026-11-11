@@ -7,9 +7,9 @@
 //! Provides metadata, local cached cover URL (`file://`), position, seek,
 //! volume, transport controls, and integrates with Quickshell island & media keys.
 
-use halcyon_music_core::art::{cache_key, ArtSize};
 use crate::cache::Cache;
 use crate::daemon::Player;
+use halcyon_music_core::art::{cache_key, ArtSize};
 use halcyon_music_core::protocol;
 use halcyon_music_core::RepeatMode;
 use std::collections::HashMap;
@@ -103,9 +103,9 @@ impl MprisPlayer {
 
     async fn broadcast_state(&self) {
         let snap = self.player.snapshot().await;
-        let _ = self.events_tx.send(protocol::event(protocol::EventBody::State {
-            state: snap,
-        }));
+        let _ = self
+            .events_tx
+            .send(protocol::event(protocol::EventBody::State { state: snap }));
     }
 }
 
@@ -184,11 +184,7 @@ impl MprisPlayer {
         self.broadcast_state().await;
     }
 
-    async fn set_position(
-        &self,
-        _track_id: ObjectPath<'_>,
-        position_us: i64,
-    ) {
+    async fn set_position(&self, _track_id: ObjectPath<'_>, position_us: i64) {
         let pos_ms = (position_us.max(0) / 1000) as u64;
         self.player
             .mutate(|s| {
@@ -291,10 +287,7 @@ impl MprisPlayer {
 
             map.insert("xesam:title".into(), Value::from(t.title.clone()));
             map.insert("xesam:album".into(), Value::from(t.album.clone()));
-            map.insert(
-                "xesam:artist".into(),
-                Value::from(vec![t.artist.clone()]),
-            );
+            map.insert("xesam:artist".into(), Value::from(vec![t.artist.clone()]));
             map.insert("xesam:url".into(), Value::from(t.uri.clone()));
 
             // Art URL: check cached local image file first (for instantaneous offline display)
@@ -421,6 +414,10 @@ pub async fn start_mpris_server(
         .build()
         .await?;
 
-    info!(bus = MPRIS_BUS_NAME, path = MPRIS_OBJECT_PATH, "MPRIS 2 service registered");
+    info!(
+        bus = MPRIS_BUS_NAME,
+        path = MPRIS_OBJECT_PATH,
+        "MPRIS 2 service registered"
+    );
     Ok(conn)
 }

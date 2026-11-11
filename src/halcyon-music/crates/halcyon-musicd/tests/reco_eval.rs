@@ -43,9 +43,15 @@ fn the_reranker_makes_lists_more_varied_at_a_bounded_cost() {
         let p4 = find(&reports, "taste v2");
         let rank = find(&reports, "part 5 ranker");
         let pipe = find(&reports, "part 5 pipeline");
-        let (dr, dp) = (get(rank.diversity, "diversity"), get(pipe.diversity, "diversity"));
+        let (dr, dp) = (
+            get(rank.diversity, "diversity"),
+            get(pipe.diversity, "diversity"),
+        );
         assert!(dp >= dr + 0.10, "{name}: diversity {dr:.3} -> {dp:.3}");
-        assert!(get(pipe.coverage, "coverage") >= get(p4.coverage, "coverage"), "{name}: coverage fell");
+        assert!(
+            get(pipe.coverage, "coverage") >= get(p4.coverage, "coverage"),
+            "{name}: coverage fell"
+        );
         // The price: NDCG may lose a little against Part 4, never a lot.
         let (o, n) = (get(p4.ndcg_at_k, "ndcg"), get(pipe.ndcg_at_k, "ndcg"));
         assert!(n + 0.05 >= o, "{name}: NDCG {o:.3} -> {n:.3}");

@@ -19,8 +19,14 @@ pub struct Crossfade<'a, M, T, R> {
 
 impl<'a, M, T, R> Crossfade<'a, M, T, R> {
     /// `above` is drawn over `below` and should already carry its own opacity.
-    pub fn new(below: impl Into<Element<'a, M, T, R>>, above: impl Into<Element<'a, M, T, R>>) -> Self {
-        Self { below: below.into(), above: above.into() }
+    pub fn new(
+        below: impl Into<Element<'a, M, T, R>>,
+        above: impl Into<Element<'a, M, T, R>>,
+    ) -> Self {
+        Self {
+            below: below.into(),
+            above: above.into(),
+        }
     }
 }
 
@@ -48,7 +54,10 @@ where
         let below = self.below.as_widget().layout(a_tree, renderer, limits);
         let size = below.size();
         // The picture above is held to the same size and place.
-        let above = self.above.as_widget().layout(b_tree, renderer, &layout::Limits::new(size, size));
+        let above =
+            self.above
+                .as_widget()
+                .layout(b_tree, renderer, &layout::Limits::new(size, size));
         layout::Node::with_children(size, vec![below, above])
     }
 
@@ -67,15 +76,25 @@ where
             return;
         }
         let mut kids = layout.children();
-        let (Some(a_layout), Some(b_layout)) = (kids.next(), kids.next()) else { return };
+        let (Some(a_layout), Some(b_layout)) = (kids.next(), kids.next()) else {
+            return;
+        };
         let mut trees = tree.children.iter();
-        let (Some(a_tree), Some(b_tree)) = (trees.next(), trees.next()) else { return };
-        self.below.as_widget().draw(a_tree, renderer, theme, style, a_layout, cursor, viewport);
-        self.above.as_widget().draw(b_tree, renderer, theme, style, b_layout, cursor, viewport);
+        let (Some(a_tree), Some(b_tree)) = (trees.next(), trees.next()) else {
+            return;
+        };
+        self.below
+            .as_widget()
+            .draw(a_tree, renderer, theme, style, a_layout, cursor, viewport);
+        self.above
+            .as_widget()
+            .draw(b_tree, renderer, theme, style, b_layout, cursor, viewport);
     }
 }
 
-impl<'a, M: 'a, T: 'a, R: renderer::Renderer + 'a> From<Crossfade<'a, M, T, R>> for Element<'a, M, T, R> {
+impl<'a, M: 'a, T: 'a, R: renderer::Renderer + 'a> From<Crossfade<'a, M, T, R>>
+    for Element<'a, M, T, R>
+{
     fn from(c: Crossfade<'a, M, T, R>) -> Self {
         Element::new(c)
     }

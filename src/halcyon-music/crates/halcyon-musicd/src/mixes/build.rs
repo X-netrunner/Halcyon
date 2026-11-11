@@ -9,8 +9,8 @@ use super::clock::local_utc_offset_secs;
 use super::plan::{daylist_tag, smart_shuffle, wanted_mixes, PoolPlan, MIN_POOL};
 use super::store::{default_path, MixStore, StoredMix};
 use super::{
-    cover_hue, cover_urls, daily_mix_title, daylist_title, is_due, lead_artists, mix_id, mix_reason, next_refresh_at, parse_mix_id, period_key, MixKind,
-    RADIO_BATCH,
+    cover_hue, cover_urls, daily_mix_title, daylist_title, is_due, lead_artists, mix_id,
+    mix_reason, next_refresh_at, parse_mix_id, period_key, MixKind, RADIO_BATCH,
 };
 use crate::daemon::DaemonContext;
 use crate::reco::bandit::shelf_seed;
@@ -75,7 +75,8 @@ pub fn attach(feed: &mut halcyon_music_core::models::HomeFeed) {
         return;
     }
     let ids: HashSet<String> = mixes.iter().map(|m| m.id.clone()).collect();
-    feed.made_for_you.retain(|m| !ids.contains(&m.id) && parse_mix_id(&m.id).is_none());
+    feed.made_for_you
+        .retain(|m| !ids.contains(&m.id) && parse_mix_id(&m.id).is_none());
     let mut all = mixes;
     all.append(&mut feed.made_for_you);
     feed.made_for_you = all;
@@ -87,28 +88,56 @@ pub fn attach(feed: &mut halcyon_music_core::models::HomeFeed) {
 fn rerank_for(kind: MixKind, n: usize) -> RerankCfg {
     match kind {
         MixKind::OnRepeat | MixKind::RepeatRewind => RerankCfg::repeat_list(n),
-        MixKind::DailyMix => RerankCfg { explore_share: 0.15, ..RerankCfg::shelf(n) },
-        MixKind::DiscoverWeekly => RerankCfg { explore_share: 0.5, ..RerankCfg::shelf(n) },
-        MixKind::ReleaseRadar => RerankCfg { explore_share: 0.0, ..RerankCfg::shelf(n) },
+        MixKind::DailyMix => RerankCfg {
+            explore_share: 0.15,
+            ..RerankCfg::shelf(n)
+        },
+        MixKind::DiscoverWeekly => RerankCfg {
+            explore_share: 0.5,
+            ..RerankCfg::shelf(n)
+        },
+        MixKind::ReleaseRadar => RerankCfg {
+            explore_share: 0.0,
+            ..RerankCfg::shelf(n)
+        },
         MixKind::Daylist => RerankCfg::shelf(n),
     }
 }
 
 /// What one mix is built from: the plans (widest last), the least pool size, and the word that
 /// names the Daylist.
-fn extras_for(kind: MixKind, cluster: Option<u32>, daylist_tag: Option<&str>, feedback: &super::store::Feedback) -> (Extras, usize) {
+fn extras_for(
+    kind: MixKind,
+    cluster: Option<u32>,
+    daylist_tag: Option<&str>,
+    feedback: &super::store::Feedback,
+) -> (Extras, usize) {
     let (plans, min_pool): (Vec<PoolPlan>, usize) = match kind {
         MixKind::DailyMix => (cluster.map(PoolPlan::Cluster).into_iter().collect(), 0),
         MixKind::DiscoverWeekly => (vec![PoolPlan::Unheard], 0),
         MixKind::ReleaseRadar => (vec![PoolPlan::NewReleases], 0),
-        MixKind::OnRepeat => (vec![PoolPlan::OnRepeat { min_plays: 2 }, PoolPlan::OnRepeat { min_plays: 1 }], MIN_POOL),
+        MixKind::OnRepeat => (
+            vec![
+                PoolPlan::OnRepeat { min_plays: 2 },
+                PoolPlan::OnRepeat { min_plays: 1 },
+            ],
+            MIN_POOL,
+        ),
         MixKind::RepeatRewind => (vec![PoolPlan::Rewind], 0),
         MixKind::Daylist => match daylist_tag {
             Some(t) => (vec![PoolPlan::Tag(t.to_string()), PoolPlan::All], MIN_POOL),
             None => (vec![PoolPlan::All], 0),
         },
     };
-    (Extras { plans, min_pool, feedback: feedback.clone(), ..Default::default() }, 0)
+    (
+        Extras {
+            plans,
+            min_pool,
+            feedback: feedback.clone(),
+            ..Default::default()
+        },
+        0,
+    )
 }
 
 /// Build one mix and put it in the store. False when nothing came out (the old mix stays).
@@ -128,17 +157,34 @@ async fn build_one(
     let tz = prep.tz;
     let old_epoch = store.get(&id).map_or(0, |m| m.epoch);
     let epoch = if bump_epoch { old_epoch + 1 } else { old_epoch };
-    let tag = if kind == MixKind::Daylist { daylist_tag(&prep.profile, &prep.tags, bucket_of(now, tz)) } else { None };
+    let tag = if kind == MixKind::Daylist {
+        daylist_tag(&prep.profile, &prep.tags, bucket_of(now, tz))
+    } else {
+        None
+    };
     let (extras, _) = extras_for(kind, cluster, tag.as_deref(), &store.feedback);
     let n = kind.songs();
-    let spec = ShelfSpec { id: id.clone(), n, rerank: rerank_for(kind, n), epoch };
+    let spec = ShelfSpec {
+        id: id.clone(),
+        n,
+        rerank: rerank_for(kind, n),
+        epoch,
+    };
     let result: ShelfResult = shelf_from(prep, &ctx.spotify, &ctx.cache, &spec, &extras).await;
     if result.tracks.is_empty() {
         info!("mixes: {id} came out empty, keeping the old one");
         return false;
     }
-    let tag_used = if result.plan_used == 0 { tag.clone() } else { None };
-    let word = if kind == MixKind::Daylist { tag_used.clone().unwrap_or_default() } else { label.to_string() };
+    let tag_used = if result.plan_used == 0 {
+        tag.clone()
+    } else {
+        None
+    };
+    let word = if kind == MixKind::Daylist {
+        tag_used.clone().unwrap_or_default()
+    } else {
+        label.to_string()
+    };
     let title = match kind {
         MixKind::DailyMix => daily_mix_title(slot, label),
         MixKind::DiscoverWeekly => "Discover Weekly".to_string(),
@@ -189,13 +235,24 @@ pub async fn refresh(ctx: Arc<DaemonContext>, force: Vec<String>) {
     let mut prep = prepare(&ctx.cache, &ctx.http, tz).await;
     let cluster_ids: Vec<u32> = {
         let mut cs: Vec<&crate::taste::Cluster> = prep.profile.clusters.iter().collect();
-        cs.sort_by(|a, b| b.share.partial_cmp(&a.share).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.id.cmp(&b.id)));
+        cs.sort_by(|a, b| {
+            b.share
+                .partial_cmp(&a.share)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.id.cmp(&b.id))
+        });
         cs.into_iter().map(|c| c.id).collect()
     };
-    let slots = if prep.phase == crate::reco::Phase::Personal { store.assign_slots(&cluster_ids, super::MAX_DAILY_MIXES) } else { Vec::new() };
+    let slots = if prep.phase == crate::reco::Phase::Personal {
+        store.assign_slots(&cluster_ids, super::MAX_DAILY_MIXES)
+    } else {
+        Vec::new()
+    };
     // A cluster that went away takes its Daily Mix with it.
     let live: HashSet<String> = slots.iter().map(|(s, _)| super::daily_mix_id(*s)).collect();
-    store.mixes.retain(|id, m| m.kind != MixKind::DailyMix.name() || live.contains(id));
+    store
+        .mixes
+        .retain(|id, m| m.kind != MixKind::DailyMix.name() || live.contains(id));
 
     for (kind, slot, cluster, label) in wanted_mixes(&prep.profile, &slots) {
         let id = mix_id(kind, slot);
@@ -204,11 +261,16 @@ pub async fn refresh(ctx: Arc<DaemonContext>, force: Vec<String>) {
             continue;
         }
         let have = store.get(&id);
-        let due = is_due(kind, have.map(|m| m.period.as_str()), now, tz) || have.is_none_or(|m| m.tracks.is_empty());
+        let due = is_due(kind, have.map(|m| m.period.as_str()), now, tz)
+            || have.is_none_or(|m| m.tracks.is_empty());
         if !forced && !due {
             continue;
         }
-        if build_one(&ctx, &mut prep, &mut store, kind, slot, cluster, &label, forced).await {
+        if build_one(
+            &ctx, &mut prep, &mut store, kind, slot, cluster, &label, forced,
+        )
+        .await
+        {
             save_store(&store);
             send(&ctx, updated_event(&store));
         }
@@ -222,29 +284,51 @@ pub async fn refresh(ctx: Arc<DaemonContext>, force: Vec<String>) {
 /// "Less like this" / "Not my taste". Reaches the taste model at once (skip rows the next profile
 /// build reads), the blocklist at once, and the stored mixes at once. A whole-mix answer also
 /// rebuilds that mix.
-pub async fn feedback(ctx: Arc<DaemonContext>, mix_id: String, track_id: Option<String>, action: MixFeedbackAction) {
+pub async fn feedback(
+    ctx: Arc<DaemonContext>,
+    mix_id: String,
+    track_id: Option<String>,
+    action: MixFeedbackAction,
+) {
     let mut store = load_store();
     let now = now_secs();
     let strong = !matches!(action, MixFeedbackAction::LessLikeThis);
     let rows: Vec<(Track, bool)> = match &track_id {
         Some(tid) => {
-            let from_mix = store.get(&mix_id).and_then(|m| m.tracks.iter().find(|t| t.id == *tid).cloned());
+            let from_mix = store
+                .get(&mix_id)
+                .and_then(|m| m.tracks.iter().find(|t| t.id == *tid).cloned());
             let found = match from_mix {
                 Some(t) => Some(t),
-                None => ctx.player.snapshot().await.queue.into_iter().find(|t| t.id == *tid),
+                None => ctx
+                    .player
+                    .snapshot()
+                    .await
+                    .queue
+                    .into_iter()
+                    .find(|t| t.id == *tid),
             };
             found.into_iter().map(|t| (t, true)).collect()
         }
         // The whole mix: the songs by artists you had not played are what was wrong with it.
         None => store
             .get(&mix_id)
-            .map(|m| m.tracks.iter().zip(m.explore.iter().chain(std::iter::repeat(&false))).filter(|(_, ex)| **ex).map(|(t, _)| (t.clone(), false)).collect())
+            .map(|m| {
+                m.tracks
+                    .iter()
+                    .zip(m.explore.iter().chain(std::iter::repeat(&false)))
+                    .filter(|(_, ex)| **ex)
+                    .map(|(t, _)| (t.clone(), false))
+                    .collect()
+            })
             .unwrap_or_default(),
     };
     for (t, single) in &rows {
         let times = if strong && *single { 3 } else { 1 };
         for _ in 0..times {
-            let _ = ctx.cache.log_skip(&t.id, &t.title, &t.artist, &t.album, now, FEEDBACK_SKIP_MS);
+            let _ = ctx
+                .cache
+                .log_skip(&t.id, &t.title, &t.artist, &t.album, now, FEEDBACK_SKIP_MS);
         }
         if strong {
             if *single {
@@ -270,7 +354,9 @@ pub async fn feedback(ctx: Arc<DaemonContext>, mix_id: String, track_id: Option<
 
 /// Take a song out of the queue without moving the current song.
 fn remove_from_queue(s: &mut halcyon_music_core::state::PlayerState, track_id: &str) {
-    let Some(pos) = s.queue.iter().position(|t| t.id == track_id) else { return };
+    let Some(pos) = s.queue.iter().position(|t| t.id == track_id) else {
+        return;
+    };
     if pos == s.queue_pos && s.track.as_ref().is_some_and(|t| t.id == track_id) {
         return; // it is playing right now: let it finish
     }
@@ -292,7 +378,13 @@ pub async fn start_radio(ctx: Arc<DaemonContext>, seed: Track) {
     avoid.insert(seed.id.clone());
     let batch = radio_batch(&ctx, &mut prep, &seed, &avoid, 0).await;
     if batch.tracks.is_empty() {
-        send(&ctx, EventBody::RadioStopped { reason: "Could not find songs like that one right now. Try again in a moment.".to_string() });
+        send(
+            &ctx,
+            EventBody::RadioStopped {
+                reason: "Could not find songs like that one right now. Try again in a moment."
+                    .to_string(),
+            },
+        );
         return;
     }
     let mut queue = vec![seed.clone()];
@@ -313,8 +405,12 @@ pub async fn start_radio(ctx: Arc<DaemonContext>, seed: Track) {
         mix_id: id.clone(),
         kind: "radio".into(),
         reason: format!("Songs like {} by {}", seed.title, seed.artist),
-        reasons: std::iter::once("Where this radio started".to_string()).chain(batch.reasons.iter().cloned()).collect(),
-        explore: std::iter::once(false).chain(batch.explore.iter().copied()).collect(),
+        reasons: std::iter::once("Where this radio started".to_string())
+            .chain(batch.reasons.iter().cloned())
+            .collect(),
+        explore: std::iter::once(false)
+            .chain(batch.explore.iter().copied())
+            .collect(),
         built_at: now_secs(),
         next_refresh_at: 0,
         cover_urls: cover_urls(&queue),
@@ -336,14 +432,26 @@ pub fn stop_radio() {
     RADIO_GEN.fetch_add(1, Ordering::SeqCst);
 }
 
-async fn radio_batch(ctx: &DaemonContext, prep: &mut Prepared, seed: &Track, avoid: &HashSet<String>, epoch: u64) -> ShelfResult {
+async fn radio_batch(
+    ctx: &DaemonContext,
+    prep: &mut Prepared,
+    seed: &Track,
+    avoid: &HashSet<String>,
+    epoch: u64,
+) -> ShelfResult {
     let mut seed_c = Candidate::new(&seed.artist, &seed.title, crate::reco::Source::History);
     seed_c.track_id = Some(seed.id.clone());
     if let Some(t) = prep.tags.get(&artist_key(&seed.artist)) {
         seed_c.tags = t.clone();
     }
     let mut extra = {
-        let env = RetrieveEnv { cache: &ctx.cache, http: &ctx.http, profile: &prep.profile, tags: &prep.tags, now: prep.now };
+        let env = RetrieveEnv {
+            cache: &ctx.cache,
+            http: &ctx.http,
+            profile: &prep.profile,
+            tags: &prep.tags,
+            now: prep.now,
+        };
         radio_candidates(&env, &seed.artist, &seed_c.tags).await
     };
     for c in &mut extra {
@@ -354,9 +462,23 @@ async fn radio_batch(ctx: &DaemonContext, prep: &mut Prepared, seed: &Track, avo
         }
     }
     let id = format!("radio-{}", seed.id);
-    let spec = ShelfSpec { id, n: RADIO_BATCH, rerank: RerankCfg { max_per_artist: 3, ..RerankCfg::shelf(RADIO_BATCH) }, epoch };
+    let spec = ShelfSpec {
+        id,
+        n: RADIO_BATCH,
+        rerank: RerankCfg {
+            max_per_artist: 3,
+            ..RerankCfg::shelf(RADIO_BATCH)
+        },
+        epoch,
+    };
     let feedback = load_store().feedback;
-    let extras = Extras { feedback, seed: Some(seed_c), extra_pool: extra, avoid: avoid.clone(), ..Default::default() };
+    let extras = Extras {
+        feedback,
+        seed: Some(seed_c),
+        extra_pool: extra,
+        avoid: avoid.clone(),
+        ..Default::default()
+    };
     shelf_from(prep, &ctx.spotify, &ctx.cache, &spec, &extras).await
 }
 
@@ -372,7 +494,12 @@ async fn radio_loop(ctx: Arc<DaemonContext>, seed: Track, gen: u64, mut prep: Pr
         }
         let snap = ctx.player.snapshot().await;
         if snap.queue.first().map(|t| t.id.as_str()) != Some(seed.id.as_str()) {
-            send(&ctx, EventBody::RadioStopped { reason: "Radio ended because the queue was replaced.".to_string() });
+            send(
+                &ctx,
+                EventBody::RadioStopped {
+                    reason: "Radio ended because the queue was replaced.".to_string(),
+                },
+            );
             return;
         }
         let left = snap.queue.len().saturating_sub(snap.queue_pos + 1);
@@ -385,7 +512,12 @@ async fn radio_loop(ctx: Arc<DaemonContext>, seed: Track, gen: u64, mut prep: Pr
         if batch.tracks.is_empty() {
             empty_runs += 1;
             if empty_runs >= 3 {
-                send(&ctx, EventBody::RadioStopped { reason: "Radio ran out of songs to add.".to_string() });
+                send(
+                    &ctx,
+                    EventBody::RadioStopped {
+                        reason: "Radio ran out of songs to add.".to_string(),
+                    },
+                );
                 return;
             }
             continue;
@@ -422,23 +554,45 @@ pub async fn start_smart_shuffle(ctx: Arc<DaemonContext>, name: String, tracks: 
             let want = tracks.len() / 3 + 3;
             let mut spec_rerank = RerankCfg::shelf(want);
             spec_rerank.max_per_artist = 2;
-            let mut seed_c = Candidate::new(&seed.artist, &seed.title, crate::reco::Source::History);
+            let mut seed_c =
+                Candidate::new(&seed.artist, &seed.title, crate::reco::Source::History);
             seed_c.track_id = Some(seed.id.clone());
             if let Some(t) = prep.tags.get(&artist_key(&seed.artist)) {
                 seed_c.tags = t.clone();
             }
             let extra = {
-                let env = RetrieveEnv { cache: &ctx.cache, http: &ctx.http, profile: &prep.profile, tags: &prep.tags, now: prep.now };
+                let env = RetrieveEnv {
+                    cache: &ctx.cache,
+                    http: &ctx.http,
+                    profile: &prep.profile,
+                    tags: &prep.tags,
+                    now: prep.now,
+                };
                 radio_candidates(&env, &seed.artist, &seed_c.tags).await
             };
-            let spec = ShelfSpec { id: format!("smart-shuffle:{name}"), n: want, rerank: spec_rerank, epoch: 0 };
-            let extras = Extras { feedback: load_store().feedback, seed: Some(seed_c), extra_pool: extra, avoid: own_ids, ..Default::default() };
-            shelf_from(&mut prep, &ctx.spotify, &ctx.cache, &spec, &extras).await.tracks
+            let spec = ShelfSpec {
+                id: format!("smart-shuffle:{name}"),
+                n: want,
+                rerank: spec_rerank,
+                epoch: 0,
+            };
+            let extras = Extras {
+                feedback: load_store().feedback,
+                seed: Some(seed_c),
+                extra_pool: extra,
+                avoid: own_ids,
+                ..Default::default()
+            };
+            shelf_from(&mut prep, &ctx.spotify, &ctx.cache, &spec, &extras)
+                .await
+                .tracks
         }
         None => Vec::new(),
     };
     let out = smart_shuffle(&tracks, &suggestions, shelf_seed(&name, prep.now, 1), 3);
-    let Some(first) = out.tracks.first().cloned() else { return };
+    let Some(first) = out.tracks.first().cloned() else {
+        return;
+    };
     let q = out.tracks.clone();
     ctx.player
         .mutate(|s| {
@@ -449,5 +603,11 @@ pub async fn start_smart_shuffle(ctx: Arc<DaemonContext>, name: String, tracks: 
             s.position_ms = 0;
         })
         .await;
-    send(&ctx, EventBody::SmartShuffleStarted { name, suggested: out.suggested });
+    send(
+        &ctx,
+        EventBody::SmartShuffleStarted {
+            name,
+            suggested: out.suggested,
+        },
+    );
 }

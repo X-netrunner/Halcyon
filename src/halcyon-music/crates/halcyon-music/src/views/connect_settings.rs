@@ -36,7 +36,12 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, on_toggle: M) -> Element<'a, M> {
     let palette = p.palette;
     let bad = p.known && !p.available;
     let toggle: Element<'a, M> = if p.known && p.available {
-        super::settings::action(if p.enabled { "On" } else { "Off" }, None, palette, on_toggle)
+        super::settings::action(
+            if p.enabled { "On" } else { "Off" },
+            None,
+            palette,
+            on_toggle,
+        )
     } else {
         Space::with_width(Length::Shrink).into()
     };
@@ -67,15 +72,29 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, on_toggle: M) -> Element<'a, M> {
 mod tests {
     use super::*;
 
-    fn props(known: bool, enabled: bool, available: bool, device: Option<&'static str>) -> Props<'static> {
-        Props { known, enabled, available, device, palette: HalcyonPalette::default() }
+    fn props(
+        known: bool,
+        enabled: bool,
+        available: bool,
+        device: Option<&'static str>,
+    ) -> Props<'static> {
+        Props {
+            known,
+            enabled,
+            available,
+            device,
+            palette: HalcyonPalette::default(),
+        }
     }
 
     #[test]
     fn the_status_line_says_what_is_going_on() {
         assert!(status_line(&props(false, false, false, None)).starts_with("Waiting"));
         assert!(status_line(&props(true, true, false, None)).contains("no Connect code"));
-        assert_eq!(status_line(&props(true, true, true, Some("Halcyon (box)"))), "On. Listed in Spotify as \"Halcyon (box)\".");
+        assert_eq!(
+            status_line(&props(true, true, true, Some("Halcyon (box)"))),
+            "On. Listed in Spotify as \"Halcyon (box)\"."
+        );
         assert!(status_line(&props(true, true, true, None)).starts_with("On. Registering"));
         assert!(status_line(&props(true, false, true, Some("Halcyon (box)"))).starts_with("Off."));
     }

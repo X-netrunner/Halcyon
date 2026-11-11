@@ -36,7 +36,13 @@ impl Backoff {
     }
 
     pub fn with_params(base: Duration, max: Duration) -> Self {
-        Self { base, max, current: base, last_restart: None, attempts: 0 }
+        Self {
+            base,
+            max,
+            current: base,
+            last_restart: None,
+            attempts: 0,
+        }
     }
 
     /// Delay to wait before the next restart, and the attempt number.
@@ -97,7 +103,10 @@ where
                     // reset backoff, but keep the supervisor alive in case the
                     // exit was a mistake (components must run forever).
                     backoff.note_healthy(Instant::now());
-                    warn!(component = name, "supervised task exited cleanly; restarting");
+                    warn!(
+                        component = name,
+                        "supervised task exited cleanly; restarting"
+                    );
                 }
                 Ok(Err(e)) => {
                     error!(component = name, error = %e, "supervised task failed; restarting");
@@ -114,7 +123,12 @@ where
             if let Some(cb) = on_restart.as_ref() {
                 cb(name, attempt);
             }
-            info!(component = name, attempt, ?delay, "restarting supervised task");
+            info!(
+                component = name,
+                attempt,
+                ?delay,
+                "restarting supervised task"
+            );
             tokio::time::sleep(delay).await;
         }
     })
@@ -129,7 +143,11 @@ where
 {
     tokio::spawn(async move {
         if let Err(join_err) = tokio::spawn(job).await {
-            error!(component = name, panic = join_err.to_string(), "background job failed; skipped");
+            error!(
+                component = name,
+                panic = join_err.to_string(),
+                "background job failed; skipped"
+            );
         }
     })
 }
@@ -162,7 +180,7 @@ mod tests {
         let start = Instant::now();
         let mut b = Backoff::with_params(Duration::from_millis(10), Duration::from_millis(80));
         let _ = b.next_delay(start); // 10ms taken, ladder now at 20ms
-        // Task ran healthy for 60+ s.
+                                     // Task ran healthy for 60+ s.
         b.note_healthy(start + HEALTHY_AFTER + Duration::from_secs(1));
         let (d, a) = b.next_delay(start + HEALTHY_AFTER + Duration::from_secs(2));
         assert_eq!(d, Duration::from_millis(10)); // ladder reset
@@ -185,21 +203,20 @@ mod tests {
         let runs = Arc::new(AtomicU32::new(0));
         let r = runs.clone();
         let cb = Arc::new(|_name: &'static str, _attempt: u32| {});
-        let sup = supervise(
-            "test-component",
-            Some(cb),
-            move || {
-                let r = r.clone();
-                async move {
-                    r.fetch_add(1, Ordering::SeqCst);
-                    anyhow::bail!("boom")
-                }
-            },
-        );
+        let sup = supervise("test-component", Some(cb), move || {
+            let r = r.clone();
+            async move {
+                r.fetch_add(1, Ordering::SeqCst);
+                anyhow::bail!("boom")
+            }
+        });
         // Real time: first backoff is 250 ms, so two runs fit well under 2 s.
         tokio::time::sleep(Duration::from_millis(700)).await;
         sup.abort();
-        assert!(runs.load(Ordering::SeqCst) >= 2, "task was restarted at least once");
+        assert!(
+            runs.load(Ordering::SeqCst) >= 2,
+            "task was restarted at least once"
+        );
     }
 
     #[tokio::test]

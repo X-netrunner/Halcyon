@@ -51,7 +51,15 @@ fn monitors() -> Vec<Mon> {
     let mut v = Vec::new();
     if let Some(Json::Arr(items)) = json::parse(&util::out("hyprctl", &["monitors", "-j"])) {
         for m in items {
-            let (Some(id), Some(x), Some(y), Some(w), Some(h)) = (m.num("id"), m.num("x"), m.num("y"), m.num("width"), m.num("height")) else { continue };
+            let (Some(id), Some(x), Some(y), Some(w), Some(h)) = (
+                m.num("id"),
+                m.num("x"),
+                m.num("y"),
+                m.num("width"),
+                m.num("height"),
+            ) else {
+                continue;
+            };
             let scale = m.num("scale").filter(|s| *s > 0.0).unwrap_or(1.0);
             let turned = matches!(m.num("transform"), Some(t) if (t as i64) % 2 == 1);
             let (w, h) = if turned { (h, w) } else { (w, h) };
@@ -62,7 +70,13 @@ fn monitors() -> Vec<Mon> {
                 }
                 _ => (0.0, 0.0, 0.0, 0.0),
             };
-            v.push(Mon { id, x0: x + r.0, y0: y + r.1, x1: x + w / scale - r.2, y1: y + h / scale - r.3 });
+            v.push(Mon {
+                id,
+                x0: x + r.0,
+                y0: y + r.1,
+                x1: x + w / scale - r.2,
+                y1: y + h / scale - r.3,
+            });
         }
     }
     v
@@ -77,11 +91,22 @@ fn to_win(c: &Json) -> Option<Win> {
     }
     let (x, y) = pair(c, "at")?;
     let (w, h) = pair(c, "size")?;
-    Some(Win { addr: c.str("address")?.to_string(), x, y, w, h, mon: c.num("monitor")? })
+    Some(Win {
+        addr: c.str("address")?.to_string(),
+        x,
+        y,
+        w,
+        h,
+        mon: c.num("monitor")?,
+    })
 }
 
 fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
-    if hi < lo { lo } else { v.max(lo).min(hi) }
+    if hi < lo {
+        lo
+    } else {
+        v.max(lo).min(hi)
+    }
 }
 
 /// Where the window has to be so that it lies inside the free area (None = it already does).
@@ -97,7 +122,10 @@ fn target(w: &Win, mons: &[Mon]) -> Option<(i64, i64)> {
 
 fn move_to(addr: &str, x: i64, y: i64, lua: &mut bool) {
     if *lua {
-        let arg = format!("hl.dsp.window.move({{ x = {}, y = {}, window = \"address:{}\" }})", x, y, addr);
+        let arg = format!(
+            "hl.dsp.window.move({{ x = {}, y = {}, window = \"address:{}\" }})",
+            x, y, addr
+        );
         if util::out("hyprctl", &["dispatch", &arg]).trim() == "ok" {
             return;
         }
@@ -115,7 +143,10 @@ fn all_floating() -> Vec<Win> {
 }
 
 fn active_floating() -> Option<Win> {
-    to_win(&json::parse(&util::out("hyprctl", &["activewindow", "-j"]))?)
+    to_win(&json::parse(&util::out(
+        "hyprctl",
+        &["activewindow", "-j"],
+    ))?)
 }
 
 fn socket2() -> Option<UnixStream> {
@@ -155,21 +186,37 @@ pub fn run() -> i32 {
     let mut dirty = true;
     let mut buf = [0u8; 4096];
     loop {
-        let wait = if drag { Duration::from_millis(150) } else { Duration::from_secs(30) };
+        let wait = if drag {
+            Duration::from_millis(150)
+        } else {
+            Duration::from_secs(30)
+        };
         let _ = sock.set_read_timeout(Some(wait));
         match sock.read(&mut buf) {
             Ok(0) => return 0, // Hyprland ended
             Ok(n) => {
                 let ev = String::from_utf8_lossy(&buf[..n]);
                 if ev.lines().any(|l| {
-                    ["openwindow>>", "movewindow", "changefloatingmode>>", "fullscreen>>", "activewindowv2>>", "monitoradded", "monitorremoved", "configreloaded", "workspace"]
-                        .iter()
-                        .any(|k| l.starts_with(k))
+                    [
+                        "openwindow>>",
+                        "movewindow",
+                        "changefloatingmode>>",
+                        "fullscreen>>",
+                        "activewindowv2>>",
+                        "monitoradded",
+                        "monitorremoved",
+                        "configreloaded",
+                        "workspace",
+                    ]
+                    .iter()
+                    .any(|k| l.starts_with(k))
                 }) {
                     dirty = true;
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {}
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
             Err(_) => return 0,
         }
         if !enabled() {

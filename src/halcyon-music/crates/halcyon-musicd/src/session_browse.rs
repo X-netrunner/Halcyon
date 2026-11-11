@@ -113,14 +113,21 @@ pub fn playlist_from_librespot(p: &LsPlaylist) -> Playlist {
     let art_url = if p.attributes.picture.is_empty() {
         None
     } else {
-        Some(format!("https://i.scdn.co/image/{}", hex(&p.attributes.picture)))
+        Some(format!(
+            "https://i.scdn.co/image/{}",
+            hex(&p.attributes.picture)
+        ))
     };
     Playlist {
         uri: format!("spotify:playlist:{id}"),
         id,
         name: p.attributes.name.clone(),
         owner,
-        snapshot_id: if p.revision.is_empty() { None } else { Some(hex(&p.revision)) },
+        snapshot_id: if p.revision.is_empty() {
+            None
+        } else {
+            Some(hex(&p.revision))
+        },
         art_url,
         // `length` is 0 on a playlist read this way, so count the songs listed in it
         // (and trust `length` when it is the larger of the two).
@@ -144,7 +151,14 @@ pub fn page_bounds(total: usize, limit: usize, offset: usize) -> (usize, usize) 
 pub fn make_page<T>(items: Vec<T>, total: usize, limit: usize, offset: usize) -> Page<T> {
     let next = (offset + items.len() < total).then(|| format!("offset={}", offset + items.len()));
     let previous = (offset > 0).then(|| format!("offset={}", offset.saturating_sub(limit)));
-    Page { items, total, limit, offset, next, previous }
+    Page {
+        items,
+        total,
+        limit,
+        offset,
+        next,
+        previous,
+    }
 }
 
 /// Track URIs listed by a context (liked songs, search results), in order, without repeats.
@@ -161,7 +175,11 @@ pub fn track_uris_from_context(ctx: &Context) -> Vec<String> {
 
 /// Search context URI: `spotify:search:never+gonna` (whitespace becomes `+`).
 pub fn search_context_uri(query: &str) -> String {
-    let q = query.split_whitespace().map(percent_encode_non_ascii).collect::<Vec<_>>().join("+");
+    let q = query
+        .split_whitespace()
+        .map(percent_encode_non_ascii)
+        .collect::<Vec<_>>()
+        .join("+");
     format!("spotify:search:{q}")
 }
 
@@ -301,7 +319,10 @@ impl SessionBrowse {
                 .get_rootlist(from, Some(ROOTLIST_CHUNK))
                 .await
                 .map_err(|e| api_err("rootlist request failed", e))?;
-            let msg = librespot_protocol::playlist4_external::SelectedListContent::parse_from_bytes(&bytes)
+            let msg =
+                librespot_protocol::playlist4_external::SelectedListContent::parse_from_bytes(
+                    &bytes,
+                )
                 .map_err(|e| api_err("rootlist parse failed", e))?;
             let list = librespot_metadata::playlist::list::SelectedListContent::try_from(&msg)
                 .map_err(|e| api_err("rootlist decode failed", e))?;
@@ -333,7 +354,8 @@ impl SessionBrowse {
         let sem = Arc::new(Semaphore::new(LOOKUP_CONCURRENCY));
         let mut set = tokio::task::JoinSet::new();
         for (idx, uri) in all.get(start..end).unwrap_or(&[]).iter().enumerate() {
-            let (this, session, sem, uri) = (self.clone(), session.clone(), sem.clone(), uri.clone());
+            let (this, session, sem, uri) =
+                (self.clone(), session.clone(), sem.clone(), uri.clone());
             set.spawn(async move {
                 let _permit = sem.acquire().await.ok();
                 (idx, this.playlist_meta(&session, &uri).await)
@@ -378,7 +400,9 @@ impl SessionBrowse {
             .filter_map(|i| i.id.to_uri().ok())
             .collect();
         let (start, end) = page_bounds(all.len(), limit as usize, offset as usize);
-        let items = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
+        let items = self
+            .tracks_for(&session, all.get(start..end).unwrap_or(&[]))
+            .await;
         Ok(make_page(items, all.len(), limit as usize, offset as usize))
     }
 
@@ -391,9 +415,15 @@ impl SessionBrowse {
             .await
             .map_err(|e| api_err("liked songs request failed", e))?;
         let all = track_uris_from_context(&ctx);
-        debug!(pages = ctx.pages.len(), tracks = all.len(), "liked songs context");
+        debug!(
+            pages = ctx.pages.len(),
+            tracks = all.len(),
+            "liked songs context"
+        );
         let (start, end) = page_bounds(all.len(), limit as usize, offset as usize);
-        let items = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
+        let items = self
+            .tracks_for(&session, all.get(start..end).unwrap_or(&[]))
+            .await;
         Ok(make_page(items, all.len(), limit as usize, offset as usize))
     }
 
@@ -419,7 +449,10 @@ impl SessionBrowse {
             let head: String = body.chars().take(400).collect();
             warn!(bytes = bytes.len(), body_head = %head, "followed artists: no artists found in the answer");
         } else {
-            debug!(count = artists.len(), "followed artists loaded over the session");
+            debug!(
+                count = artists.len(),
+                "followed artists loaded over the session"
+            );
         }
         Ok(artists)
     }
@@ -431,7 +464,8 @@ impl SessionBrowse {
     pub async fn profile(&self) -> Result<crate::profile::SessionProfile, ApiError> {
         let session = self.session().await?;
         let username = session.username();
-        let plan = crate::profile::plan_from_attribute(session.get_user_attribute("type").as_deref());
+        let plan =
+            crate::profile::plan_from_attribute(session.get_user_attribute("type").as_deref());
         let mut out = crate::profile::SessionProfile {
             username: Some(username.clone()).filter(|u| !u.trim().is_empty()),
             plan,
@@ -440,7 +474,11 @@ impl SessionBrowse {
         let endpoint = format!(
             "/user-profile-view/v3/profile/{username}?playlist_limit=0&artist_limit=0&episode_limit=0"
         );
-        match session.spclient().request(&Method::GET, &endpoint, None, None).await {
+        match session
+            .spclient()
+            .request(&Method::GET, &endpoint, None, None)
+            .await
+        {
             Ok(bytes) => {
                 let body = String::from_utf8_lossy(&bytes);
                 let parsed = crate::profile::parse_profile_json(&body);
@@ -496,8 +534,14 @@ impl SessionBrowse {
             .await
             .map_err(|e| api_err("search request failed", e))?;
         let all = track_uris_from_context(&ctx);
-        let (start, end) = page_bounds(all.len(), limit.min(SEARCH_MAX as u32) as usize, offset as usize);
-        let tracks = self.tracks_for(&session, all.get(start..end).unwrap_or(&[])).await;
+        let (start, end) = page_bounds(
+            all.len(),
+            limit.min(SEARCH_MAX as u32) as usize,
+            offset as usize,
+        );
+        let tracks = self
+            .tracks_for(&session, all.get(start..end).unwrap_or(&[]))
+            .await;
         Ok(DetailedSearchResults {
             query: query.to_string(),
             search_type: search_type.to_string(),
@@ -527,9 +571,17 @@ pub fn followed_artists_from_json(body: &str, limit: usize) -> Vec<Artist> {
         .unwrap_or_default();
     let mut out: Vec<Artist> = Vec::new();
     for item in list {
-        let Some(uri) = item.get("uri").and_then(|u| u.as_str()) else { continue };
-        let Some(id) = uri.strip_prefix("spotify:artist:") else { continue };
-        let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("").trim();
+        let Some(uri) = item.get("uri").and_then(|u| u.as_str()) else {
+            continue;
+        };
+        let Some(id) = uri.strip_prefix("spotify:artist:") else {
+            continue;
+        };
+        let name = item
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .trim();
         if name.is_empty() || out.iter().any(|a| a.id == id) {
             continue;
         }
@@ -556,8 +608,14 @@ pub fn followed_artists_from_json(body: &str, limit: usize) -> Vec<Artist> {
 mod tests {
     #[test]
     fn search_uri_encodes_only_non_ascii() {
-        assert_eq!(search_context_uri("never gonna"), "spotify:search:never+gonna");
-        assert_eq!(search_context_uri("ADÉLA Nicole"), "spotify:search:AD%C3%89LA+Nicole");
+        assert_eq!(
+            search_context_uri("never gonna"),
+            "spotify:search:never+gonna"
+        );
+        assert_eq!(
+            search_context_uri("ADÉLA Nicole"),
+            "spotify:search:AD%C3%89LA+Nicole"
+        );
     }
 
     use super::*;
@@ -607,14 +665,20 @@ mod tests {
         ]);
         assert_eq!(
             track_uris_from_context(&ctx),
-            vec!["spotify:track:aaa".to_string(), "spotify:track:ccc".to_string()]
+            vec![
+                "spotify:track:aaa".to_string(),
+                "spotify:track:ccc".to_string()
+            ]
         );
         assert!(track_uris_from_context(&Context::new()).is_empty());
     }
 
     #[test]
     fn search_uri_joins_words_with_plus() {
-        assert_eq!(search_context_uri("never  gonna give"), "spotify:search:never+gonna+give");
+        assert_eq!(
+            search_context_uri("never  gonna give"),
+            "spotify:search:never+gonna+give"
+        );
         assert_eq!(search_context_uri("  x "), "spotify:search:x");
     }
 

@@ -6,8 +6,8 @@
 
 use crate::machine::Advice;
 use crate::theme::{alpha, radius, space, type_size, HalcyonPalette};
-use iced::widget::{column, container, row, text, text_input, Space};
 use halcyon_music_core::models::LlmModelInfo;
+use iced::widget::{column, container, row, text, text_input, Space};
 use iced::{Alignment, Element, Length};
 
 /// What the GUI knows about the connection to the model.
@@ -82,7 +82,9 @@ pub fn human_size(bytes: u64) -> String {
 
 /// How far a download is, as a whole percent (0 when the size is unknown).
 pub fn percent(done: u64, total: u64) -> u64 {
-    done.saturating_mul(100).checked_div(total).map_or(0, |p| p.min(100))
+    done.saturating_mul(100)
+        .checked_div(total)
+        .map_or(0, |p| p.min(100))
 }
 
 fn model_line(info: &LlmModelInfo) -> String {
@@ -93,7 +95,10 @@ fn model_line(info: &LlmModelInfo) -> String {
         _ => s.push_str(" · checksum verified"),
     }
     if !info.installed && info.partial_bytes > 0 {
-        s.push_str(&format!(" · {} already downloaded", human_size(info.partial_bytes)));
+        s.push_str(&format!(
+            " · {} already downloaded",
+            human_size(info.partial_bytes)
+        ));
     }
     s
 }
@@ -117,15 +122,27 @@ fn guide<'a, M: Clone + 'a>(p: &Props<'a>, apply: M) -> Element<'a, M> {
             _ => p.advice.local_model.is_some_and(|m| m == p.local_model),
         };
     let tag: Element<'a, M> = if already {
-        text("In use").size(type_size::SMALL).color(palette.accent).into()
+        text("In use")
+            .size(type_size::SMALL)
+            .color(palette.accent)
+            .into()
     } else {
         super::settings::action("Use this", None, palette, apply)
     };
     let suggestion = row![
         column![
-            text(format!("Suggested for this computer ({}): {}", p.machine, p.advice.title)).size(type_size::BODY).color(palette.text),
-            text(p.advice.why).size(type_size::SMALL).color(palette.text_muted),
-            text("Sizes and hardware only: the models have not been timed on a real machine yet.").size(type_size::SMALL).color(palette.text_muted),
+            text(format!(
+                "Suggested for this computer ({}): {}",
+                p.machine, p.advice.title
+            ))
+            .size(type_size::BODY)
+            .color(palette.text),
+            text(p.advice.why)
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
+            text("Sizes and hardware only: the models have not been timed on a real machine yet.")
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
         ]
         .spacing(2)
         .width(Length::Fill),
@@ -159,14 +176,36 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
     let selected = p.models.iter().find(|i| i.id == p.local_model);
 
     let status: Element<'a, M> = if !p.enabled {
-        text("Off. Nothing about your music is sent anywhere.").size(type_size::SMALL).color(palette.text_muted).into()
+        text("Off. Nothing about your music is sent anywhere.")
+            .size(type_size::SMALL)
+            .color(palette.text_muted)
+            .into()
     } else if local && p.download.map(Download::running).unwrap_or(false) {
-        let d = p.download.map(|d| format!("{} {}%…", if d.state == "verifying" { "Checking the file" } else { "Downloading" }, percent(d.done, d.total)));
-        text(d.unwrap_or_default()).size(type_size::SMALL).color(palette.text_muted).into()
+        let d = p.download.map(|d| {
+            format!(
+                "{} {}%…",
+                if d.state == "verifying" {
+                    "Checking the file"
+                } else {
+                    "Downloading"
+                },
+                percent(d.done, d.total)
+            )
+        });
+        text(d.unwrap_or_default())
+            .size(type_size::SMALL)
+            .color(palette.text_muted)
+            .into()
     } else {
         match p.reach {
-            Reach::Unknown => text("Checking the connection…").size(type_size::SMALL).color(palette.text_muted).into(),
-            Reach::Ready => text("Ready.").size(type_size::SMALL).color(palette.accent).into(),
+            Reach::Unknown => text("Checking the connection…")
+                .size(type_size::SMALL)
+                .color(palette.text_muted)
+                .into(),
+            Reach::Ready => text("Ready.")
+                .size(type_size::SMALL)
+                .color(palette.accent)
+                .into(),
             Reach::Trouble => text(p.hint.unwrap_or("Could not reach the model."))
                 .size(type_size::SMALL)
                 .color(palette.danger)
@@ -183,28 +222,51 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
     };
     let toggle_row = row![
         column![
-            text("Smart suggestions").size(type_size::BODY).color(palette.text),
-            text(size_note).size(type_size::SMALL).color(palette.text_muted),
+            text("Smart suggestions")
+                .size(type_size::BODY)
+                .color(palette.text),
+            text(size_note)
+                .size(type_size::SMALL)
+                .color(palette.text_muted),
         ]
         .spacing(2)
         .width(Length::Fill),
         Space::with_width(space::MD),
-        super::settings::action(if p.enabled { "On" } else { "Off" }, None, palette, m.toggle.clone()),
+        super::settings::action(
+            if p.enabled { "On" } else { "Off" },
+            None,
+            palette,
+            m.toggle.clone()
+        ),
     ]
     .align_y(Alignment::Center);
 
     let backend_row = row![
         column![
             text("Runs on").size(type_size::BODY).color(palette.text),
-            text(if local { "The built-in model needs no other app." } else { "Your own Ollama server." })
-                .size(type_size::SMALL)
-                .color(palette.text_muted),
+            text(if local {
+                "The built-in model needs no other app."
+            } else {
+                "Your own Ollama server."
+            })
+            .size(type_size::SMALL)
+            .color(palette.text_muted),
         ]
         .spacing(2),
         Space::with_width(Length::Fill),
-        super::settings::action(if local { "Built-in ✓" } else { "Built-in" }, None, palette, (m.backend)("local")),
+        super::settings::action(
+            if local { "Built-in ✓" } else { "Built-in" },
+            None,
+            palette,
+            (m.backend)("local")
+        ),
         Space::with_width(space::SM),
-        super::settings::action(if local { "Ollama" } else { "Ollama ✓" }, None, palette, (m.backend)("ollama")),
+        super::settings::action(
+            if local { "Ollama" } else { "Ollama ✓" },
+            None,
+            palette,
+            (m.backend)("ollama")
+        ),
     ]
     .align_y(Alignment::Center);
 
@@ -228,7 +290,10 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
         }
         for info in p.models {
             let in_use = info.id == p.local_model;
-            let busy_here = p.download.map(|d| d.running() && d.id == info.id).unwrap_or(false);
+            let busy_here = p
+                .download
+                .map(|d| d.running() && d.id == info.id)
+                .unwrap_or(false);
             let mut line = model_line(info);
             if let Some(d) = p.download {
                 if d.id == info.id {
@@ -241,21 +306,58 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
             }
             let mut buttons = row![].align_y(Alignment::Center).spacing(space::SM);
             if !in_use {
-                buttons = buttons.push(super::settings::action("Use", None, palette, (m.pick)(info.id.clone())));
+                buttons = buttons.push(super::settings::action(
+                    "Use",
+                    None,
+                    palette,
+                    (m.pick)(info.id.clone()),
+                ));
             }
             if busy_here {
-                buttons = buttons.push(super::settings::action("Cancel", None, palette, m.cancel.clone()));
+                buttons = buttons.push(super::settings::action(
+                    "Cancel",
+                    None,
+                    palette,
+                    m.cancel.clone(),
+                ));
             } else if info.installed {
-                buttons = buttons.push(super::settings::action("Delete", None, palette, (m.delete)(info.id.clone())));
+                buttons = buttons.push(super::settings::action(
+                    "Delete",
+                    None,
+                    palette,
+                    (m.delete)(info.id.clone()),
+                ));
             } else {
-                buttons = buttons.push(super::settings::action("Download", None, palette, (m.download)(info.id.clone())));
+                buttons = buttons.push(super::settings::action(
+                    "Download",
+                    None,
+                    palette,
+                    (m.download)(info.id.clone()),
+                ));
             }
-            let name = if in_use { format!("{} (in use)", info.name) } else { info.name.clone() };
+            let name = if in_use {
+                format!("{} (in use)", info.name)
+            } else {
+                info.name.clone()
+            };
             body = body.push(
                 row![
                     column![
-                        text(name).size(type_size::BODY).color(if in_use { palette.accent } else { palette.text }),
-                        text(line).size(type_size::SMALL).color(if p.download.map(|d| d.id == info.id && d.state == "failed").unwrap_or(false) { palette.danger } else { palette.text_muted }),
+                        text(name).size(type_size::BODY).color(if in_use {
+                            palette.accent
+                        } else {
+                            palette.text
+                        }),
+                        text(line).size(type_size::SMALL).color(
+                            if p.download
+                                .map(|d| d.id == info.id && d.state == "failed")
+                                .unwrap_or(false)
+                            {
+                                palette.danger
+                            } else {
+                                palette.text_muted
+                            }
+                        ),
                     ]
                     .spacing(2)
                     .width(Length::Fill),
@@ -277,18 +379,27 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
                 border: iced::Border {
                     radius: radius::MD.into(),
                     width: 1.0,
-                    color: if matches!(status, text_input::Status::Focused) { palette.accent } else { alpha(palette.border, 0.30) },
+                    color: if matches!(status, text_input::Status::Focused) {
+                        palette.accent
+                    } else {
+                        alpha(palette.border, 0.30)
+                    },
                 },
                 icon: palette.text_muted,
                 placeholder: palette.text_muted,
                 value: palette.text,
-                selection: iced::Color { a: 0.3, ..palette.accent },
+                selection: iced::Color {
+                    a: 0.3,
+                    ..palette.accent
+                },
             });
         body = body.push(
             row![
                 column![
                     text("Model").size(type_size::BODY).color(palette.text),
-                    text("Any model you have in Ollama. Press Enter to save.").size(type_size::SMALL).color(palette.text_muted),
+                    text("Any model you have in Ollama. Press Enter to save.")
+                        .size(type_size::SMALL)
+                        .color(palette.text_muted),
                 ]
                 .spacing(2),
                 Space::with_width(Length::Fill),
@@ -313,7 +424,14 @@ pub fn view<'a, M: Clone + 'a>(p: Props<'a>, m: Msgs<'a, M>) -> Element<'a, M> {
     .size(type_size::SMALL)
     .color(palette.text_muted);
 
-    super::settings::card("Smart suggestions", body.push(test_row).push(Space::with_height(space::MD)).push(privacy).into(), palette)
+    super::settings::card(
+        "Smart suggestions",
+        body.push(test_row)
+            .push(Space::with_height(space::MD))
+            .push(privacy)
+            .into(),
+        palette,
+    )
 }
 
 #[cfg(test)]
@@ -337,7 +455,13 @@ mod tests {
 
     #[test]
     fn model_line_says_how_it_was_checked_and_what_can_resume() {
-        let mut i = LlmModelInfo { id: "a".into(), name: "A".into(), size_bytes: 491_000_000, licence: "Apache-2.0".into(), ..Default::default() };
+        let mut i = LlmModelInfo {
+            id: "a".into(),
+            name: "A".into(),
+            size_bytes: 491_000_000,
+            licence: "Apache-2.0".into(),
+            ..Default::default()
+        };
         assert_eq!(model_line(&i), "491 MB · Apache-2.0");
         i.partial_bytes = 100_000_000;
         assert!(model_line(&i).contains("100 MB already downloaded"));
@@ -350,7 +474,10 @@ mod tests {
 
     #[test]
     fn running_states() {
-        let d = |s: &str| Download { state: s.into(), ..Default::default() };
+        let d = |s: &str| Download {
+            state: s.into(),
+            ..Default::default()
+        };
         assert!(d("downloading").running() && d("verifying").running());
         assert!(!d("done").running() && !d("failed").running() && !d("cancelled").running());
     }

@@ -17,7 +17,8 @@ fn pactl(args: &[&str]) -> String {
 
 fn devices(kind: &str, default: &str, skip_monitors: bool) -> Vec<Value> {
     let raw = pactl(&["-f", "json", "list", kind]);
-    let data: Vec<Value> = serde_json::from_str(if raw.is_empty() { "[]" } else { &raw }).unwrap_or_default();
+    let data: Vec<Value> =
+        serde_json::from_str(if raw.is_empty() { "[]" } else { &raw }).unwrap_or_default();
     let mut out = Vec::new();
     for d in data {
         let name = d["name"].as_str().unwrap_or("").to_string();
@@ -32,12 +33,17 @@ fn devices(kind: &str, default: &str, skip_monitors: bool) -> Vec<Value> {
             other => other.to_string(),
         };
         let low = format!("{} {} {}", name, desc, port).to_lowercase();
-        let form = props["device.form_factor"].as_str().unwrap_or("").to_lowercase();
+        let form = props["device.form_factor"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase();
         let k = if name.starts_with("bluez") || props["device.bus"].as_str() == Some("bluetooth") {
             "bluetooth"
         } else if low.contains("hdmi") || low.contains("displayport") {
             "hdmi"
-        } else if ["headphone", "headset", "hands-free"].contains(&form.as_str()) || low.contains("headphone") {
+        } else if ["headphone", "headset", "hands-free"].contains(&form.as_str())
+            || low.contains("headphone")
+        {
             "headphones"
         } else if kind == "sources" {
             "mic"
@@ -58,7 +64,9 @@ fn devices(kind: &str, default: &str, skip_monitors: bool) -> Vec<Value> {
 pub fn audio() {
     let ds = pactl(&["get-default-sink"]);
     let dsrc = pactl(&["get-default-source"]);
-    emit(json!({ "sinks": devices("sinks", &ds, false), "sources": devices("sources", &dsrc, true) }));
+    emit(
+        json!({ "sinks": devices("sinks", &ds, false), "sources": devices("sources", &dsrc, true) }),
+    );
 }
 
 // ---------------------------------------------------------------- bluetooth
@@ -73,7 +81,13 @@ pub fn bt() {
     let mut devs: Vec<Value> = Vec::new();
     if on {
         if !scanning {
-            spawn_quiet("sh", &["-c", "nohup bluetoothctl --timeout 15 scan on >/dev/null 2>&1 &"]);
+            spawn_quiet(
+                "sh",
+                &[
+                    "-c",
+                    "nohup bluetoothctl --timeout 15 scan on >/dev/null 2>&1 &",
+                ],
+            );
             scanning = true;
         }
 
@@ -103,7 +117,13 @@ pub fn bt() {
                 continue;
             }
             let (mac, name) = rest.split_at(17);
-            let ok = mac.chars().enumerate().all(|(i, c)| if i % 3 == 2 { c == ':' } else { c.is_ascii_hexdigit() });
+            let ok = mac.chars().enumerate().all(|(i, c)| {
+                if i % 3 == 2 {
+                    c == ':'
+                } else {
+                    c.is_ascii_hexdigit()
+                }
+            });
             if !ok {
                 continue;
             }
@@ -146,7 +166,13 @@ pub fn bt() {
     devs.sort_by_key(|d| {
         let connected = d["connected"].as_bool().unwrap_or(false);
         let paired = d["paired"].as_bool().unwrap_or(false);
-        let rank = if connected { 0 } else if paired { 1 } else { 2 };
+        let rank = if connected {
+            0
+        } else if paired {
+            1
+        } else {
+            2
+        };
         (rank, d["name"].as_str().unwrap_or("").to_lowercase())
     });
     emit(json!({ "on": on, "scanning": scanning, "devs": devs }));
@@ -189,13 +215,31 @@ pub fn wifi() {
 
     let mut best: HashMap<String, (bool, bool, i64, bool)> = HashMap::new(); // active, saved, signal, secure
     if on {
-        for line in run("nmcli", &["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"], 6).lines() {
+        for line in run(
+            "nmcli",
+            &[
+                "-t",
+                "-f",
+                "IN-USE,SSID,SIGNAL,SECURITY",
+                "device",
+                "wifi",
+                "list",
+            ],
+            6,
+        )
+        .lines()
+        {
             let f = fields(line);
             if f.len() < 4 || f[1].is_empty() {
                 continue;
             }
             let signal = f[2].parse::<i64>().unwrap_or(0);
-            let net = (f[0] == "*", saved.contains(&f[1]), signal, !(f[3].is_empty() || f[3] == "--"));
+            let net = (
+                f[0] == "*",
+                saved.contains(&f[1]),
+                signal,
+                !(f[3].is_empty() || f[3] == "--"),
+            );
             match best.get(&f[1]) {
                 Some(old) if !(net.0 || (!old.0 && net.2 > old.2)) => {}
                 _ => {
@@ -216,7 +260,16 @@ pub fn wifi() {
 
 // ---------------------------------------------------------------- disk
 const SKIP_FS: &[&str] = &[
-    "tmpfs", "devtmpfs", "efivarfs", "squashfs", "overlay", "proc", "sysfs", "cgroup2", "ramfs", "fuse.portal",
+    "tmpfs",
+    "devtmpfs",
+    "efivarfs",
+    "squashfs",
+    "overlay",
+    "proc",
+    "sysfs",
+    "cgroup2",
+    "ramfs",
+    "fuse.portal",
 ];
 
 fn unescape_mount(s: &str) -> String {
@@ -225,7 +278,10 @@ fn unescape_mount(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'\\' && i + 3 < b.len() && b[i + 1..i + 4].iter().all(|c| (b'0'..=b'7').contains(c)) {
+        if b[i] == b'\\'
+            && i + 3 < b.len()
+            && b[i + 1..i + 4].iter().all(|c| (b'0'..=b'7').contains(c))
+        {
             let v = (b[i + 1] - b'0') * 64 + (b[i + 2] - b'0') * 8 + (b[i + 3] - b'0');
             out.push(v);
             i += 4;
@@ -248,7 +304,10 @@ fn disks_once() -> Value {
         if SKIP_FS.contains(&fs.as_str()) || !src.starts_with("/dev/") {
             continue;
         }
-        if ["/boot", "/efi", "/var/lib", "/run/user", "/snap"].iter().any(|x| tgt.starts_with(x)) {
+        if ["/boot", "/efi", "/var/lib", "/run/user", "/snap"]
+            .iter()
+            .any(|x| tgt.starts_with(x))
+        {
             continue;
         }
         if let Some(old) = seen.get(&src) {
@@ -341,7 +400,14 @@ pub fn gpu(iv: f64) {
                     state = "off";
                 }
                 _ => {
-                    let out = run("nvidia-smi", &["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], 2);
+                    let out = run(
+                        "nvidia-smi",
+                        &[
+                            "--query-gpu=utilization.gpu",
+                            "--format=csv,noheader,nounits",
+                        ],
+                        2,
+                    );
                     let line = out.lines().next().unwrap_or("").trim();
                     let digits: String = line.chars().filter(|c| c.is_ascii_digit()).collect();
                     if let Ok(n) = digits.parse::<u32>() {

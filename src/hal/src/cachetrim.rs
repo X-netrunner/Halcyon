@@ -79,10 +79,16 @@ fn current_uid() -> u32 {
 
 fn is_building() -> bool {
     let uid = current_uid().to_string();
-    if crate::util::ok("pgrep", &["-u", &uid, "-x", "cargo|rustc|install.sh|update.sh"]) {
+    if crate::util::ok(
+        "pgrep",
+        &["-u", &uid, "-x", "cargo|rustc|install.sh|update.sh"],
+    ) {
         return true;
     }
-    crate::util::ok("pgrep", &["-u", &uid, "-f", "(^|/)(install|update)\\.sh( |$)"])
+    crate::util::ok(
+        "pgrep",
+        &["-u", &uid, "-f", "(^|/)(install|update)\\.sh( |$)"],
+    )
 }
 
 fn trim_island(island_cache: &Path) -> u64 {

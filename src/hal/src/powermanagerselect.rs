@@ -51,7 +51,10 @@ pub fn run(args: &[String]) -> i32 {
         Ok(out) if out.status.success() => {}
         Ok(out) => {
             let err = String::from_utf8_lossy(&out.stderr);
-            let last_line = err.lines().last().unwrap_or("run install.sh again to set up halcyon-tune");
+            let last_line = err
+                .lines()
+                .last()
+                .unwrap_or("run install.sh again to set up halcyon-tune");
             note(&format!("Could not switch to {}: {}", mgr, last_line));
             return 1;
         }

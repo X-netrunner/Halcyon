@@ -32,7 +32,17 @@ mod tests {
     use super::*;
 
     fn tracks(n: usize) -> Vec<Track> {
-        (0..n).map(|i| Track::simple(format!("id{i}"), format!("S{i}"), "A".into(), "Al".into(), 1000)).collect()
+        (0..n)
+            .map(|i| {
+                Track::simple(
+                    format!("id{i}"),
+                    format!("S{i}"),
+                    "A".into(),
+                    "Al".into(),
+                    1000,
+                )
+            })
+            .collect()
     }
 
     fn ids(nums: &[usize]) -> Vec<String> {

@@ -26,19 +26,39 @@ use std::time::Duration;
 use crate::util;
 
 const UNIT: &str = "halcyon-focus";
-const FLAGS: [&str; 6] = ["POMODORO", "DND", "CAFFEINE", "BLOCK", "CLOSE_RUNNING", "BREAK_FREE"];
+const FLAGS: [&str; 6] = [
+    "POMODORO",
+    "DND",
+    "CAFFEINE",
+    "BLOCK",
+    "CLOSE_RUNNING",
+    "BREAK_FREE",
+];
 
 // ------------------------------------------------------------------ paths
 fn rt() -> String {
     // SAFETY: getuid / geteuid take no arguments, cannot fail and touch no memory.
-    std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::getuid() }))
+    std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::getuid() }))
 }
-fn state_path() -> String { format!("{}/halcyon-focus.json", rt()) }                              // the live session (gone at logout)
-fn marker_path() -> String { format!("{}/.local/state/island/focus-restore.json", util::home()) } // what to put back after a crash
-fn conf_path() -> String { format!("{}/.config/Halcyon/focus.conf", util::home()) }
-fn apps_path() -> String { format!("{}/.config/Halcyon/focus-apps.conf", util::home()) }
-fn settings_path() -> String { format!("{}/.local/state/island/settings.json", util::home()) }
-fn island_dir() -> String { format!("{}/.config/Halcyon/quickshell/island", util::home()) }
+fn state_path() -> String {
+    format!("{}/halcyon-focus.json", rt())
+} // the live session (gone at logout)
+fn marker_path() -> String {
+    format!("{}/.local/state/island/focus-restore.json", util::home())
+} // what to put back after a crash
+fn conf_path() -> String {
+    format!("{}/.config/Halcyon/focus.conf", util::home())
+}
+fn apps_path() -> String {
+    format!("{}/.config/Halcyon/focus-apps.conf", util::home())
+}
+fn settings_path() -> String {
+    format!("{}/.local/state/island/settings.json", util::home())
+}
+fn island_dir() -> String {
+    format!("{}/.config/Halcyon/quickshell/island", util::home())
+}
 fn scripts_dir() -> String {
     // <rice>/bin/hx  ->  <rice>/scripts ; fall back to the installed rice
     if let Ok(exe) = std::env::current_exe() {
@@ -63,8 +83,14 @@ fn truthy(v: &Value) -> bool {
         Value::Object(o) => !o.is_empty(),
     }
 }
-fn ni(v: &Value) -> i64 { v.as_i64().or_else(|| v.as_f64().map(|x| x as i64)).unwrap_or(0) }
-fn nf(v: &Value) -> f64 { v.as_f64().unwrap_or(0.0) }
+fn ni(v: &Value) -> i64 {
+    v.as_i64()
+        .or_else(|| v.as_f64().map(|x| x as i64))
+        .unwrap_or(0)
+}
+fn nf(v: &Value) -> f64 {
+    v.as_f64().unwrap_or(0.0)
+}
 
 fn island(args: &[&str]) {
     let isl = island_dir();
@@ -85,10 +111,19 @@ fn notify(title: &str, body: &str, critical: bool, icon: &str) {
 }
 
 fn chime() {
-    for f in ["/usr/share/sounds/freedesktop/stereo/complete.oga", "/usr/share/sounds/freedesktop/stereo/message.oga"] {
+    for f in [
+        "/usr/share/sounds/freedesktop/stereo/complete.oga",
+        "/usr/share/sounds/freedesktop/stereo/message.oga",
+    ] {
         if std::path::Path::new(f).exists() {
             for player in ["paplay", "pw-play"] {
-                if let Ok(mut c) = Command::new(player).arg(f).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+                if let Ok(mut c) = Command::new(player)
+                    .arg(f)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
                     std::thread::spawn(move || {
                         let _ = c.wait();
                     });
@@ -108,7 +143,9 @@ fn caffeine(args: &[&str]) -> String {
 }
 
 fn dnd_is_on() -> bool {
-    read_json(&settings_path()).map(|v| truthy(&v["dnd"])).unwrap_or(false)
+    read_json(&settings_path())
+        .map(|v| truthy(&v["dnd"]))
+        .unwrap_or(false)
 }
 
 fn write_json(path: &str, data: &Value) {
@@ -116,7 +153,12 @@ fn write_json(path: &str, data: &Value) {
         let _ = std::fs::create_dir_all(dir);
     }
     let tmp = format!("{}.tmp{}", path, std::process::id());
-    let f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp);
+    let f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp);
     if let Ok(mut f) = f {
         use std::io::Write;
         if f.write_all(data.to_string().as_bytes()).is_ok() {
@@ -138,11 +180,21 @@ type Conf = Vec<(&'static str, i64)>;
 
 fn defaults() -> Conf {
     vec![
-        ("LENGTH", 25), ("POMODORO", 0), ("BREAK", 5), ("LONG_BREAK", 15), ("CYCLES", 4),
-        ("DND", 1), ("CAFFEINE", 1), ("BLOCK", 1), ("CLOSE_RUNNING", 1), ("BREAK_FREE", 1),
+        ("LENGTH", 25),
+        ("POMODORO", 0),
+        ("BREAK", 5),
+        ("LONG_BREAK", 15),
+        ("CYCLES", 4),
+        ("DND", 1),
+        ("CAFFEINE", 1),
+        ("BLOCK", 1),
+        ("CLOSE_RUNNING", 1),
+        ("BREAK_FREE", 1),
     ]
 }
-fn cget(c: &Conf, k: &str) -> i64 { c.iter().find(|e| e.0 == k).map(|e| e.1).unwrap_or(0) }
+fn cget(c: &Conf, k: &str) -> i64 {
+    c.iter().find(|e| e.0 == k).map(|e| e.1).unwrap_or(0)
+}
 fn cset(c: &mut Conf, k: &str, v: i64) {
     for e in c.iter_mut() {
         if e.0 == k {
@@ -207,7 +259,10 @@ fn save_conf(c: &Conf) {
 
 /// a window class: letters, digits and _ . - + * (the * is a wildcard)
 fn class_ok(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 80 && s.chars().all(|c| c.is_ascii_alphanumeric() || "_.-+*".contains(c))
+    !s.is_empty()
+        && s.len() <= 80
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_.-+*".contains(c))
 }
 
 fn blocked_list() -> Vec<String> {
@@ -382,12 +437,33 @@ fn finish(st: &Value, completed: bool, quiet: bool) {
     }
     if completed {
         chime();
-        let done = if st.get("done_min").is_some() { ni(&st["done_min"]) } else { ni(&st["mins"]) };
+        let done = if st.get("done_min").is_some() {
+            ni(&st["done_min"])
+        } else {
+            ni(&st["mins"])
+        };
         let closed = ni(&st["closed"]);
-        let extra = if closed > 0 { format!(", {} apps kept out", closed) } else { String::new() };
-        notify("Focus session complete", &format!("{} min focused{}. Do not disturb is off again.", done, extra), false, "emblem-ok-symbolic");
+        let extra = if closed > 0 {
+            format!(", {} apps kept out", closed)
+        } else {
+            String::new()
+        };
+        notify(
+            "Focus session complete",
+            &format!(
+                "{} min focused{}. Do not disturb is off again.",
+                done, extra
+            ),
+            false,
+            "emblem-ok-symbolic",
+        );
     } else {
-        notify("Focus stopped", "Everything is back to normal.", false, "emblem-ok-symbolic");
+        notify(
+            "Focus stopped",
+            "Everything is back to normal.",
+            false,
+            "emblem-ok-symbolic",
+        );
     }
 }
 
@@ -401,7 +477,11 @@ fn blocking_now(st: &Value, conf: &Conf) -> bool {
 fn public(st: &Value) -> Value {
     let now = util::epoch();
     let paused = truthy(&st["paused"]);
-    let left: i64 = if paused { ni(&st["left"]) } else { (nf(&st["end"]) - now).round().max(0.0) as i64 };
+    let left: i64 = if paused {
+        ni(&st["left"])
+    } else {
+        (nf(&st["end"]) - now).round().max(0.0) as i64
+    };
     json!({
         "on": true, "phase": st["phase"], "paused": paused, "left": left,
         "end": st["end"], "total": st["total"], "cycle": st["cycle"], "cycles": st["cycles"],
@@ -444,7 +524,10 @@ fn cmd_start(args: &[String]) -> i32 {
         "dnd": dnd, "caf": caf,
     });
     write_json(&state_path(), &st);
-    write_json(&marker_path(), &json!({ "dnd": dnd, "prev_dnd": prev_dnd, "caf": caf, "prev_caf": prev_caf }));
+    write_json(
+        &marker_path(),
+        &json!({ "dnd": dnd, "prev_dnd": prev_dnd, "caf": caf, "prev_caf": prev_caf }),
+    );
     if dnd {
         island(&["dndset", "true"]);
     }
@@ -458,9 +541,23 @@ fn cmd_start(args: &[String]) -> i32 {
 fn start_daemon() {
     let svc = format!("{}.service", UNIT);
     util::run("systemctl", &["--user", "stop", svc.as_str()], 4);
-    let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "hx".into());
-    let mut args: Vec<String> = vec!["--user".into(), "--quiet".into(), "--collect".into(), format!("--unit={}", UNIT)];
-    for k in ["HYPRLAND_INSTANCE_SIGNATURE", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP", "DISPLAY"] {
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "hx".into());
+    let mut args: Vec<String> = vec![
+        "--user".into(),
+        "--quiet".into(),
+        "--collect".into(),
+        format!("--unit={}", UNIT),
+    ];
+    for k in [
+        "HYPRLAND_INSTANCE_SIGNATURE",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_CURRENT_DESKTOP",
+        "DISPLAY",
+    ] {
         if let Ok(v) = std::env::var(k) {
             args.push(format!("--setenv={}={}", k, v));
         }
@@ -481,7 +578,10 @@ fn start_daemon() {
     }
     // no systemd user manager: run the helper on its own
     let mut c = Command::new(&exe);
-    c.args(["focus", "daemon"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    c.args(["focus", "daemon"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     // SAFETY: runs in the forked child just before exec; prctl / setsid are async-signal-safe and nothing is allocated.
     unsafe {
         c.pre_exec(|| {
@@ -497,7 +597,11 @@ fn cmd_stop() -> i32 {
         Some(mut st) if truthy(&st["on"]) => {
             let mut spent = nf(&st["done_min"]);
             if st["phase"].as_str() == Some("work") {
-                let left = if truthy(&st["paused"]) { nf(&st["left"]) } else { (nf(&st["end"]) - util::epoch()).max(0.0) };
+                let left = if truthy(&st["paused"]) {
+                    nf(&st["left"])
+                } else {
+                    (nf(&st["end"]) - util::epoch()).max(0.0)
+                };
                 spent += (nf(&st["total"]) - left).max(0.0) / 60.0;
             }
             st["done_min"] = json!(spent as i64);
@@ -545,7 +649,10 @@ fn cmd_resume() -> i32 {
 }
 
 fn cmd_add(args: &[String]) -> i32 {
-    let mins: i64 = args.first().and_then(|a| a.parse::<i64>().ok()).unwrap_or(5);
+    let mins: i64 = args
+        .first()
+        .and_then(|a| a.parse::<i64>().ok())
+        .unwrap_or(5);
     edit(|st| {
         if truthy(&st["paused"]) {
             st["left"] = json!((ni(&st["left"]) + mins * 60).max(30));
@@ -575,7 +682,14 @@ fn cmd_status() -> i32 {
 fn cmd_conf() -> i32 {
     let mut m = Map::new();
     for (k, v) in load_conf() {
-        m.insert(k.to_string(), if FLAGS.contains(&k) { Value::Bool(v != 0) } else { json!(v) });
+        m.insert(
+            k.to_string(),
+            if FLAGS.contains(&k) {
+                Value::Bool(v != 0)
+            } else {
+                json!(v)
+            },
+        );
     }
     m.insert("apps".into(), json!(blocked_list()));
     println!("{}", Value::Object(m));
@@ -584,7 +698,9 @@ fn cmd_conf() -> i32 {
 
 fn cmd_set(args: &[String]) -> i32 {
     let known = defaults();
-    let key = args.first().and_then(|k| known.iter().find(|e| e.0 == k.as_str()).map(|e| e.0));
+    let key = args
+        .first()
+        .and_then(|k| known.iter().find(|e| e.0 == k.as_str()).map(|e| e.0));
     match (key, args.get(1)) {
         (Some(k), Some(v)) => {
             let mut c = load_conf();
@@ -605,7 +721,11 @@ fn cmd_apps() -> i32 {
     let mut seen: HashSet<String> = HashSet::new();
     let mut opened: Vec<Value> = Vec::new();
     for c in clients() {
-        let cls = c["class"].as_str().filter(|s| !s.is_empty()).or_else(|| c["initialClass"].as_str()).unwrap_or("");
+        let cls = c["class"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .or_else(|| c["initialClass"].as_str())
+            .unwrap_or("");
         let low = cls.to_lowercase();
         if cls.is_empty() || seen.contains(&low) || low.contains("quickshell") || !class_ok(cls) {
             continue;
@@ -644,7 +764,10 @@ fn cmd_unblock(args: &[String]) -> i32 {
     match args.first() {
         None => 2,
         Some(a) => {
-            let left: Vec<String> = blocked_list().into_iter().filter(|x| !x.eq_ignore_ascii_case(a)).collect();
+            let left: Vec<String> = blocked_list()
+                .into_iter()
+                .filter(|x| !x.eq_ignore_ascii_case(a))
+                .collect();
             save_blocked(&left);
             0
         }
@@ -655,17 +778,22 @@ fn cmd_unblock(args: &[String]) -> i32 {
 struct Blocker {
     last: HashMap<String, f64>,         // class -> when we last told you
     asked: HashMap<String, (u32, f64)>, // address -> (times asked to close, when)
-    spare: HashSet<String>,             // windows that were already open when the block began (CLOSE_RUNNING = 0)
+    spare: HashSet<String>, // windows that were already open when the block began (CLOSE_RUNNING = 0)
 }
 
 impl Blocker {
     fn new() -> Self {
-        Blocker { last: HashMap::new(), asked: HashMap::new(), spare: HashSet::new() }
+        Blocker {
+            last: HashMap::new(),
+            asked: HashMap::new(),
+            spare: HashSet::new(),
+        }
     }
 
     fn check(&mut self, st: &mut Value, addr: &str, cls: &str, init_cls: &str) -> bool {
         let patterns = blocked_list();
-        if patterns.is_empty() || self.spare.contains(addr) || !matches(&patterns, &[cls, init_cls]) {
+        if patterns.is_empty() || self.spare.contains(addr) || !matches(&patterns, &[cls, init_cls])
+        {
             return false;
         }
         let (n, t) = self.asked.get(addr).copied().unwrap_or((0, 0.0));
@@ -682,7 +810,12 @@ impl Blocker {
             if now - self.last.get(&key).copied().unwrap_or(0.0) > 20.0 {
                 self.last.insert(key, now);
                 let mins = (((nf(&st["end"]) - now) / 60.0) as i64).max(1);
-                notify("Focus", &format!("{} was closed. Focus ends in {} min.", cls, mins), false, "dialog-information");
+                notify(
+                    "Focus",
+                    &format!("{} was closed. Focus ends in {} min.", cls, mins),
+                    false,
+                    "dialog-information",
+                );
             }
         }
         true
@@ -694,7 +827,12 @@ impl Blocker {
         }
         for c in clients() {
             if c["mapped"].as_bool().unwrap_or(true) {
-                self.check(st, c["address"].as_str().unwrap_or(""), c["class"].as_str().unwrap_or(""), c["initialClass"].as_str().unwrap_or(""));
+                self.check(
+                    st,
+                    c["address"].as_str().unwrap_or(""),
+                    c["class"].as_str().unwrap_or(""),
+                    c["initialClass"].as_str().unwrap_or(""),
+                );
             }
         }
     }
@@ -710,15 +848,36 @@ fn next_phase(st: &mut Value, conf: &Conf) -> bool {
             return true;
         }
         let long = ni(&st["cycle"]) >= ni(&st["cycles"]);
-        let mins = if long { cget(conf, "LONG_BREAK") } else { cget(conf, "BREAK") };
+        let mins = if long {
+            cget(conf, "LONG_BREAK")
+        } else {
+            cget(conf, "BREAK")
+        };
         st["phase"] = json!(if long { "long" } else { "break" });
         st["start"] = json!(now);
         st["end"] = json!(now + (mins * 60) as f64);
         st["total"] = json!(mins * 60);
         st["left"] = json!(mins * 60);
         chime();
-        let body = format!("{} min off{}.", mins, if cget(conf, "BREAK_FREE") != 0 { "" } else { " (apps stay blocked)" });
-        notify(if long { "Last round done" } else { "Break time" }, &body, true, "appointment-soon");
+        let body = format!(
+            "{} min off{}.",
+            mins,
+            if cget(conf, "BREAK_FREE") != 0 {
+                ""
+            } else {
+                " (apps stay blocked)"
+            }
+        );
+        notify(
+            if long {
+                "Last round done"
+            } else {
+                "Break time"
+            },
+            &body,
+            true,
+            "appointment-soon",
+        );
         return false;
     }
     if phase == "long" {
@@ -733,7 +892,17 @@ fn next_phase(st: &mut Value, conf: &Conf) -> bool {
     st["left"] = json!(mins * 60);
     st["sweep"] = json!(true);
     chime();
-    notify("Back to focus", &format!("Round {} of {}, {} min.", ni(&st["cycle"]), ni(&st["cycles"]), mins), true, "appointment-soon");
+    notify(
+        "Back to focus",
+        &format!(
+            "Round {} of {}, {} min.",
+            ni(&st["cycle"]),
+            ni(&st["cycles"]),
+            mins
+        ),
+        true,
+        "appointment-soon",
+    );
     false
 }
 
@@ -754,8 +923,14 @@ fn daemon() -> i32 {
     write_json(&state_path(), &st);
     // SAFETY: bye() only calls _exit, which is async-signal-safe, so it is a valid signal handler.
     unsafe {
-        libc::signal(libc::SIGTERM, bye as extern "C" fn(libc::c_int) as libc::sighandler_t);
-        libc::signal(libc::SIGINT, bye as extern "C" fn(libc::c_int) as libc::sighandler_t);
+        libc::signal(
+            libc::SIGTERM,
+            bye as extern "C" fn(libc::c_int) as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
+            bye as extern "C" fn(libc::c_int) as libc::sighandler_t,
+        );
     }
 
     let mut blocker = Blocker::new();
@@ -790,13 +965,20 @@ fn daemon() -> i32 {
         let active = blocking_now(&st, &conf);
         if active {
             if !was_blocking && cget(&conf, "CLOSE_RUNNING") == 0 {
-                blocker.spare = clients().iter().map(|c| c["address"].as_str().unwrap_or("").to_string()).collect();
+                blocker.spare = clients()
+                    .iter()
+                    .map(|c| c["address"].as_str().unwrap_or("").to_string())
+                    .collect();
             }
             if !was_blocking || truthy(&st["sweep"]) || now - last_sweep > 3.0 {
                 // the 3 s sweep catches windows that name their class late
                 blocker.sweep(&mut st);
                 last_sweep = now;
-                let had_sweep = st.as_object_mut().and_then(|o| o.remove("sweep")).map(|v| truthy(&v)).unwrap_or(false);
+                let had_sweep = st
+                    .as_object_mut()
+                    .and_then(|o| o.remove("sweep"))
+                    .map(|v| truthy(&v))
+                    .unwrap_or(false);
                 if had_sweep {
                     write_json(&state_path(), &st);
                 }
@@ -820,7 +1002,16 @@ fn daemon() -> i32 {
                 continue;
             }
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::Interrupted) => continue,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::Interrupted
+                ) =>
+            {
+                continue
+            }
             Err(_) => {
                 sock = None;
                 continue;
@@ -834,7 +1025,9 @@ fn daemon() -> i32 {
             if !active || !line.starts_with(b"openwindow>>") {
                 continue;
             }
-            let text = String::from_utf8_lossy(&line["openwindow>>".len()..]).trim_end().to_string();
+            let text = String::from_utf8_lossy(&line["openwindow>>".len()..])
+                .trim_end()
+                .to_string();
             let parts: Vec<&str> = text.splitn(4, ',').collect();
             if parts.len() >= 3 {
                 blocker.check(&mut st, &format!("0x{}", parts[0]), parts[2], "");

@@ -28,12 +28,22 @@ pub fn view<'a, Message: Clone + 'static>(
     on_open_mix: impl Fn(String) -> Message + 'a + Copy,
     on_refresh: Message,
 ) -> Element<'a, Message> {
-    let tint = if loading { palette.text_muted } else { palette.accent };
+    let tint = if loading {
+        palette.text_muted
+    } else {
+        palette.accent
+    };
     let chip = container(
         row![
             icon(Icon::Sparkles, 12.0, tint),
             Space::with_width(6),
-            text(if loading { "Finding new music…" } else { "Up to date" }).size(12).color(tint),
+            text(if loading {
+                "Finding new music…"
+            } else {
+                "Up to date"
+            })
+            .size(12)
+            .color(tint),
         ]
         .align_y(Alignment::Center),
     )
@@ -84,7 +94,13 @@ pub fn view<'a, Message: Clone + 'static>(
         page = page.push(section(
             "New from your artists".to_string(),
             "Recent releases by the artists you listen to most".to_string(),
-            album_grid(&feed.from_artists, palette, on_play_track, on_play_context, on_open_album),
+            album_grid(
+                &feed.from_artists,
+                palette,
+                on_play_track,
+                on_play_context,
+                on_open_album,
+            ),
             None,
             palette,
         ));
@@ -94,7 +110,13 @@ pub fn view<'a, Message: Clone + 'static>(
         page = page.push(section(
             "Latest releases".to_string(),
             "The newest albums and singles people are playing".to_string(),
-            album_grid(&feed.new_albums, palette, on_play_track, on_play_context, on_open_album),
+            album_grid(
+                &feed.new_albums,
+                palette,
+                on_play_track,
+                on_play_context,
+                on_open_album,
+            ),
             None,
             palette,
         ));
@@ -179,7 +201,10 @@ fn section<'a, Message: Clone + 'static>(
         );
     }
 
-    column![head, content].spacing(12).width(Length::Fill).into()
+    column![head, content]
+        .spacing(12)
+        .width(Length::Fill)
+        .into()
 }
 
 /// Playlist cards (cover, name, song count) in fixed-size rows; a press opens the playlist.
@@ -204,8 +229,12 @@ fn playlist_grid<'a, Message: Clone + 'static>(
                         palette,
                     ),
                     Space::with_height(8),
-                    text(super::ellipsize(&mix.title, 22)).size(13).color(palette.text),
-                    text(format!("{} songs", mix.tracks.len())).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&mix.title, 22))
+                        .size(13)
+                        .color(palette.text),
+                    text(format!("{} songs", mix.tracks.len()))
+                        .size(11)
+                        .color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)
                 .width(Length::Fill),
@@ -270,8 +299,12 @@ fn album_grid<'a, Message: Clone + 'static>(
                         palette,
                     ),
                     Space::with_height(8),
-                    text(super::ellipsize(&item.title, 22)).size(13).color(palette.text),
-                    text(super::ellipsize(&item.subtitle, 26)).size(11).color(palette.text_muted),
+                    text(super::ellipsize(&item.title, 22))
+                        .size(13)
+                        .color(palette.text),
+                    text(super::ellipsize(&item.subtitle, 26))
+                        .size(11)
+                        .color(palette.text_muted),
                 ]
                 .align_x(Alignment::Center)
                 .width(Length::Fill),
@@ -313,10 +346,20 @@ fn song_list<'a, Message: Clone + 'static>(
     let mut list = column![].spacing(4).width(Length::Fill);
     for (i, t) in songs.iter().enumerate() {
         let line = row![
-            crate::art::cover(t.art_url.as_deref(), ArtSize::Small, SONG_COVER, 9.0, Icon::Music, &t.title, palette),
+            crate::art::cover(
+                t.art_url.as_deref(),
+                ArtSize::Small,
+                SONG_COVER,
+                9.0,
+                Icon::Music,
+                &t.title,
+                palette
+            ),
             Space::with_width(12),
             column![
-                text(super::ellipsize(&t.title, 48)).size(13).color(palette.text),
+                text(super::ellipsize(&t.title, 48))
+                    .size(13)
+                    .color(palette.text),
                 text(super::ellipsize(&format!("{} • {}", t.artist, t.album), 64))
                     .size(11)
                     .color(palette.text_muted),

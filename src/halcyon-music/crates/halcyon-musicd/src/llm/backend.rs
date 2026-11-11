@@ -48,7 +48,9 @@ pub enum LlmError {
     Unreachable(String),
     #[error("The model \"{0}\" isn't installed. Install it with `ollama pull {0}`, or pick another model in Settings.")]
     ModelMissing(String),
-    #[error("The model took too long to answer. Try a smaller model, or wait until Ollama is idle.")]
+    #[error(
+        "The model took too long to answer. Try a smaller model, or wait until Ollama is idle."
+    )]
     Timeout,
     #[error("The model sent an answer Halcyon couldn't use ({0}). Try another model in Settings.")]
     BadResponse(String),
@@ -66,7 +68,13 @@ pub enum LlmError {
 impl LlmError {
     /// Asking again cannot fix this, so the caller does not retry.
     pub fn is_permanent(&self) -> bool {
-        matches!(self, Self::ModelMissing(_) | Self::LocalModelMissing(_) | Self::EngineMissing | Self::LocalModelBroken(_))
+        matches!(
+            self,
+            Self::ModelMissing(_)
+                | Self::LocalModelMissing(_)
+                | Self::EngineMissing
+                | Self::LocalModelBroken(_)
+        )
     }
 }
 
@@ -151,7 +159,11 @@ pub fn model_installed(installed: &[String], wanted: &str) -> bool {
 
 impl OllamaBackend {
     pub fn new(http: reqwest::Client, endpoint: &str, model: &str) -> Self {
-        Self { http, endpoint: endpoint.trim_end_matches('/').to_string(), model: model.to_string() }
+        Self {
+            http,
+            endpoint: endpoint.trim_end_matches('/').to_string(),
+            model: model.to_string(),
+        }
     }
 
     fn map_send_error(&self, e: reqwest::Error) -> LlmError {
@@ -179,12 +191,21 @@ impl TasteLlm for OllamaBackend {
             let body = ChatBody {
                 model: &self.model,
                 messages: vec![
-                    ChatMessage { role: "system", content: &req.system },
-                    ChatMessage { role: "user", content: &req.user },
+                    ChatMessage {
+                        role: "system",
+                        content: &req.system,
+                    },
+                    ChatMessage {
+                        role: "user",
+                        content: &req.user,
+                    },
                 ],
                 stream: false,
                 format: "json",
-                options: ChatOptions { temperature: req.temperature, num_predict: req.max_tokens },
+                options: ChatOptions {
+                    temperature: req.temperature,
+                    num_predict: req.max_tokens,
+                },
             };
             let resp = self
                 .http
@@ -220,7 +241,10 @@ impl TasteLlm for OllamaBackend {
                 .await
                 .map_err(|e| self.map_send_error(e))?;
             if !resp.status().is_success() {
-                return Err(LlmError::BadResponse(format!("HTTP {}", resp.status().as_u16())));
+                return Err(LlmError::BadResponse(format!(
+                    "HTTP {}",
+                    resp.status().as_u16()
+                )));
             }
             let tags: TagsReply = resp.json().await.map_err(|e| self.map_send_error(e))?;
             let names: Vec<String> = tags.models.into_iter().map(|m| m.name).collect();

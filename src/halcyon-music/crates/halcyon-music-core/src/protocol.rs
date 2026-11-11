@@ -7,8 +7,8 @@
 
 use crate::art::ArtSize;
 use crate::models::{
-    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, EndpointProbe, FullCapsule, HomeFeed,
-    Lyrics, MixMeta, MusicMix, Playlist,
+    Album, Artist, AuthMode, AuthStatus, DetailedSearchResults, DiscoverFeed, EndpointProbe,
+    FullCapsule, HomeFeed, Lyrics, MixMeta, MusicMix, Playlist,
 };
 use crate::state::{Bitrate, PlayerState, RepeatMode, Track};
 use serde::{Deserialize, Serialize};
@@ -33,11 +33,17 @@ pub type Event = Envelope<EventBody>;
 
 /// Convenience constructors.
 pub fn command(body: CommandBody) -> Command {
-    Envelope { version: PROTOCOL_VERSION, body }
+    Envelope {
+        version: PROTOCOL_VERSION,
+        body,
+    }
 }
 
 pub fn event(body: EventBody) -> Event {
-    Envelope { version: PROTOCOL_VERSION, body }
+    Envelope {
+        version: PROTOCOL_VERSION,
+        body,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,16 +54,26 @@ pub enum CommandBody {
     Pause,
     Toggle,
     /// Absolute seek in milliseconds.
-    Seek { position_ms: u64 },
+    Seek {
+        position_ms: u64,
+    },
     /// Relative seek in milliseconds (may be negative).
-    SeekBy { delta_ms: i64 },
+    SeekBy {
+        delta_ms: i64,
+    },
     Next,
     Previous,
     /// 0..=100
-    SetVolume { volume: u8 },
+    SetVolume {
+        volume: u8,
+    },
     /// Volume delta -100..=100, clamped by the daemon.
-    VolumeBy { delta: i8 },
-    SetShuffle { shuffle: bool },
+    VolumeBy {
+        delta: i8,
+    },
+    SetShuffle {
+        shuffle: bool,
+    },
     /// off → all → one → off
     CycleRepeat,
     /// Client hello; daemon answers with [`EventBody::Hello`].
@@ -65,20 +81,30 @@ pub enum CommandBody {
     /// Ask for a full state snapshot.
     GetState,
     /// Queue a track after the current one.
-    PlayNext { track: Track },
+    PlayNext {
+        track: Track,
+    },
     /// Append a track to the end of the queue.
-    Enqueue { track: Track },
+    Enqueue {
+        track: Track,
+    },
     /// Remove a queue entry by index.
-    Dequeue { index: usize },
+    Dequeue {
+        index: usize,
+    },
     /// Start PKCE authorization flow with given Spotify Client ID.
-    LoginStart { client_id: String },
+    LoginStart {
+        client_id: String,
+    },
     /// Start librespot's own browser sign-in (the default sign-in: one token for streaming
     /// and, from rework Part 4, browsing). Progress arrives as [`EventBody::AuthStatus`] and
     /// [`EventBody::StreamingAuth`]. An older daemon answers with an "unsupported" error.
     LoginStartLibrespot,
     /// Choose which token browsing uses (`librespot` default, `own-client-id` advanced).
     /// Answered with [`EventBody::AuthModeChanged`] and an [`EventBody::AuthStatus`].
-    SetAuthMode { mode: AuthMode },
+    SetAuthMode {
+        mode: AuthMode,
+    },
     /// Ask whether a streaming sign-in exists; answered with [`EventBody::StreamingAuth`].
     GetStreamingAuth,
     /// Cancel in-flight login flow.
@@ -93,31 +119,59 @@ pub enum CommandBody {
     /// The answer arrives as `Profile`, and as `AuthStatus` when the name changed.
     RefreshProfile,
     /// Request user's playlists (stale-while-revalidate).
-    GetPlaylists { limit: Option<u32>, offset: Option<u32> },
+    GetPlaylists {
+        limit: Option<u32>,
+        offset: Option<u32>,
+    },
     /// Request tracks of a specific playlist (stale-while-revalidate).
-    GetPlaylistTracks { id: String, limit: Option<u32>, offset: Option<u32> },
+    GetPlaylistTracks {
+        id: String,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    },
     /// Request user's saved/liked tracks (stale-while-revalidate).
-    GetLikedTracks { limit: Option<u32>, offset: Option<u32> },
+    GetLikedTracks {
+        limit: Option<u32>,
+        offset: Option<u32>,
+    },
     /// Request the user's saved albums (first 50).
     GetSavedAlbums,
     /// Request the artists the user follows (first 50).
     GetFollowedArtists,
     /// Search tracks (Spotify search capped at 10 results per request).
-    Search { query: String, limit: Option<u32>, offset: Option<u32> },
+    Search {
+        query: String,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    },
     /// Probe optional Spotify endpoints.
     ProbeEndpoints,
     /// Play a track directly.
-    PlayTrack { track: Track },
+    PlayTrack {
+        track: Track,
+    },
     /// Play a list of tracks starting at a given index.
-    PlayContext { tracks: Vec<Track>, start_index: usize },
+    PlayContext {
+        tracks: Vec<Track>,
+        start_index: usize,
+    },
     /// Move a queue item from `from` index to `to` index.
-    ReorderQueue { from: usize, to: usize },
+    ReorderQueue {
+        from: usize,
+        to: usize,
+    },
     /// Set repeat mode directly.
-    SetRepeat { repeat: RepeatMode },
+    SetRepeat {
+        repeat: RepeatMode,
+    },
     /// Set audio bitrate.
-    SetBitrate { bitrate: Bitrate },
+    SetBitrate {
+        bitrate: Bitrate,
+    },
     /// Set volume normalisation.
-    SetNormalisation { enabled: bool },
+    SetNormalisation {
+        enabled: bool,
+    },
     /// Request the aggregated Home page feed.
     GetHomeFeed,
     /// Request the Discover page (new releases and new songs).
@@ -125,27 +179,58 @@ pub enum CommandBody {
     /// Request generated mixes from the suggestion engine.
     GetSuggestions,
     /// Play a generated mix immediately.
-    PlayMix { tracks: Vec<Track>, name: String },
+    PlayMix {
+        tracks: Vec<Track>,
+        name: String,
+    },
     /// Save a generated mix as a real Spotify playlist.
-    SaveMixAsPlaylist { name: String, track_uris: Vec<String> },
+    SaveMixAsPlaylist {
+        name: String,
+        track_uris: Vec<String>,
+    },
     /// Create a new playlist.
-    CreatePlaylist { name: String, description: Option<String> },
+    CreatePlaylist {
+        name: String,
+        description: Option<String>,
+    },
     /// Rename a playlist.
-    RenamePlaylist { id: String, new_name: String },
+    RenamePlaylist {
+        id: String,
+        new_name: String,
+    },
     /// Delete/Unfollow a playlist.
-    DeletePlaylist { id: String },
+    DeletePlaylist {
+        id: String,
+    },
     /// Add a track to a playlist.
-    AddTrackToPlaylist { playlist_id: String, track_uri: String },
+    AddTrackToPlaylist {
+        playlist_id: String,
+        track_uri: String,
+    },
     /// Remove a track from a playlist.
-    RemoveTrackFromPlaylist { playlist_id: String, track_uri: String },
+    RemoveTrackFromPlaylist {
+        playlist_id: String,
+        track_uri: String,
+    },
     /// Request monthly Sound Capsule.
-    GetCapsule { month_offset: u32 },
+    GetCapsule {
+        month_offset: u32,
+    },
     /// Request album detail and full tracklist.
-    GetAlbumDetail { id: String },
+    GetAlbumDetail {
+        id: String,
+    },
     /// Request artist detail, top tracks, and discography.
-    GetArtistDetail { id: String },
+    GetArtistDetail {
+        id: String,
+    },
     /// Multi-category search with pagination.
-    DetailedSearch { query: String, search_type: String, limit: u32, offset: u32 },
+    DetailedSearch {
+        query: String,
+        search_type: String,
+        limit: u32,
+        offset: u32,
+    },
     /// Request recent searches.
     GetRecentSearches,
     /// Clear recent searches history.
@@ -159,26 +244,43 @@ pub enum CommandBody {
         duration_ms: u64,
     },
     /// Adjust manual lyric offset in milliseconds (+/- 100ms).
-    SetLyricOffset { track_id: String, offset_ms: i64 },
+    SetLyricOffset {
+        track_id: String,
+        offset_ms: i64,
+    },
     /// Load custom local .lrc file text.
-    LoadLocalLrc { track_id: String, lrc_content: String },
+    LoadLocalLrc {
+        track_id: String,
+        lrc_content: String,
+    },
     /// Force fresh search on LRCLIB.
-    SearchLyricsAgain { track_id: String, artist: String, title: String },
+    SearchLyricsAgain {
+        track_id: String,
+        artist: String,
+        title: String,
+    },
     /// Download (or find in the disk cache) a cover. The answer arrives as
     /// [`EventBody::ArtReady`] or [`EventBody::ArtFailed`]; repeating a request
     /// is cheap, the daemon de-duplicates in-flight downloads.
-    GetArt { url: String, size: ArtSize },
+    GetArt {
+        url: String,
+        size: ArtSize,
+    },
     /// Start or stop the live audio frames ([`EventBody::AudioLevels`]) for *this* connection.
     /// Off by default: the GUI turns them on only while something that dances is on screen
     /// (the queue drawer, the full-screen player), so nothing is sent or analysed otherwise.
-    SetAudioStream { enabled: bool },
+    SetAudioStream {
+        enabled: bool,
+    },
     /// Ask whether Spotify Connect (Halcyon in the phone's Devices list) is on; answered with
     /// [`EventBody::ConnectSetting`]. An older daemon answers "unsupported".
     GetConnectSetting,
     /// Turn Spotify Connect on or off. The choice is saved and the daemon restarts its player so it
     /// takes effect (playback stops for a moment; the service comes back by itself). Answered with
     /// [`EventBody::ConnectSetting`] before the restart.
-    SetConnectEnabled { enabled: bool },
+    SetConnectEnabled {
+        enabled: bool,
+    },
     /// Ask whether the optional LLM layer is on and which model it uses; answered with
     /// [`EventBody::LlmStatus`] without contacting the model. An older daemon ignores it.
     GetLlmStatus,
@@ -199,11 +301,15 @@ pub enum CommandBody {
     ListLlmModels,
     /// Download a built-in model (resumes an interrupted one). Progress arrives as
     /// [`EventBody::LlmDownload`], and a fresh [`EventBody::LlmModels`] when it ends. One at a time.
-    DownloadLlmModel { id: String },
+    DownloadLlmModel {
+        id: String,
+    },
     /// Stop the running download. What was fetched is kept so the next download resumes.
     CancelLlmDownload,
     /// Delete a built-in model file (and any half-finished download of it).
-    DeleteLlmModel { id: String },
+    DeleteLlmModel {
+        id: String,
+    },
     /// Check whether the chosen backend answers and has the model; answered with
     /// [`EventBody::LlmStatus`] carrying `reachable` and, when something is wrong, a `hint`.
     TestLlmConnection,
@@ -212,12 +318,16 @@ pub enum CommandBody {
     /// [`EventBody::PromptPlaylistProgress`] (optional, a few times) and then exactly one of
     /// [`EventBody::PromptPlaylistResult`] or [`EventBody::PromptPlaylistFailed`]. An older
     /// daemon answers with an "unsupported" error.
-    PromptPlaylist { text: String },
+    PromptPlaylist {
+        text: String,
+    },
     /// Part 6: the stored mixes at once (answered with [`EventBody::MixesUpdated`]), then any mix
     /// whose schedule is due is rebuilt in the background and sent again as it finishes.
     GetMixes,
     /// Part 6: rebuild one mix now (the Refresh button). Answered with [`EventBody::MixesUpdated`].
-    RefreshMix { mix_id: String },
+    RefreshMix {
+        mix_id: String,
+    },
     /// Part 6: "Less like this" / "Not my taste". With `track_id` it is about that song and its
     /// artist; without, about the whole mix. Takes effect on the taste model at once and is
     /// answered with [`EventBody::MixesUpdated`].
@@ -229,12 +339,17 @@ pub enum CommandBody {
     },
     /// Part 6: song radio. Builds a list from one song with the same ranker and keeps adding
     /// songs while it plays. Answered with [`EventBody::RadioStarted`].
-    StartRadio { track: Track },
+    StartRadio {
+        track: Track,
+    },
     /// Part 6: stop adding songs to a running radio.
     StopRadio,
     /// Part 6: Smart Shuffle for a list of your own. The daemon puts one suggestion after every
     /// three of your songs and starts playing. Answered with [`EventBody::SmartShuffleStarted`].
-    SmartShuffle { name: String, tracks: Vec<Track> },
+    SmartShuffle {
+        name: String,
+        tracks: Vec<Track>,
+    },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -292,7 +407,10 @@ pub enum EventBody {
     AuthModeChanged { mode: AuthMode },
     /// State of the streaming sign-in (librespot's own token). Never carries a token.
     /// `seconds_left` is the lifetime of the current access token (it is renewed on its own).
-    StreamingAuth { signed_in: bool, seconds_left: Option<u64> },
+    StreamingAuth {
+        signed_in: bool,
+        seconds_left: Option<u64>,
+    },
     /// The Spotify Connect device name this daemon is registered under ("Halcyon (host)"), or
     /// `None` when it is not registered. Sent when a client connects and whenever it changes.
     /// An older client sees an unknown kind and ignores it.
@@ -392,9 +510,17 @@ pub enum EventBody {
         line: Option<String>,
     },
     /// A cover is on disk. `url` and `size` echo the request.
-    ArtReady { url: String, size: ArtSize, path: String },
+    ArtReady {
+        url: String,
+        size: ArtSize,
+        path: String,
+    },
     /// A cover could not be fetched (offline, 404, too big, not an image).
-    ArtFailed { url: String, size: ArtSize, reason: String },
+    ArtFailed {
+        url: String,
+        size: ArtSize,
+        reason: String,
+    },
     /// One frame of live analysis of what is coming out of the speakers, about 43 a second
     /// while [`CommandBody::SetAudioStream`] is on. `bands` is a log-spaced spectrum (low to
     /// high, 0..=255 each), `bass` the average of the lowest bands, `beat` 0 or, when a kick or
@@ -437,12 +563,19 @@ pub enum EventBody {
     },
     /// A Home mix got a better title and a short reason. Sent when the answer is ready (or
     /// found in the cache), never before; the mix keeps working as it is until then.
-    MixEnriched { mix_id: String, title: String, reason: String },
+    MixEnriched {
+        mix_id: String,
+        title: String,
+        reason: String,
+    },
     /// The best order (and trim) of a Home mix's own songs, chosen by the optional LLM layer
     /// from the songs the engine already put in that mix. `track_ids` are ids from that mix only,
     /// best first; a client ignores ids it does not have and keeps the engine's order when too
     /// few match. Never carries a song the client does not already hold.
-    MixReranked { mix_id: String, track_ids: Vec<String> },
+    MixReranked {
+        mix_id: String,
+        track_ids: Vec<String>,
+    },
     /// Where a [`CommandBody::PromptPlaylist`] request is: `step` is `understanding`,
     /// `searching` or `choosing`. A client that does not know a step shows a generic
     /// "working" line. `request` echoes the text that was sent.
@@ -456,7 +589,10 @@ pub enum EventBody {
     /// Part 6: the generated mixes (Daily Mix, Discover Weekly, Release Radar, On Repeat, Repeat
     /// Rewind, Daylist) as they stand, with the reason line and schedule of each. A client
     /// replaces the mixes with the same ids and keeps the rest.
-    MixesUpdated { mixes: Vec<MusicMix>, meta: Vec<MixMeta> },
+    MixesUpdated {
+        mixes: Vec<MusicMix>,
+        meta: Vec<MixMeta>,
+    },
     /// Part 6: a radio started (first songs are already queued and playing). Later songs are
     /// appended to the queue by the daemon.
     RadioStarted { mix: MusicMix, meta: MixMeta },
@@ -464,7 +600,10 @@ pub enum EventBody {
     RadioStopped { reason: String },
     /// Part 6: Smart Shuffle started. `suggested` are the ids of the inserted songs, so a client
     /// can mark them and offer "Not this".
-    SmartShuffleStarted { name: String, suggested: Vec<String> },
+    SmartShuffleStarted {
+        name: String,
+        suggested: Vec<String>,
+    },
     /// Anything we do not recognise yet: kept, not fatal.
     #[serde(other)]
     Unknown,
@@ -491,7 +630,9 @@ mod tests {
 
     #[test]
     fn command_round_trip() {
-        let cmd = command(CommandBody::Seek { position_ms: 42_000 });
+        let cmd = command(CommandBody::Seek {
+            position_ms: 42_000,
+        });
         let line = encode_line(&cmd).expect("encode");
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
@@ -500,7 +641,9 @@ mod tests {
 
     #[test]
     fn event_round_trip_state() {
-        let ev = event(EventBody::State { state: crate::state::PlayerState::default() });
+        let ev = event(EventBody::State {
+            state: crate::state::PlayerState::default(),
+        });
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
@@ -511,7 +654,11 @@ mod tests {
         let cmd = command(CommandBody::GetDiscover);
         let back: Command = decode_line(&encode_line(&cmd).unwrap()).unwrap();
         assert_eq!(cmd, back);
-        let feed = DiscoverFeed { complete: true, built_at: 7, ..Default::default() };
+        let feed = DiscoverFeed {
+            complete: true,
+            built_at: 7,
+            ..Default::default()
+        };
         let ev = event(EventBody::DiscoverResult(Box::new(feed)));
         let back: Event = decode_line(&encode_line(&ev).unwrap()).unwrap();
         assert_eq!(ev, back);
@@ -543,7 +690,9 @@ mod tests {
 
     #[test]
     fn connect_device_event_round_trips_and_old_peers_ignore_it() {
-        let ev = event(EventBody::ConnectDevice { name: Some("Halcyon (box)".into()) });
+        let ev = event(EventBody::ConnectDevice {
+            name: Some("Halcyon (box)".into()),
+        });
         let line = encode_line(&ev).expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"connect_device\""));
         let back: Event = decode_line(&line).expect("decode");
@@ -570,7 +719,12 @@ mod tests {
 "#;
         let ev: Event = decode_line(line).expect("decode");
         match ev.body {
-            EventBody::Profile { display_name, username, plan, .. } => {
+            EventBody::Profile {
+                display_name,
+                username,
+                plan,
+                ..
+            } => {
                 assert_eq!(display_name.as_deref(), Some("Ada"));
                 assert_eq!(username, None);
                 assert_eq!(plan, None);
@@ -584,7 +738,13 @@ mod tests {
         let line = br#"{"version":1,"type":"profile","display_name":"Ada"}
 "#;
         let ev: Event = decode_line(line).expect("decode");
-        assert!(matches!(ev.body, EventBody::Profile { image_url: None, .. }));
+        assert!(matches!(
+            ev.body,
+            EventBody::Profile {
+                image_url: None,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -598,7 +758,9 @@ mod tests {
 
     #[test]
     fn login_and_playlists_round_trip() {
-        let cmd = command(CommandBody::LoginStart { client_id: "test-id-123".into() });
+        let cmd = command(CommandBody::LoginStart {
+            client_id: "test-id-123".into(),
+        });
         let line = encode_line(&cmd).expect("encode");
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
@@ -621,7 +783,10 @@ mod tests {
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
 
-        let ev = event(EventBody::StreamingAuth { signed_in: true, seconds_left: Some(1200) });
+        let ev = event(EventBody::StreamingAuth {
+            signed_in: true,
+            seconds_left: Some(1200),
+        });
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
@@ -635,13 +800,17 @@ mod tests {
 
     #[test]
     fn auth_mode_wire_names_and_round_trip() {
-        let cmd = command(CommandBody::SetAuthMode { mode: AuthMode::OwnClientId });
+        let cmd = command(CommandBody::SetAuthMode {
+            mode: AuthMode::OwnClientId,
+        });
         let line = encode_line(&cmd).expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"own-client-id\""));
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
 
-        let ev = event(EventBody::AuthModeChanged { mode: AuthMode::Librespot });
+        let ev = event(EventBody::AuthModeChanged {
+            mode: AuthMode::Librespot,
+        });
         let line = encode_line(&ev).expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"librespot\""));
         let back: Event = decode_line(&line).expect("decode");
@@ -656,7 +825,11 @@ mod tests {
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
 
-        let ev = event(EventBody::AudioLevels { bands: vec![0, 128, 255], bass: 90, beat: 200 });
+        let ev = event(EventBody::AudioLevels {
+            bands: vec![0, 128, 255],
+            bass: 90,
+            beat: 200,
+        });
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
@@ -664,18 +837,31 @@ mod tests {
 
     #[test]
     fn connect_setting_messages_round_trip() {
-        for cmd in [command(CommandBody::GetConnectSetting), command(CommandBody::SetConnectEnabled { enabled: true })] {
+        for cmd in [
+            command(CommandBody::GetConnectSetting),
+            command(CommandBody::SetConnectEnabled { enabled: true }),
+        ] {
             let line = encode_line(&cmd).expect("encode");
             let back: Command = decode_line(&line).expect("decode");
             assert_eq!(cmd, back);
         }
-        let ev = event(EventBody::ConnectSetting { enabled: false, available: true });
+        let ev = event(EventBody::ConnectSetting {
+            enabled: false,
+            available: true,
+        });
         let line = encode_line(&ev).expect("encode");
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
         // `available` is optional on the wire (an older daemon never sends it).
-        let old: Event = decode_line(br#"{"version":1,"type":"connect_setting","enabled":true}"#).expect("decode");
-        assert!(matches!(old.body, EventBody::ConnectSetting { enabled: true, available: false }));
+        let old: Event = decode_line(br#"{"version":1,"type":"connect_setting","enabled":true}"#)
+            .expect("decode");
+        assert!(matches!(
+            old.body,
+            EventBody::ConnectSetting {
+                enabled: true,
+                available: false
+            }
+        ));
     }
 
     #[test]
@@ -720,16 +906,29 @@ mod tests {
         let line = br#"{"version":1,"type":"set_llm_settings","enabled":true,"backend":"ollama","model":"qwen2.5:3b"}
 "#;
         let cmd: Command = decode_line(line).expect("decode");
-        assert!(matches!(cmd.body, CommandBody::SetLlmSettings { enabled: true, ref endpoint, .. } if endpoint.is_empty()));
+        assert!(
+            matches!(cmd.body, CommandBody::SetLlmSettings { enabled: true, ref endpoint, .. } if endpoint.is_empty())
+        );
     }
 
     #[test]
     fn local_model_messages_round_trip_and_have_stable_wire_names() {
         for (cmd, wire) in [
             (command(CommandBody::ListLlmModels), "list_llm_models"),
-            (command(CommandBody::DownloadLlmModel { id: "qwen2.5-0.5b-instruct".into() }), "download_llm_model"),
-            (command(CommandBody::CancelLlmDownload), "cancel_llm_download"),
-            (command(CommandBody::DeleteLlmModel { id: "x".into() }), "delete_llm_model"),
+            (
+                command(CommandBody::DownloadLlmModel {
+                    id: "qwen2.5-0.5b-instruct".into(),
+                }),
+                "download_llm_model",
+            ),
+            (
+                command(CommandBody::CancelLlmDownload),
+                "cancel_llm_download",
+            ),
+            (
+                command(CommandBody::DeleteLlmModel { id: "x".into() }),
+                "delete_llm_model",
+            ),
         ] {
             let line = encode_line(&cmd).expect("encode");
             assert!(String::from_utf8_lossy(&line).contains(&format!("\"type\":\"{wire}\"")));
@@ -746,9 +945,26 @@ mod tests {
             verified: String::new(),
         };
         for ev in [
-            event(EventBody::LlmModels { models: vec![info], engine: true, active: "qwen2.5-0.5b-instruct".into(), dir: "/d".into() }),
-            event(EventBody::LlmDownload { id: "m".into(), state: "downloading".into(), done: 5, total: 10, error: None }),
-            event(EventBody::LlmDownload { id: "m".into(), state: "failed".into(), done: 5, total: 10, error: Some("offline".into()) }),
+            event(EventBody::LlmModels {
+                models: vec![info],
+                engine: true,
+                active: "qwen2.5-0.5b-instruct".into(),
+                dir: "/d".into(),
+            }),
+            event(EventBody::LlmDownload {
+                id: "m".into(),
+                state: "downloading".into(),
+                done: 5,
+                total: 10,
+                error: None,
+            }),
+            event(EventBody::LlmDownload {
+                id: "m".into(),
+                state: "failed".into(),
+                done: 5,
+                total: 10,
+                error: Some("offline".into()),
+            }),
         ] {
             let line = encode_line(&ev).expect("encode");
             let back: Event = decode_line(&line).expect("decode");
@@ -758,7 +974,10 @@ mod tests {
         let line = br#"{"version":1,"type":"llm_models","models":[{"id":"a"}]}
 "#;
         let ev: Event = decode_line(line).expect("decode");
-        assert!(matches!(ev.body, EventBody::LlmModels { engine: false, .. }));
+        assert!(matches!(
+            ev.body,
+            EventBody::LlmModels { engine: false, .. }
+        ));
     }
 
     #[test]
@@ -767,18 +986,29 @@ mod tests {
         let line = br#"{"version":1,"type":"llm_status","enabled":false,"backend":"ollama","model":"m","reachable":false}
 "#;
         let ev: Event = decode_line(line).expect("decode");
-        assert!(matches!(ev.body, EventBody::LlmStatus { hint: None, enabled: false, .. }));
+        assert!(matches!(
+            ev.body,
+            EventBody::LlmStatus {
+                hint: None,
+                enabled: false,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn mix_reranked_round_trips_and_has_a_stable_wire_name() {
-        let ev = event(EventBody::MixReranked { mix_id: "on-repeat".into(), track_ids: vec!["a".into(), "b".into()] });
+        let ev = event(EventBody::MixReranked {
+            mix_id: "on-repeat".into(),
+            track_ids: vec!["a".into(), "b".into()],
+        });
         let line = encode_line(&ev).expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"type\":\"mix_reranked\""));
         let back: Event = decode_line(&line).expect("decode");
         assert_eq!(ev, back);
         // An older client that has no such variant sees Unknown; this build ignores extra fields.
-        let newer = br#"{"version":1,"type":"mix_reranked","mix_id":"m","track_ids":[],"why":"later"}
+        let newer =
+            br#"{"version":1,"type":"mix_reranked","mix_id":"m","track_ids":[],"why":"later"}
 "#;
         let ev: Event = decode_line(newer).expect("decode");
         assert!(matches!(ev.body, EventBody::MixReranked { .. }));
@@ -786,7 +1016,9 @@ mod tests {
 
     #[test]
     fn prompt_playlist_messages_round_trip() {
-        let cmd = command(CommandBody::PromptPlaylist { text: "rainy night coding, no lyrics".into() });
+        let cmd = command(CommandBody::PromptPlaylist {
+            text: "rainy night coding, no lyrics".into(),
+        });
         let back: Command = decode_line(&encode_line(&cmd).expect("encode")).expect("decode");
         assert_eq!(cmd, back);
 
@@ -795,12 +1027,24 @@ mod tests {
             title: "Rainy Night Code".into(),
             description: "Calm, lyric-free tracks.".into(),
             source: "Halcyon Local".into(),
-            tracks: vec![crate::models::Track::simple("1".into(), "Glow".into(), "Echo".into(), "Dusk".into(), 1000)],
+            tracks: vec![crate::models::Track::simple(
+                "1".into(),
+                "Glow".into(),
+                "Echo".into(),
+                "Dusk".into(),
+                1000,
+            )],
             art_url: None,
         };
         for ev in [
-            event(EventBody::PromptPlaylistProgress { request: "rainy".into(), step: "searching".into() }),
-            event(EventBody::PromptPlaylistResult { request: "rainy".into(), mix }),
+            event(EventBody::PromptPlaylistProgress {
+                request: "rainy".into(),
+                step: "searching".into(),
+            }),
+            event(EventBody::PromptPlaylistResult {
+                request: "rainy".into(),
+                mix,
+            }),
             event(EventBody::PromptPlaylistFailed {
                 request: "rainy".into(),
                 reason: "Smart suggestions are off. Turn them on in Settings.".into(),
@@ -815,10 +1059,14 @@ mod tests {
     #[test]
     fn prompt_playlist_wire_names_are_stable() {
         // These strings are the contract with other builds; changing one breaks older peers.
-        let line = encode_line(&command(CommandBody::PromptPlaylist { text: "x".into() })).expect("encode");
-        assert!(String::from_utf8_lossy(&line).contains("\"type\":\"prompt_playlist\""));
-        let line = encode_line(&event(EventBody::PromptPlaylistFailed { request: "x".into(), reason: "y".into() }))
+        let line = encode_line(&command(CommandBody::PromptPlaylist { text: "x".into() }))
             .expect("encode");
+        assert!(String::from_utf8_lossy(&line).contains("\"type\":\"prompt_playlist\""));
+        let line = encode_line(&event(EventBody::PromptPlaylistFailed {
+            request: "x".into(),
+            reason: "y".into(),
+        }))
+        .expect("encode");
         assert!(String::from_utf8_lossy(&line).contains("\"type\":\"prompt_playlist_failed\""));
     }
 
@@ -888,15 +1136,28 @@ mod tests {
 
     #[test]
     fn art_protocol_round_trip() {
-        let cmd = command(CommandBody::GetArt { url: "https://x/y".into(), size: ArtSize::Medium });
+        let cmd = command(CommandBody::GetArt {
+            url: "https://x/y".into(),
+            size: ArtSize::Medium,
+        });
         let line = encode_line(&cmd).expect("encode");
-        assert!(std::str::from_utf8(&line).expect("utf8").contains("\"size\":\"medium\""));
+        assert!(std::str::from_utf8(&line)
+            .expect("utf8")
+            .contains("\"size\":\"medium\""));
         let back: Command = decode_line(&line).expect("decode");
         assert_eq!(cmd, back);
 
         for ev in [
-            event(EventBody::ArtReady { url: "u".into(), size: ArtSize::Small, path: "/tmp/a.img".into() }),
-            event(EventBody::ArtFailed { url: "u".into(), size: ArtSize::Large, reason: "offline".into() }),
+            event(EventBody::ArtReady {
+                url: "u".into(),
+                size: ArtSize::Small,
+                path: "/tmp/a.img".into(),
+            }),
+            event(EventBody::ArtFailed {
+                url: "u".into(),
+                size: ArtSize::Large,
+                reason: "offline".into(),
+            }),
         ] {
             let line = encode_line(&ev).expect("encode");
             let back: Event = decode_line(&line).expect("decode");

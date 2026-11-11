@@ -25,12 +25,24 @@ pub fn run(args: &[String]) -> i32 {
             if crate::util::ok("systemctl", &["is-enabled", "display-manager.service"]) {
                 if let Ok(target) = fs::read_link("/etc/systemd/system/display-manager.service") {
                     if let Some(file_name) = target.file_name().and_then(|n| n.to_str()) {
-                        dm = file_name.strip_suffix(".service").unwrap_or(file_name).to_string();
+                        dm = file_name
+                            .strip_suffix(".service")
+                            .unwrap_or(file_name)
+                            .to_string();
                     }
                 }
                 mode = "display-manager";
             } else {
-                let dms = ["sddm", "gdm", "gdm3", "lightdm", "greetd", "ly", "lxdm", "cosmic-greeter"];
+                let dms = [
+                    "sddm",
+                    "gdm",
+                    "gdm3",
+                    "lightdm",
+                    "greetd",
+                    "ly",
+                    "lxdm",
+                    "cosmic-greeter",
+                ];
                 for candidate in &dms {
                     let unit = format!("{}.service", candidate);
                     if crate::util::ok("systemctl", &["is-enabled", &unit]) {
@@ -41,7 +53,8 @@ pub fn run(args: &[String]) -> i32 {
                 }
             }
 
-            if Path::new("/etc/systemd/system/getty@tty1.service.d/halcyon-autologin.conf").exists() {
+            if Path::new("/etc/systemd/system/getty@tty1.service.d/halcyon-autologin.conf").exists()
+            {
                 autologin = true;
                 mode = "lock-screen";
             }

@@ -42,7 +42,11 @@ pub struct RetrieveCfg {
 
 impl Default for RetrieveCfg {
     fn default() -> Self {
-        RetrieveCfg { per_source: 80, seed_artists: 5, listenbrainz: None }
+        RetrieveCfg {
+            per_source: 80,
+            seed_artists: 5,
+            listenbrainz: None,
+        }
     }
 }
 
@@ -138,7 +142,12 @@ pub fn merge(batches: Vec<Vec<Candidate>>) -> Vec<Candidate> {
         }
     }
     for c in &mut out {
-        c.sources.sort_by(|a, b| b.trust().partial_cmp(&a.trust()).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.cmp(b)));
+        c.sources.sort_by(|a, b| {
+            b.trust()
+                .partial_cmp(&a.trust())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(b))
+        });
     }
     out
 }
@@ -181,7 +190,11 @@ pub fn parse_iso_date(s: &str) -> Option<u64> {
 }
 
 /// Chart rows (best first) as candidates with a popularity from their position.
-pub fn chart_candidates(rows: &[(String, String, Option<u64>)], source: Source, cap: usize) -> Vec<Candidate> {
+pub fn chart_candidates(
+    rows: &[(String, String, Option<u64>)],
+    source: Source,
+    cap: usize,
+) -> Vec<Candidate> {
     let n = rows.len().max(1) as f64;
     rows.iter()
         .take(cap)
@@ -204,7 +217,14 @@ pub fn parse_lb_recommendations(v: &serde_json::Value) -> Vec<(String, f64)> {
         .and_then(serde_json::Value::as_array)
         .map(|rows| {
             rows.iter()
-                .filter_map(|r| Some((r.get("recording_mbid")?.as_str()?.to_string(), r.get("score").and_then(serde_json::Value::as_f64).unwrap_or(0.0))))
+                .filter_map(|r| {
+                    Some((
+                        r.get("recording_mbid")?.as_str()?.to_string(),
+                        r.get("score")
+                            .and_then(serde_json::Value::as_f64)
+                            .unwrap_or(0.0),
+                    ))
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -213,7 +233,9 @@ pub fn parse_lb_recommendations(v: &serde_json::Value) -> Vec<(String, f64)> {
 /// ListenBrainz `metadata/recording` answer for a set of MBIDs: `{mbid: {"recording": {"name"},
 /// "artist": {"name"}}}`. VERIFY. Returns `(mbid, artist, title)`.
 pub fn parse_lb_metadata(v: &serde_json::Value) -> Vec<(String, String, String)> {
-    let Some(obj) = v.as_object() else { return Vec::new() };
+    let Some(obj) = v.as_object() else {
+        return Vec::new();
+    };
     let mut rows: Vec<(String, String, String)> = obj
         .iter()
         .filter_map(|(mbid, m)| {
@@ -255,7 +277,11 @@ async fn similar_songs(env: &RetrieveEnv<'_>, seed: &str) -> Vec<Song> {
     cached(env.cache, &key, SIMILAR_TTL, || async {
         let id = crate::suggestions::deezer_artist_id(env.http, seed).await?;
         let mut songs: Vec<Song> = Vec::new();
-        for rid in crate::suggestions::deezer_related_artists(env.http, id, 6).await.into_iter().take(3) {
+        for rid in crate::suggestions::deezer_related_artists(env.http, id, 6)
+            .await
+            .into_iter()
+            .take(3)
+        {
             tokio::time::sleep(POLITE_PAUSE).await;
             songs.extend(crate::suggestions::deezer_artist_top(env.http, rid, 3).await);
         }
@@ -269,7 +295,12 @@ async fn recent_albums(env: &RetrieveEnv<'_>, seed: &str) -> Vec<(String, String
     let key = format!("reco.albums.v1.{}", artist_key(seed));
     cached(env.cache, &key, ALBUMS_TTL, || async {
         let albums = crate::suggestions::fetch_itunes_artist_albums(env.http, seed).await;
-        Some(albums.into_iter().map(|a| (a.artist, a.title, a.release_date)).collect::<Vec<_>>())
+        Some(
+            albums
+                .into_iter()
+                .map(|a| (a.artist, a.title, a.release_date))
+                .collect::<Vec<_>>(),
+        )
     })
     .await
     .unwrap_or_default()
@@ -303,7 +334,12 @@ fn history_and_likes(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg) -> (Vec<Candidate
         }
     }
     let mut liked = Vec::new();
-    for t in env.cache.get_liked_tracks(cfg.per_source * 4, 0).map(|(t, _)| t).unwrap_or_default() {
+    for t in env
+        .cache
+        .get_liked_tracks(cfg.per_source * 4, 0)
+        .map(|(t, _)| t)
+        .unwrap_or_default()
+    {
         let mut c = Candidate::new(&t.artist, &t.title, Source::Liked);
         c.track_id = Some(t.id);
         c.duration_ms = Some(t.duration_ms);
@@ -338,7 +374,9 @@ async fn new_release_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg) -> Vec<Can
     let mut out = Vec::new();
     for seed in env.profile.top_artists(cfg.seed_artists + 1) {
         for (artist, title, date) in recent_albums(env, &seed).await {
-            let Some(released) = parse_iso_date(&date) else { continue };
+            let Some(released) = parse_iso_date(&date) else {
+                continue;
+            };
             if released < cutoff || released > env.now + 7 * 86_400 {
                 continue;
             }
@@ -361,15 +399,27 @@ async fn tag_neighbour_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg) -> Vec<C
         if env.profile.artists.contains_key(&key) {
             continue;
         }
-        let Some(tags) = env.tags.get(&key) else { continue };
+        let Some(tags) = env.tags.get(&key) else {
+            continue;
+        };
         if let Some((cid, sim)) = env.profile.cluster_fit(tags) {
             if sim >= NEIGHBOUR_MIN_SIM {
-                let label = env.profile.clusters.iter().find(|c| c.id == cid).map(|c| c.label.clone()).unwrap_or_default();
+                let label = env
+                    .profile
+                    .clusters
+                    .iter()
+                    .find(|c| c.id == cid)
+                    .map(|c| c.label.clone())
+                    .unwrap_or_default();
                 ranked.push((key, sim, label));
             }
         }
     }
-    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     let mut out = Vec::new();
     for (key, _, label) in ranked.into_iter().take(8) {
         for (artist, title, dur) in artist_top_songs(env, &key, 3).await.into_iter().take(2) {
@@ -392,7 +442,11 @@ async fn tag_neighbour_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg) -> Vec<C
 /// Part 6, song radio: songs around one song's artist. The artist's own best songs, songs by the
 /// artists Deezer lists as similar, and unheard artists whose cached tags are close to the seed's.
 /// Every source is cached like the others and a failing one gives nothing; the result may be empty.
-pub async fn radio_candidates(env: &RetrieveEnv<'_>, seed_artist: &str, seed_tags: &[(String, f64)]) -> Vec<Candidate> {
+pub async fn radio_candidates(
+    env: &RetrieveEnv<'_>,
+    seed_artist: &str,
+    seed_tags: &[(String, f64)],
+) -> Vec<Candidate> {
     let mut out = Vec::new();
     for (artist, title, dur) in artist_top_songs(env, seed_artist, 6).await {
         let mut c = Candidate::new(&artist, &title, Source::Similar);
@@ -409,20 +463,34 @@ pub async fn radio_candidates(env: &RetrieveEnv<'_>, seed_artist: &str, seed_tag
     }
     if !seed_tags.is_empty() {
         let seed_key = artist_key(seed_artist);
-        let seed = Candidate { artist: seed_artist.to_string(), tags: seed_tags.to_vec(), ..Default::default() };
+        let seed = Candidate {
+            artist: seed_artist.to_string(),
+            tags: seed_tags.to_vec(),
+            ..Default::default()
+        };
         let mut ranked: Vec<(String, f64)> = Vec::new();
         for key in env.tags.keys() {
             if key == seed_key {
                 continue;
             }
-            let Some(tags) = env.tags.get(&key) else { continue };
-            let other = Candidate { artist: key.clone(), tags: tags.clone(), ..Default::default() };
+            let Some(tags) = env.tags.get(&key) else {
+                continue;
+            };
+            let other = Candidate {
+                artist: key.clone(),
+                tags: tags.clone(),
+                ..Default::default()
+            };
             let sim = super::rerank::similarity(&other, &seed);
             if sim >= 0.2 {
                 ranked.push((key, sim));
             }
         }
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| a.0.cmp(&b.0)));
+        ranked.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
         for (key, _) in ranked.into_iter().take(5) {
             for (artist, title, dur) in artist_top_songs(env, &key, 3).await.into_iter().take(2) {
                 let mut c = Candidate::new(&artist, &title, Source::TagNeighbour);
@@ -439,11 +507,25 @@ pub async fn radio_candidates(env: &RetrieveEnv<'_>, seed_artist: &str, seed_tag
     out
 }
 
-async fn listenbrainz_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, lb: &ListenBrainzConfig) -> Result<Vec<Candidate>, String> {
+async fn listenbrainz_source(
+    env: &RetrieveEnv<'_>,
+    cfg: &RetrieveCfg,
+    lb: &ListenBrainzConfig,
+) -> Result<Vec<Candidate>, String> {
     let key = format!("reco.lb.v1.{}", lb.user.to_lowercase());
     let songs: Vec<Song> = cached(env.cache, &key, LB_TTL, || async {
-        let url = format!("https://api.listenbrainz.org/1/cf/recommendation/user/{}/recording", lb.user);
-        let res = env.http.get(url).query(&[("count", "50")]).timeout(Duration::from_secs(8)).send().await.ok()?;
+        let url = format!(
+            "https://api.listenbrainz.org/1/cf/recommendation/user/{}/recording",
+            lb.user
+        );
+        let res = env
+            .http
+            .get(url)
+            .query(&[("count", "50")])
+            .timeout(Duration::from_secs(8))
+            .send()
+            .await
+            .ok()?;
         if !res.status().is_success() {
             return None;
         }
@@ -455,7 +537,10 @@ async fn listenbrainz_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, lb: &List
         let meta = env
             .http
             .get("https://api.listenbrainz.org/1/metadata/recording/")
-            .query(&[("recording_mbids", ids.join(",")), ("inc", "artist".to_string())])
+            .query(&[
+                ("recording_mbids", ids.join(",")),
+                ("inc", "artist".to_string()),
+            ])
             .timeout(Duration::from_secs(8))
             .send()
             .await
@@ -464,7 +549,8 @@ async fn listenbrainz_source(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, lb: &List
             return None;
         }
         let rows = parse_lb_metadata(&meta.json::<serde_json::Value>().await.ok()?);
-        let by_mbid: HashMap<String, (String, String)> = rows.into_iter().map(|(m, a, t)| (m, (a, t))).collect();
+        let by_mbid: HashMap<String, (String, String)> =
+            rows.into_iter().map(|(m, a, t)| (m, (a, t))).collect();
         Some(
             recs.iter()
                 .filter_map(|(m, _)| by_mbid.get(m).map(|(a, t)| (a.clone(), t.clone(), None)))
@@ -493,15 +579,27 @@ where
 {
     match tokio::time::timeout(SOURCE_TIMEOUT, fut).await {
         Ok(Ok(v)) => {
-            reports.push(SourceReport { source, count: v.len(), error: None });
+            reports.push(SourceReport {
+                source,
+                count: v.len(),
+                error: None,
+            });
             v
         }
         Ok(Err(e)) => {
-            reports.push(SourceReport { source, count: 0, error: Some(e) });
+            reports.push(SourceReport {
+                source,
+                count: 0,
+                error: Some(e),
+            });
             Vec::new()
         }
         Err(_) => {
-            reports.push(SourceReport { source, count: 0, error: Some("timed out".to_string()) });
+            reports.push(SourceReport {
+                source,
+                count: 0,
+                error: Some("timed out".to_string()),
+            });
             Vec::new()
         }
     }
@@ -515,15 +613,51 @@ pub async fn gather(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, phase: Phase) -> P
 
     if phase.allows(Source::History) {
         let (h, l) = history_and_likes(env, cfg);
-        reports.push(SourceReport { source: Source::History, count: h.len(), error: None });
-        reports.push(SourceReport { source: Source::Liked, count: l.len(), error: None });
+        reports.push(SourceReport {
+            source: Source::History,
+            count: h.len(),
+            error: None,
+        });
+        reports.push(SourceReport {
+            source: Source::Liked,
+            count: l.len(),
+            error: None,
+        });
         batches.push(h);
         batches.push(l);
-        batches.push(guarded(Source::Similar, async { Ok(similar_source(env, cfg).await) }, &mut reports).await);
-        batches.push(guarded(Source::NewRelease, async { Ok(new_release_source(env, cfg).await) }, &mut reports).await);
-        batches.push(guarded(Source::TagNeighbour, async { Ok(tag_neighbour_source(env, cfg).await) }, &mut reports).await);
+        batches.push(
+            guarded(
+                Source::Similar,
+                async { Ok(similar_source(env, cfg).await) },
+                &mut reports,
+            )
+            .await,
+        );
+        batches.push(
+            guarded(
+                Source::NewRelease,
+                async { Ok(new_release_source(env, cfg).await) },
+                &mut reports,
+            )
+            .await,
+        );
+        batches.push(
+            guarded(
+                Source::TagNeighbour,
+                async { Ok(tag_neighbour_source(env, cfg).await) },
+                &mut reports,
+            )
+            .await,
+        );
         if let Some(lb) = &cfg.listenbrainz {
-            batches.push(guarded(Source::ListenBrainz, listenbrainz_source(env, cfg, lb), &mut reports).await);
+            batches.push(
+                guarded(
+                    Source::ListenBrainz,
+                    listenbrainz_source(env, cfg, lb),
+                    &mut reports,
+                )
+                .await,
+            );
         }
     }
     batches.push(
@@ -544,12 +678,21 @@ pub async fn gather(env: &RetrieveEnv<'_>, cfg: &RetrieveCfg, phase: Phase) -> P
     batches.push(
         guarded(
             Source::Editorial,
-            async { Ok(chart_candidates(&crate::suggestions::all_time_candidates(), Source::Editorial, cfg.per_source)) },
+            async {
+                Ok(chart_candidates(
+                    &crate::suggestions::all_time_candidates(),
+                    Source::Editorial,
+                    cfg.per_source,
+                ))
+            },
             &mut reports,
         )
         .await,
     );
-    Pool { candidates: gate(merge(batches), phase), reports }
+    Pool {
+        candidates: gate(merge(batches), phase),
+        reports,
+    }
 }
 
 #[cfg(test)]
@@ -571,7 +714,11 @@ mod tests {
         let out = merge(vec![vec![chart, other], vec![hist]]);
         assert_eq!(out.len(), 2);
         let m = &out[0];
-        assert_eq!(m.sources, vec![Source::History, Source::Chart], "most trusted first");
+        assert_eq!(
+            m.sources,
+            vec![Source::History, Source::Chart],
+            "most trusted first"
+        );
         assert_eq!(m.track_id.as_deref(), Some("sp1"));
         assert_eq!(m.popularity, Some(0.9));
         assert_eq!(m.tags.len(), 1);
@@ -583,7 +730,10 @@ mod tests {
         a.because = Some("first".into());
         let mut a2 = c("A", "1", Source::Chart);
         a2.because = Some("second".into());
-        let out = merge(vec![vec![c("Z", "z", Source::Chart), a], vec![a2, c("Y", "y", Source::Chart)]]);
+        let out = merge(vec![
+            vec![c("Z", "z", Source::Chart), a],
+            vec![a2, c("Y", "y", Source::Chart)],
+        ]);
         let names: Vec<&str> = out.iter().map(|x| x.artist.as_str()).collect();
         assert_eq!(names, vec!["Z", "A", "Y"]);
         assert_eq!(out[1].because.as_deref(), Some("first"));
@@ -601,11 +751,20 @@ mod tests {
     fn cold_start_keeps_only_charts_and_editorial() {
         let mut both = c("A", "1", Source::History);
         both.sources.push(Source::Chart);
-        let pool = vec![both, c("B", "2", Source::Similar), c("C", "3", Source::Editorial), c("D", "4", Source::ListenBrainz)];
+        let pool = vec![
+            both,
+            c("B", "2", Source::Similar),
+            c("C", "3", Source::Editorial),
+            c("D", "4", Source::ListenBrainz),
+        ];
         let cold = gate(pool.clone(), Phase::ColdStart);
         let names: Vec<&str> = cold.iter().map(|x| x.artist.as_str()).collect();
         assert_eq!(names, vec!["A", "C"]);
-        assert_eq!(cold[0].sources, vec![Source::Chart], "the personal source is dropped from a shared candidate");
+        assert_eq!(
+            cold[0].sources,
+            vec![Source::Chart],
+            "the personal source is dropped from a shared candidate"
+        );
         assert_eq!(gate(pool, Phase::Personal).len(), 4);
     }
 
@@ -613,21 +772,31 @@ mod tests {
     fn dates_parse_to_unix_midnight_and_bad_ones_to_none() {
         assert_eq!(parse_iso_date("1970-01-01"), Some(0));
         assert_eq!(parse_iso_date("2000-03-01"), Some(951_868_800));
-        assert_eq!(parse_iso_date("2026-10-30T07:00:00Z"), parse_iso_date("2026-10-30"));
+        assert_eq!(
+            parse_iso_date("2026-10-30T07:00:00Z"),
+            parse_iso_date("2026-10-30")
+        );
         assert_eq!(parse_iso_date("2027"), None);
         assert_eq!(parse_iso_date("not-a-date"), None);
         assert_eq!(parse_iso_date("2026-13-01"), None);
         assert_eq!(parse_iso_date("1960-01-01"), None);
-        assert_eq!(parse_iso_date("2024-02-29").map(|t| t / 86_400), Some(19_782));
+        assert_eq!(
+            parse_iso_date("2024-02-29").map(|t| t / 86_400),
+            Some(19_782)
+        );
     }
 
     #[test]
     fn chart_rows_get_a_popularity_from_their_place() {
-        let rows: Vec<(String, String, Option<u64>)> = (0..4).map(|i| (format!("A{i}"), format!("T{i}"), Some(200_000))).collect();
+        let rows: Vec<(String, String, Option<u64>)> = (0..4)
+            .map(|i| (format!("A{i}"), format!("T{i}"), Some(200_000)))
+            .collect();
         let chart = chart_candidates(&rows, Source::Chart, 3);
         assert_eq!(chart.len(), 3);
         assert_eq!(chart[0].popularity, Some(1.0));
-        assert!(chart[2].popularity.is_some_and(|p| p < chart[1].popularity.unwrap_or(0.0)));
+        assert!(chart[2]
+            .popularity
+            .is_some_and(|p| p < chart[1].popularity.unwrap_or(0.0)));
         let ed = chart_candidates(&rows, Source::Editorial, 10);
         assert!(ed.iter().all(|c| c.popularity.is_none()));
     }
@@ -636,10 +805,16 @@ mod tests {
     fn listenbrainz_answers_parse_and_broken_ones_do_not_panic() {
         let recs = serde_json::json!({"payload": {"mbids": [
             {"recording_mbid": "m1", "score": 0.9}, {"recording_mbid": "m2", "score": 0.5}, {"nope": 1}]}});
-        assert_eq!(parse_lb_recommendations(&recs), vec![("m1".to_string(), 0.9), ("m2".to_string(), 0.5)]);
+        assert_eq!(
+            parse_lb_recommendations(&recs),
+            vec![("m1".to_string(), 0.9), ("m2".to_string(), 0.5)]
+        );
         assert!(parse_lb_recommendations(&serde_json::json!({"error": "x"})).is_empty());
         let meta = serde_json::json!({"m1": {"recording": {"name": "Song"}, "artist": {"name": "Band"}}, "m2": {"recording": {}}});
-        assert_eq!(parse_lb_metadata(&meta), vec![("m1".to_string(), "Band".to_string(), "Song".to_string())]);
+        assert_eq!(
+            parse_lb_metadata(&meta),
+            vec![("m1".to_string(), "Band".to_string(), "Song".to_string())]
+        );
         assert!(parse_lb_metadata(&serde_json::json!([1, 2])).is_empty());
     }
 
@@ -649,11 +824,18 @@ mod tests {
         assert_eq!(listenbrainz_config_in(dir.path()), None, "no file: off");
         let file = dir.path().join("listenbrainz.json");
         std::fs::write(&file, r#"{"enabled": true, "user": " me "}"#).expect("write");
-        assert_eq!(listenbrainz_config_in(dir.path()), Some(ListenBrainzConfig { user: "me".into() }));
+        assert_eq!(
+            listenbrainz_config_in(dir.path()),
+            Some(ListenBrainzConfig { user: "me".into() })
+        );
         std::fs::write(&file, r#"{"enabled": false, "user": "me"}"#).expect("write");
         assert_eq!(listenbrainz_config_in(dir.path()), None);
         std::fs::write(&file, r#"{"enabled": true, "user": "  "}"#).expect("write");
-        assert_eq!(listenbrainz_config_in(dir.path()), None, "no user name: off");
+        assert_eq!(
+            listenbrainz_config_in(dir.path()),
+            None,
+            "no user name: off"
+        );
         std::fs::write(&file, b"nonsense").expect("write");
         assert_eq!(listenbrainz_config_in(dir.path()), None);
     }
@@ -661,10 +843,27 @@ mod tests {
     #[tokio::test]
     async fn a_failing_source_is_reported_and_does_not_stop_the_others() {
         let mut reports = Vec::new();
-        let bad = guarded(Source::Similar, async { Err::<Vec<Candidate>, String>("boom".into()) }, &mut reports).await;
-        let good = guarded(Source::Chart, async { Ok(vec![c("A", "1", Source::Chart)]) }, &mut reports).await;
+        let bad = guarded(
+            Source::Similar,
+            async { Err::<Vec<Candidate>, String>("boom".into()) },
+            &mut reports,
+        )
+        .await;
+        let good = guarded(
+            Source::Chart,
+            async { Ok(vec![c("A", "1", Source::Chart)]) },
+            &mut reports,
+        )
+        .await;
         assert!(bad.is_empty() && good.len() == 1);
         assert_eq!(reports[0].error.as_deref(), Some("boom"));
-        assert_eq!(reports[1], SourceReport { source: Source::Chart, count: 1, error: None });
+        assert_eq!(
+            reports[1],
+            SourceReport {
+                source: Source::Chart,
+                count: 1,
+                error: None
+            }
+        );
     }
 }

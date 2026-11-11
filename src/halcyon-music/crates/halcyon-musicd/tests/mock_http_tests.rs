@@ -138,13 +138,13 @@ async fn test_401_refresh_and_retry() {
         }
     }).await;
 
-    let client = SpotifyClient::new(
-        Some(server.url("/v1")),
-        Some(server.url("/api/token")),
-    );
+    let client = SpotifyClient::new(Some(server.url("/v1")), Some(server.url("/api/token")));
     client.set_token(sample_token()).await;
 
-    let res = client.get_playlists(20, 0).await.expect("playlists after refresh");
+    let res = client
+        .get_playlists(20, 0)
+        .await
+        .expect("playlists after refresh");
     assert_eq!(res.items.len(), 1);
     assert_eq!(res.items[0].name, "My Playlist");
     assert!(server.request_count.load(Ordering::SeqCst) >= 2);
@@ -168,21 +168,26 @@ async fn test_429_rate_limit_backoff() {
             (
                 200,
                 vec![("Content-Type".into(), "application/json".into())],
-                r#"{"items":[],"total":0,"limit":20,"offset":0,"next":null,"previous":null}"#.into(),
+                r#"{"items":[],"total":0,"limit":20,"offset":0,"next":null,"previous":null}"#
+                    .into(),
             )
         }
-    }).await;
+    })
+    .await;
 
-    let client = SpotifyClient::new(
-        Some(server.url("/v1")),
-        None,
-    );
+    let client = SpotifyClient::new(Some(server.url("/v1")), None);
     client.set_token(sample_token()).await;
 
     let start = std::time::Instant::now();
-    let res = client.get_playlists(20, 0).await.expect("playlists after 429 retry");
+    let res = client
+        .get_playlists(20, 0)
+        .await
+        .expect("playlists after 429 retry");
     assert_eq!(res.total, 0);
-    assert!(start.elapsed() >= Duration::from_millis(900), "must respect Retry-After header");
+    assert!(
+        start.elapsed() >= Duration::from_millis(900),
+        "must respect Retry-After header"
+    );
 }
 
 #[tokio::test]
@@ -223,7 +228,8 @@ async fn test_circuit_breaker_trips_after_failures() {
             vec![("Content-Type".into(), "application/json".into())],
             r#"{"error":"Internal Server Error"}"#.into(),
         )
-    }).await;
+    })
+    .await;
 
     let client = SpotifyClient::new(Some(server.url("/v1")), None);
     client.set_token(sample_token()).await;
@@ -234,9 +240,17 @@ async fn test_circuit_breaker_trips_after_failures() {
     let _ = client.get_playlists(10, 0).await;
 
     // 4th request must immediately fail with CircuitOpen without hitting server!
-    let err = client.get_playlists(10, 0).await.expect_err("should trip circuit breaker");
+    let err = client
+        .get_playlists(10, 0)
+        .await
+        .expect_err("should trip circuit breaker");
     assert!(
-        matches!(err, ApiError::CircuitOpen { family: EndpointFamily::Playlists }),
+        matches!(
+            err,
+            ApiError::CircuitOpen {
+                family: EndpointFamily::Playlists
+            }
+        ),
         "expected CircuitOpen, got {err:?}"
     );
 }
@@ -247,10 +261,12 @@ async fn test_request_timeout() {
         // Sleep past the client timeout
         tokio::time::sleep(Duration::from_millis(600)).await;
         (200, vec![], "{}".into())
-    }).await;
+    })
+    .await;
 
     // Use 200ms timeout for fast unit testing
-    let client = SpotifyClient::with_timeout(Some(server.url("/v1")), None, Duration::from_millis(200));
+    let client =
+        SpotifyClient::with_timeout(Some(server.url("/v1")), None, Duration::from_millis(200));
     client.set_token(sample_token()).await;
 
     let res = client.get_playlists(1, 0).await;
@@ -263,17 +279,29 @@ async fn test_request_timeout() {
 #[test]
 fn test_cache_expiry_and_stale_while_revalidate() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = Cache::open(&tmp.path().join("c.db"), &tmp.path().join("imgs"), 1024 * 1024).expect("cache open");
+    let cache = Cache::open(
+        &tmp.path().join("c.db"),
+        &tmp.path().join("imgs"),
+        1024 * 1024,
+    )
+    .expect("cache open");
 
     // Put fresh item with 10s TTL
-    cache.kv_set("artist_meta", "fresh_data", 10).expect("kv_set");
+    cache
+        .kv_set("artist_meta", "fresh_data", 10)
+        .expect("kv_set");
     let item = cache.kv_get("artist_meta").expect("get").expect("exists");
     assert_eq!(item.item, "fresh_data");
     assert!(!item.is_stale, "item should be fresh within TTL");
 
     // Put item with 0s TTL (already expired)
-    cache.kv_set("artist_meta_old", "stale_data", 0).expect("kv_set");
-    let stale_item = cache.kv_get("artist_meta_old").expect("get").expect("exists");
+    cache
+        .kv_set("artist_meta_old", "stale_data", 0)
+        .expect("kv_set");
+    let stale_item = cache
+        .kv_get("artist_meta_old")
+        .expect("get")
+        .expect("exists");
     assert_eq!(stale_item.item, "stale_data");
     assert!(stale_item.is_stale, "item should be stale when TTL expired");
 }
@@ -285,14 +313,26 @@ fn test_corrupt_database_recovers_without_crashing() {
     let img_dir = tmp.path().join("imgs");
 
     // Corrupt the database file with garbage
-    std::fs::write(&db_path, b"CORRUPTED BY AN ACCIDENTAL PROCESS TERMINATION OR DISK ERROR").expect("write garbage");
+    std::fs::write(
+        &db_path,
+        b"CORRUPTED BY AN ACCIDENTAL PROCESS TERMINATION OR DISK ERROR",
+    )
+    .expect("write garbage");
 
     // Opening must automatically move aside corrupt file and initialize clean DB
     let cache = Cache::open(&db_path, &img_dir, 1024 * 1024).expect("must recover cleanly");
 
     // Verify operations succeed on recovered database
-    let t = Track::simple("t1".into(), "Phoenix".into(), "Daft Punk".into(), "Homework".into(), 240_000);
-    cache.put_tracks(std::slice::from_ref(&t)).expect("put_tracks");
+    let t = Track::simple(
+        "t1".into(),
+        "Phoenix".into(),
+        "Daft Punk".into(),
+        "Homework".into(),
+        240_000,
+    );
+    cache
+        .put_tracks(std::slice::from_ref(&t))
+        .expect("put_tracks");
     let loaded = cache.get_track("t1").expect("get_track").expect("exists");
     assert_eq!(loaded.title, "Phoenix");
 }
@@ -313,7 +353,10 @@ async fn test_fetch_account_reads_profile_picture() {
 
     let account = client.fetch_account().await.expect("account");
     assert_eq!(account.display_name.as_deref(), Some("Ada"));
-    assert_eq!(account.image_url.as_deref(), Some("https://i.scdn.co/image/big"));
+    assert_eq!(
+        account.image_url.as_deref(),
+        Some("https://i.scdn.co/image/big")
+    );
     assert!(account.images_read);
     assert_eq!(client.cached_account().await, Some(account));
 }
@@ -321,7 +364,11 @@ async fn test_fetch_account_reads_profile_picture() {
 #[tokio::test]
 async fn test_fetch_account_without_images_still_works() {
     let server = MockServer::start(|_req, _idx| async move {
-        (200, vec![("Content-Type".into(), "application/json".into())], r#"{"id":"u1","display_name":"Ada"}"#.into())
+        (
+            200,
+            vec![("Content-Type".into(), "application/json".into())],
+            r#"{"id":"u1","display_name":"Ada"}"#.into(),
+        )
     })
     .await;
     let client = SpotifyClient::new(Some(server.url("/v1")), None);

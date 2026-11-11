@@ -42,7 +42,11 @@ pub fn save(mode: AuthMode) -> Result<(), String> {
 /// Pure rule for the starting mode. A saved choice wins. Without one, an existing user who
 /// only has the old Client-ID token keeps browsing that way (nothing breaks on upgrade); in
 /// every other case the default is the librespot sign-in.
-pub fn resolve(saved: Option<AuthMode>, has_librespot_token: bool, has_own_token: bool) -> AuthMode {
+pub fn resolve(
+    saved: Option<AuthMode>,
+    has_librespot_token: bool,
+    has_own_token: bool,
+) -> AuthMode {
     match saved {
         Some(mode) => mode,
         None if has_librespot_token => AuthMode::Librespot,
@@ -64,8 +68,14 @@ mod tests {
 
     #[test]
     fn saved_choice_wins() {
-        assert_eq!(resolve(Some(AuthMode::OwnClientId), true, false), AuthMode::OwnClientId);
-        assert_eq!(resolve(Some(AuthMode::Librespot), false, true), AuthMode::Librespot);
+        assert_eq!(
+            resolve(Some(AuthMode::OwnClientId), true, false),
+            AuthMode::OwnClientId
+        );
+        assert_eq!(
+            resolve(Some(AuthMode::Librespot), false, true),
+            AuthMode::Librespot
+        );
     }
 
     #[test]
@@ -83,7 +93,10 @@ mod tests {
 
     #[test]
     fn stored_file_shape_uses_the_wire_names() {
-        let json = serde_json::to_string(&Stored { mode: AuthMode::OwnClientId }).expect("json");
+        let json = serde_json::to_string(&Stored {
+            mode: AuthMode::OwnClientId,
+        })
+        .expect("json");
         assert_eq!(json, r#"{"mode":"own-client-id"}"#);
     }
 }

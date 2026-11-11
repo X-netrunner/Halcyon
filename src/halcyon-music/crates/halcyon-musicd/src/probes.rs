@@ -63,7 +63,11 @@ pub async fn reprobe(client: &SpotifyClient, cache: &Cache) -> Vec<EndpointProbe
     evaluate_probes_inner(client, cache, true).await
 }
 
-async fn evaluate_probes_inner(client: &SpotifyClient, cache: &Cache, force: bool) -> Vec<EndpointProbe> {
+async fn evaluate_probes_inner(
+    client: &SpotifyClient,
+    cache: &Cache,
+    force: bool,
+) -> Vec<EndpointProbe> {
     let now = now_secs();
     let existing_probes = cache.get_probes().unwrap_or_default();
     let probe_map: std::collections::HashMap<String, EndpointProbe> = existing_probes

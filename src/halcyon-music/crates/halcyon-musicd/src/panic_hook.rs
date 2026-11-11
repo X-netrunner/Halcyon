@@ -28,7 +28,10 @@ fn write_crash_report(state_dir: &Path, info: &std::panic::PanicHookInfo<'_>) {
     report.push_str("halcyon-musicd crash report\n");
     report.push_str(&format!("timestamp: {ts}\n"));
     report.push_str(&format!("panic: {info}\n"));
-    report.push_str(&format!("backtrace:\n{}\n", std::backtrace::Backtrace::force_capture()));
+    report.push_str(&format!(
+        "backtrace:\n{}\n",
+        std::backtrace::Backtrace::force_capture()
+    ));
     report.push_str("\n--- last log lines ---\n");
     report.push_str(&tail_of_log(state_dir, 200));
 
@@ -47,13 +50,21 @@ fn tail_of_log(state_dir: &Path, n: usize) -> String {
         Ok(rd) => rd
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.file_name().map(|n| n.to_string_lossy().starts_with("halcyon-musicd.log")).unwrap_or(false))
+            .filter(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().starts_with("halcyon-musicd.log"))
+                    .unwrap_or(false)
+            })
             .collect(),
         Err(_) => return String::new(),
     };
     logs.sort();
-    let Some(newest) = logs.pop() else { return String::new() };
-    let Ok(content) = std::fs::read_to_string(&newest) else { return String::new() };
+    let Some(newest) = logs.pop() else {
+        return String::new();
+    };
+    let Ok(content) = std::fs::read_to_string(&newest) else {
+        return String::new();
+    };
     let lines: Vec<&str> = content.lines().collect();
     let start = lines.len().saturating_sub(n);
     lines.get(start..).unwrap_or(&[]).join("\n")

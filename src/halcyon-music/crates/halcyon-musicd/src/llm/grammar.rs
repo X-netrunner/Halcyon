@@ -14,19 +14,91 @@ use super::backend::Shape;
 /// backslashes. The catalogue search turns these into queries, so every entry must be a word a
 /// person would type into a music search.
 pub const VOCABULARY: &[&str] = &[
-    "ambient", "chillout", "chillhop", "lo-fi", "downtempo", "trip-hop", "jazz", "smooth jazz", "blues", "soul",
-    "r&b", "funk", "disco", "house", "deep house", "techno", "trance", "drum and bass", "dubstep", "electronic",
-    "synthwave", "synthpop", "idm", "dance", "pop", "indie pop", "indie rock", "indie folk", "folk", "acoustic",
-    "singer-songwriter", "country", "rock", "classic rock", "hard rock", "alternative", "post-rock", "shoegaze",
-    "punk", "pop punk", "emo", "metal", "heavy metal", "grunge", "hip hop", "rap", "trap", "reggae", "latin",
-    "reggaeton", "afrobeats", "k-pop", "j-pop", "bollywood", "classical", "piano", "orchestral", "soundtrack",
-    "cinematic", "instrumental", "experimental", "new age", "meditation", "sleep", "study", "focus", "workout",
-    "party", "happy", "sad", "melancholic", "romantic", "energetic", "calm", "dreamy", "dark", "uplifting",
-    "nostalgic", "road trip",
+    "ambient",
+    "chillout",
+    "chillhop",
+    "lo-fi",
+    "downtempo",
+    "trip-hop",
+    "jazz",
+    "smooth jazz",
+    "blues",
+    "soul",
+    "r&b",
+    "funk",
+    "disco",
+    "house",
+    "deep house",
+    "techno",
+    "trance",
+    "drum and bass",
+    "dubstep",
+    "electronic",
+    "synthwave",
+    "synthpop",
+    "idm",
+    "dance",
+    "pop",
+    "indie pop",
+    "indie rock",
+    "indie folk",
+    "folk",
+    "acoustic",
+    "singer-songwriter",
+    "country",
+    "rock",
+    "classic rock",
+    "hard rock",
+    "alternative",
+    "post-rock",
+    "shoegaze",
+    "punk",
+    "pop punk",
+    "emo",
+    "metal",
+    "heavy metal",
+    "grunge",
+    "hip hop",
+    "rap",
+    "trap",
+    "reggae",
+    "latin",
+    "reggaeton",
+    "afrobeats",
+    "k-pop",
+    "j-pop",
+    "bollywood",
+    "classical",
+    "piano",
+    "orchestral",
+    "soundtrack",
+    "cinematic",
+    "instrumental",
+    "experimental",
+    "new age",
+    "meditation",
+    "sleep",
+    "study",
+    "focus",
+    "workout",
+    "party",
+    "happy",
+    "sad",
+    "melancholic",
+    "romantic",
+    "energetic",
+    "calm",
+    "dreamy",
+    "dark",
+    "uplifting",
+    "nostalgic",
+    "road trip",
 ];
 
 /// Decades the plan's `era` may name.
-const DECADES: &[&str] = &["1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"];
+const DECADES: &[&str] = &[
+    "1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s",
+];
 
 /// Most songs a pick may list (the prompts ask for up to 25).
 const MAX_PICKS: usize = 25;
@@ -134,7 +206,10 @@ pub(crate) mod matcher {
     #[derive(Debug, Clone)]
     enum Atom {
         Lit(Vec<char>),
-        Class { negated: bool, items: Vec<(char, char)> },
+        Class {
+            negated: bool,
+            items: Vec<(char, char)>,
+        },
         Rule(String),
         Group(Vec<Vec<Item>>),
     }
@@ -176,7 +251,8 @@ pub(crate) mod matcher {
                 'x' => {
                     let hex: String = self.chars[self.pos..self.pos + 2].iter().collect();
                     self.pos += 2;
-                    char::from_u32(u32::from_str_radix(&hex, 16).expect("hex escape")).expect("char")
+                    char::from_u32(u32::from_str_radix(&hex, 16).expect("hex escape"))
+                        .expect("char")
                 }
                 other => other,
             }
@@ -225,7 +301,9 @@ pub(crate) mod matcher {
                         let mut items = Vec::new();
                         while self.peek() != Some(']') {
                             let lo = self.class_char();
-                            if self.peek() == Some('-') && self.chars.get(self.pos + 1) != Some(&']') {
+                            if self.peek() == Some('-')
+                                && self.chars.get(self.pos + 1) != Some(&']')
+                            {
                                 self.pos += 1;
                                 let hi = self.class_char();
                                 items.push((lo, hi));
@@ -246,7 +324,8 @@ pub(crate) mod matcher {
                     }
                     Some(c) if c.is_ascii_lowercase() => {
                         let start = self.pos;
-                        while matches!(self.peek(), Some(c) if c.is_ascii_alphanumeric() || c == '-') {
+                        while matches!(self.peek(), Some(c) if c.is_ascii_alphanumeric() || c == '-')
+                        {
                             self.pos += 1;
                         }
                         Atom::Rule(self.chars[start..self.pos].iter().collect())
@@ -308,8 +387,14 @@ pub(crate) mod matcher {
                 if line.is_empty() {
                     continue;
                 }
-                let (name, body) = line.split_once("::=").unwrap_or_else(|| panic!("not a rule: {line}"));
-                let mut p = Parser { chars: body.trim().chars().collect(), pos: 0, _src: src };
+                let (name, body) = line
+                    .split_once("::=")
+                    .unwrap_or_else(|| panic!("not a rule: {line}"));
+                let mut p = Parser {
+                    chars: body.trim().chars().collect(),
+                    pos: 0,
+                    _src: src,
+                };
                 let alts = p.alt(false);
                 assert_eq!(p.pos, p.chars.len(), "trailing text in rule {name}");
                 rules.insert(name.trim().to_string(), alts);
@@ -325,7 +410,12 @@ pub(crate) mod matcher {
             ends.contains(&chars.len())
         }
 
-        fn alt_ends(&self, alts: &[Vec<Item>], text: &[char], starts: &BTreeSet<usize>) -> BTreeSet<usize> {
+        fn alt_ends(
+            &self,
+            alts: &[Vec<Item>],
+            text: &[char],
+            starts: &BTreeSet<usize>,
+        ) -> BTreeSet<usize> {
             let mut out = BTreeSet::new();
             for seq in alts {
                 let mut cur = starts.clone();
@@ -340,7 +430,12 @@ pub(crate) mod matcher {
             out
         }
 
-        fn atom_ends(&self, atom: &Atom, text: &[char], starts: &BTreeSet<usize>) -> BTreeSet<usize> {
+        fn atom_ends(
+            &self,
+            atom: &Atom,
+            text: &[char],
+            starts: &BTreeSet<usize>,
+        ) -> BTreeSet<usize> {
             let mut out = BTreeSet::new();
             match atom {
                 Atom::Lit(s) => {
@@ -361,7 +456,10 @@ pub(crate) mod matcher {
                     }
                 }
                 Atom::Rule(name) => {
-                    let alts = self.rules.get(name).unwrap_or_else(|| panic!("missing rule {name}"));
+                    let alts = self
+                        .rules
+                        .get(name)
+                        .unwrap_or_else(|| panic!("missing rule {name}"));
                     out = self.alt_ends(alts, text, starts);
                 }
                 Atom::Group(alts) => out = self.alt_ends(alts, text, starts),
@@ -369,7 +467,12 @@ pub(crate) mod matcher {
             out
         }
 
-        fn item_ends(&self, item: &Item, text: &[char], starts: &BTreeSet<usize>) -> BTreeSet<usize> {
+        fn item_ends(
+            &self,
+            item: &Item,
+            text: &[char],
+            starts: &BTreeSet<usize>,
+        ) -> BTreeSet<usize> {
             let mut result = BTreeSet::new();
             let mut cur = starts.clone();
             let mut count = 0usize;
@@ -423,7 +526,10 @@ mod tests {
         let out = r#"{"mixes":[{"id":"m1","title":"Morning Lift","reason":"Upbeat picks for the hour you usually listen."}]}"#;
         assert!(gr.accepts(out));
         let mut aliases = HashMap::new();
-        aliases.insert("m1".to_string(), ("real-1".to_string(), "Good morning Mix".to_string()));
+        aliases.insert(
+            "m1".to_string(),
+            ("real-1".to_string(), "Good morning Mix".to_string()),
+        );
         let blurbs = validate::parse_why_mix(out, &aliases);
         assert_eq!(blurbs.len(), 1);
         assert_eq!(blurbs[0].mix_id, "real-1");
@@ -442,7 +548,10 @@ mod tests {
         assert!(!gr.accepts(&ok.replace("\"ambient\"", "\"vaporwave\"")));
         assert!(!gr.accepts(&ok.replace("0.3", "1.5")));
         assert!(!gr.accepts(&ok.replace("0.3", "7")));
-        assert!(!gr.accepts(&ok.replace("[\"ambient\",\"lo-fi\",\"instrumental\"]", "[\"ambient\",\"lo-fi\",\"jazz\",\"funk\",\"soul\"]")));
+        assert!(!gr.accepts(&ok.replace(
+            "[\"ambient\",\"lo-fi\",\"instrumental\"]",
+            "[\"ambient\",\"lo-fi\",\"jazz\",\"funk\",\"soul\"]"
+        )));
         assert!(!gr.accepts(&ok.replace("[\"ambient\",\"lo-fi\",\"instrumental\"]", "[]")));
         assert!(!gr.accepts(&ok.replace("null}", "\"19th century\"}")));
     }
@@ -464,11 +573,16 @@ mod tests {
         for w in VOCABULARY {
             assert!(!w.contains('"') && !w.contains('\\'), "{w}");
             assert_eq!(*w, w.to_lowercase(), "{w}");
-            let out = format!(r#"{{"title":"Test Mix","seed_artists":[],"genres":["{w}"],"energy":0.5,"instrumental":null,"era":null}}"#);
+            let out = format!(
+                r#"{{"title":"Test Mix","seed_artists":[],"genres":["{w}"],"energy":0.5,"instrumental":null,"era":null}}"#
+            );
             assert!(gr.accepts(&out), "vocabulary word {w:?} rejected");
         }
         let mut seen = std::collections::HashSet::new();
-        assert!(VOCABULARY.iter().all(|w| seen.insert(*w)), "duplicate vocabulary word");
+        assert!(
+            VOCABULARY.iter().all(|w| seen.insert(*w)),
+            "duplicate vocabulary word"
+        );
         assert!(VOCABULARY.len() >= 60);
     }
 
@@ -481,7 +595,12 @@ mod tests {
         assert!(!gr.accepts(&ok.replace("\"t12\"", "\"t0\"")));
         assert!(!gr.accepts(&ok.replace("\"t3\",\"t12\",\"t1\"", "")));
         // 25 picks is the most
-        let many = |n: usize| (0..n).map(|i| format!("\"t{}\"", i % 12 + 1)).collect::<Vec<_>>().join(",");
+        let many = |n: usize| {
+            (0..n)
+                .map(|i| format!("\"t{}\"", i % 12 + 1))
+                .collect::<Vec<_>>()
+                .join(",")
+        };
         assert!(gr.accepts(&ok.replace("\"t3\",\"t12\",\"t1\"", &many(25))));
         assert!(!gr.accepts(&ok.replace("\"t3\",\"t12\",\"t1\"", &many(26))));
     }
@@ -506,7 +625,10 @@ mod tests {
         aliases.insert("t2".to_string(), "id-b".to_string());
         aliases.insert("t3".to_string(), "id-c".to_string());
         let pick = validate::parse_pick(out, &aliases);
-        assert_eq!(pick.map(|p| p.ids), Some(vec!["id-c".to_string(), "id-a".to_string()]));
+        assert_eq!(
+            pick.map(|p| p.ids),
+            Some(vec!["id-c".to_string(), "id-a".to_string()])
+        );
     }
 
     #[test]
@@ -532,7 +654,12 @@ mod tests {
             let text = grammar_for(&shape);
             for line in text.lines().filter(|l| !l.trim().is_empty()) {
                 let (name, _) = line.split_once("::=").expect("rule line");
-                assert!(name.trim().chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'), "{name}");
+                assert!(
+                    name.trim()
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                    "{name}"
+                );
             }
             assert!(text.contains("root ::="));
             // parses with our matcher too
@@ -543,7 +670,12 @@ mod tests {
     #[test]
     fn counts_are_clamped_so_a_bad_request_cannot_build_a_huge_grammar() {
         assert!(grammar_for(&Shape::Pick { candidates: 5000 }).len() < 3000);
-        assert!(grammar_for(&Shape::WhyMix { mixes: 500 }).matches("\"m").count() <= 8 * 2);
+        assert!(
+            grammar_for(&Shape::WhyMix { mixes: 500 })
+                .matches("\"m")
+                .count()
+                <= 8 * 2
+        );
         // zero candidates still gives a usable grammar
         assert!(g(&Shape::Rerank { candidates: 0 }).accepts(r#"{"picks":["t1"]}"#));
     }

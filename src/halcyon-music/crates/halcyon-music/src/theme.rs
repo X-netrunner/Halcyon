@@ -243,12 +243,12 @@ impl HalcyonPalette {
         let c = Color::from_rgb8;
         match mood {
             Mood::Dusk | Mood::Wallpaper | Mood::Song => Self {
-                background: c(27, 22, 36),       // #1b1624
-                surface: c(38, 31, 50),          // #261f32
-                surface_variant: c(52, 43, 68),  // #342b44
-                text: c(243, 234, 226),          // #f3eae2 warm cream
-                text_muted: c(172, 160, 176),    // #aca0b0
-                accent: c(244, 178, 148),        // #f4b294 soft peach
+                background: c(27, 22, 36),          // #1b1624
+                surface: c(38, 31, 50),             // #261f32
+                surface_variant: c(52, 43, 68),     // #342b44
+                text: c(243, 234, 226),             // #f3eae2 warm cream
+                text_muted: c(172, 160, 176),       // #aca0b0
+                accent: c(244, 178, 148),           // #f4b294 soft peach
                 accent_secondary: c(226, 150, 176), // #e296b0 dusty rose
                 border: c(70, 58, 88),
                 danger: c(236, 120, 112),
@@ -266,7 +266,7 @@ impl HalcyonPalette {
                 surface_variant: c(31, 31, 41),
                 text: c(224, 227, 236),
                 text_muted: c(148, 154, 170),
-                accent: c(124, 172, 255),        // ambient blue until a song colours it
+                accent: c(124, 172, 255), // ambient blue until a song colours it
                 accent_secondary: c(150, 132, 255),
                 border: c(46, 48, 62),
                 danger: c(240, 120, 116),
@@ -276,12 +276,12 @@ impl HalcyonPalette {
                 tint: TintMode::Ambient,
             },
             Mood::Dawn => Self {
-                background: c(246, 238, 230),    // #f6eee6
-                surface: c(255, 250, 244),       // #fffaf4
+                background: c(246, 238, 230), // #f6eee6
+                surface: c(255, 250, 244),    // #fffaf4
                 surface_variant: c(240, 226, 216),
-                text: c(66, 50, 58),             // #42323a
+                text: c(66, 50, 58), // #42323a
                 text_muted: c(110, 90, 98),
-                accent: c(168, 72, 90),          // #a8485a deep rose
+                accent: c(168, 72, 90), // #a8485a deep rose
                 accent_secondary: c(196, 112, 76),
                 border: c(226, 208, 198),
                 danger: c(190, 70, 70),
@@ -291,12 +291,12 @@ impl HalcyonPalette {
                 tint: TintMode::Soft,
             },
             Mood::Forest => Self {
-                background: c(19, 28, 24),       // #131c18
+                background: c(19, 28, 24), // #131c18
                 surface: c(27, 40, 34),
                 surface_variant: c(38, 55, 47),
                 text: c(232, 238, 226),
                 text_muted: c(150, 168, 156),
-                accent: c(168, 205, 156),        // #a8cd9c sage
+                accent: c(168, 205, 156),           // #a8cd9c sage
                 accent_secondary: c(226, 190, 120), // honey
                 border: c(52, 74, 64),
                 danger: c(226, 120, 104),
@@ -306,12 +306,12 @@ impl HalcyonPalette {
                 tint: TintMode::Soft,
             },
             Mood::Ocean => Self {
-                background: c(16, 24, 34),       // #101822
+                background: c(16, 24, 34), // #101822
                 surface: c(24, 36, 49),
                 surface_variant: c(34, 50, 66),
                 text: c(228, 238, 242),
                 text_muted: c(144, 164, 176),
-                accent: c(136, 205, 205),        // #88cdcd seafoam
+                accent: c(136, 205, 205),           // #88cdcd seafoam
                 accent_secondary: c(160, 176, 232), // periwinkle
                 border: c(46, 66, 84),
                 danger: c(240, 124, 116),
@@ -332,7 +332,9 @@ impl HalcyonPalette {
     /// When the rice last rewrote its colours (`None` when there is no file). The app compares
     /// this to notice a wallpaper change without watching the file all the time.
     pub fn rice_file_stamp() -> Option<std::time::SystemTime> {
-        std::fs::metadata(Self::rice_file()).and_then(|m| m.modified()).ok()
+        std::fs::metadata(Self::rice_file())
+            .and_then(|m| m.modified())
+            .ok()
     }
 
     /// Load the palette: the saved mood.
@@ -389,17 +391,33 @@ impl HalcyonPalette {
         let bg = p.background;
         // Panels are the wallpaper's own surface when the rice wrote one, else the background
         // nudged toward the text colour so they still stand off the page.
-        let lift = if relative_luminance(bg) > 0.5 { Color::BLACK } else { Color::WHITE };
+        let lift = if relative_luminance(bg) > 0.5 {
+            Color::BLACK
+        } else {
+            Color::WHITE
+        };
         p.surface = surface.unwrap_or_else(|| mix(bg, lift, 0.06));
         p.surface_variant = highlight.unwrap_or_else(|| mix(bg, lift, 0.12));
         p.border = mix(p.surface_variant, p.text_muted, 0.35);
         p.glow = mix(p.accent, glow_hint.unwrap_or(p.accent_secondary), 0.35);
         // The page wash is the wallpaper colour itself, lighter at the top and deep at the bottom.
         p.bg_top = mix(bg, p.accent, 0.12);
-        p.bg_bottom = mix(bg, Color::BLACK, if relative_luminance(bg) > 0.5 { 0.06 } else { 0.30 });
+        p.bg_bottom = mix(
+            bg,
+            Color::BLACK,
+            if relative_luminance(bg) > 0.5 {
+                0.06
+            } else {
+                0.30
+            },
+        );
         // Keep everything readable whatever the wallpaper looks like.
         if contrast_ratio(p.text, bg) < 7.0 {
-            p.text = if relative_luminance(bg) > 0.5 { Color::from_rgb8(30, 24, 30) } else { Color::from_rgb8(243, 238, 232) };
+            p.text = if relative_luminance(bg) > 0.5 {
+                Color::from_rgb8(30, 24, 30)
+            } else {
+                Color::from_rgb8(243, 238, 232)
+            };
         }
         if contrast_ratio(p.text_muted, bg) < 4.5 {
             p.text_muted = mix(p.text, bg, 0.30);
@@ -435,9 +453,13 @@ impl HalcyonPalette {
                 p.bg_top = mix(self.bg_top, deep, 0.55);
                 p.bg_bottom = mix(self.bg_bottom, deep, 0.20);
                 p.glow = mix(self.glow, cover_color, 0.85);
-                p.accent = ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.25), p.background, 4.5);
-                p.accent_secondary =
-                    ensure_wcag_contrast(mix(cover_color, self.accent_secondary, 0.40), p.background, 3.0);
+                p.accent =
+                    ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.25), p.background, 4.5);
+                p.accent_secondary = ensure_wcag_contrast(
+                    mix(cover_color, self.accent_secondary, 0.40),
+                    p.background,
+                    3.0,
+                );
                 if contrast_ratio(p.text, p.background) < 7.0 {
                     p.text = Color::from_rgb8(243, 238, 232);
                 }
@@ -452,9 +474,13 @@ impl HalcyonPalette {
                 p.surface = mix(self.surface, cover_color, 0.05);
                 p.surface_variant = mix(self.surface_variant, cover_color, 0.08);
                 p.border = mix(self.border, cover_color, 0.12);
-                p.accent = ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.15), p.background, 4.5);
-                p.accent_secondary =
-                    ensure_wcag_contrast(mix(cover_color, self.accent_secondary, 0.45), p.background, 3.0);
+                p.accent =
+                    ensure_wcag_contrast(mix(cover_color, Color::WHITE, 0.15), p.background, 4.5);
+                p.accent_secondary = ensure_wcag_contrast(
+                    mix(cover_color, self.accent_secondary, 0.45),
+                    p.background,
+                    3.0,
+                );
             }
         }
         p
@@ -585,7 +611,11 @@ pub fn fade_edge(color: Color, from_top: bool, strength: f32) -> iced::Backgroun
     let stops = [(0.0, 1.0), (0.55, 0.93), (0.82, 0.45), (1.0, 0.0)];
     let mut linear = iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2));
     for (offset, a) in stops {
-        let (o, a) = if from_top { (offset, a) } else { (1.0 - offset, a) };
+        let (o, a) = if from_top {
+            (offset, a)
+        } else {
+            (1.0 - offset, a)
+        };
         linear = linear.add_stop(o, alpha(color, a * k));
     }
     iced::Background::Gradient(iced::Gradient::Linear(linear))
@@ -641,7 +671,11 @@ impl HalcyonPalette {
     /// Frosted card fill: surface with a faint glow at the top.
     pub fn card_background(&self) -> iced::Background {
         gradient2(
-            mix(self.surface, self.glow, if self.is_light() { 0.10 } else { 0.07 }),
+            mix(
+                self.surface,
+                self.glow,
+                if self.is_light() { 0.10 } else { 0.07 },
+            ),
             self.surface,
             true,
         )
@@ -649,12 +683,17 @@ impl HalcyonPalette {
 
     /// Fill for the accent buttons (play, sign in): accent melting into the secondary colour.
     pub fn accent_background(&self) -> iced::Background {
-        gradient2(self.accent, mix(self.accent, self.accent_secondary, 0.85), false)
+        gradient2(
+            self.accent,
+            mix(self.accent, self.accent_secondary, 0.85),
+            false,
+        )
     }
 
     /// Text colour that sits on top of the accent fill.
     pub fn on_accent(&self) -> Color {
-        if contrast_ratio(self.background, self.accent) >= contrast_ratio(Color::WHITE, self.accent) {
+        if contrast_ratio(self.background, self.accent) >= contrast_ratio(Color::WHITE, self.accent)
+        {
             self.background
         } else {
             Color::WHITE
@@ -746,11 +785,25 @@ mod tests {
 
     #[test]
     fn every_mood_keeps_text_readable() {
-        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [
+            Mood::Wallpaper,
+            Mood::Song,
+            Mood::Ambient,
+            Mood::Dusk,
+            Mood::Dawn,
+            Mood::Forest,
+            Mood::Ocean,
+        ] {
             let p = HalcyonPalette::for_mood(mood);
             assert!(contrast_ratio(p.text, p.background) >= 7.0, "{mood:?} text");
-            assert!(contrast_ratio(p.text_muted, p.background) >= 4.5, "{mood:?} muted");
-            assert!(contrast_ratio(p.accent, p.background) >= 4.5, "{mood:?} accent");
+            assert!(
+                contrast_ratio(p.text_muted, p.background) >= 4.5,
+                "{mood:?} muted"
+            );
+            assert!(
+                contrast_ratio(p.accent, p.background) >= 4.5,
+                "{mood:?} accent"
+            );
         }
     }
 
@@ -760,20 +813,46 @@ mod tests {
     /// rice file at run time and is covered by the page-colour test in `from_rice_text`.
     #[test]
     fn every_mood_keeps_its_contrast_on_the_frame_and_the_tints() {
-        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [
+            Mood::Wallpaper,
+            Mood::Song,
+            Mood::Ambient,
+            Mood::Dusk,
+            Mood::Dawn,
+            Mood::Forest,
+            Mood::Ocean,
+        ] {
             let p = HalcyonPalette::for_mood(mood);
             for t in [0.0, 0.5, 1.0] {
                 let chrome = p.chrome_at(t);
-                assert!(contrast_ratio(p.text, chrome) >= 7.0, "{mood:?} text on frame at {t}");
-                assert!(contrast_ratio(p.text_muted, chrome) >= 4.5, "{mood:?} muted on frame at {t}");
-                assert!(contrast_ratio(p.accent, chrome) >= 4.5, "{mood:?} accent on frame at {t}");
+                assert!(
+                    contrast_ratio(p.text, chrome) >= 7.0,
+                    "{mood:?} text on frame at {t}"
+                );
+                assert!(
+                    contrast_ratio(p.text_muted, chrome) >= 4.5,
+                    "{mood:?} muted on frame at {t}"
+                );
+                assert!(
+                    contrast_ratio(p.accent, chrome) >= 4.5,
+                    "{mood:?} accent on frame at {t}"
+                );
             }
             // A lit row or chip: text and muted text sit on the row tint.
             let row = p.row_tint();
-            assert!(contrast_ratio(p.text, row) >= 7.0, "{mood:?} text on the row tint");
-            assert!(contrast_ratio(p.text_muted, row) >= 4.5, "{mood:?} muted on the row tint");
+            assert!(
+                contrast_ratio(p.text, row) >= 7.0,
+                "{mood:?} text on the row tint"
+            );
+            assert!(
+                contrast_ratio(p.text_muted, row) >= 4.5,
+                "{mood:?} muted on the row tint"
+            );
             // A cover: only a glyph (a heart, a note) sits on the dim tint, which needs 3:1.
-            assert!(contrast_ratio(p.text, p.dim_tint()) >= 3.0, "{mood:?} glyph on the dim tint");
+            assert!(
+                contrast_ratio(p.text, p.dim_tint()) >= 3.0,
+                "{mood:?} glyph on the dim tint"
+            );
         }
     }
 
@@ -786,10 +865,21 @@ mod tests {
 
     #[test]
     fn mood_keys_round_trip() {
-        for mood in [Mood::Wallpaper, Mood::Song, Mood::Ambient, Mood::Dusk, Mood::Dawn, Mood::Forest, Mood::Ocean] {
+        for mood in [
+            Mood::Wallpaper,
+            Mood::Song,
+            Mood::Ambient,
+            Mood::Dusk,
+            Mood::Dawn,
+            Mood::Forest,
+            Mood::Ocean,
+        ] {
             assert_eq!(Mood::from_key(mood.key()), Some(mood));
         }
-        assert_eq!(Mood::Dusk.next().next().next().next().next().next().next(), Mood::Dusk);
+        assert_eq!(
+            Mood::Dusk.next().next().next().next().next().next().next(),
+            Mood::Dusk
+        );
     }
 
     #[test]

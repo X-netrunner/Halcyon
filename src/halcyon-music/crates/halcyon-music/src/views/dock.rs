@@ -11,10 +11,10 @@
 
 use crate::icons::{icon, Icon};
 use crate::theme::{self, format_duration, HalcyonPalette};
-use crate::viz::BANDS;
 use crate::views::sidebar::NavPage;
-use crate::visualizer::MiniPlacement;
 use crate::views::tabs::Tab;
+use crate::visualizer::MiniPlacement;
+use crate::viz::BANDS;
 use halcyon_music_core::state::{PlayerState, RepeatMode};
 use iced::widget::{button, container, row, slider, text, tooltip, Space};
 use iced::{Alignment, Element, Length, Padding};
@@ -94,7 +94,11 @@ fn nav_button<'a, M: Clone + 'a>(
     palette: HalcyonPalette,
     msg: M,
 ) -> Element<'a, M> {
-    let colour = if lit { palette.text } else { palette.text_muted };
+    let colour = if lit {
+        palette.text
+    } else {
+        palette.text_muted
+    };
     let b = button(
         container(icon(nav_icon(tab), 16.0, colour))
             .width(NAV_BOX)
@@ -113,11 +117,19 @@ fn nav_button<'a, M: Clone + 'a>(
             None
         },
         text_color: colour,
-        border: iced::Border { radius: NAV_RADIUS.into(), ..Default::default() },
+        border: iced::Border {
+            radius: NAV_RADIUS.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
     // The buttons have no visible name, so the name is the tooltip.
-    tooltip(b, crate::views::titlebar::tip(tab.label(), palette), tooltip::Position::Top).into()
+    tooltip(
+        b,
+        crate::views::titlebar::tip(tab.label(), palette),
+        tooltip::Position::Top,
+    )
+    .into()
 }
 
 fn plain_button<'a, M: Clone + 'a>(
@@ -146,7 +158,9 @@ fn cover<'a, M: Clone + 'a>(
     on_press: M,
 ) -> Element<'a, M> {
     let track = state.track.as_ref();
-    let has_art = track.and_then(|t| t.art_url.as_deref()).is_some_and(|u| !u.is_empty());
+    let has_art = track
+        .and_then(|t| t.art_url.as_deref())
+        .is_some_and(|u| !u.is_empty());
     let face: Element<'a, M> = if has_art {
         crate::art::cover(
             track.and_then(|t| t.art_url.as_deref()),
@@ -166,7 +180,10 @@ fn cover<'a, M: Clone + 'a>(
             .center_y(COVER_PX)
             .style(move |_t| container::Style {
                 background: Some(tint.into()),
-                border: iced::Border { radius: (COVER_PX / 2.0).into(), ..Default::default() },
+                border: iced::Border {
+                    radius: (COVER_PX / 2.0).into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             })
             .into()
@@ -202,7 +219,9 @@ pub fn view<'a, M: Clone + 'static>(
     on_toggle_fullscreen: M,
 ) -> Element<'a, M> {
     let track = state.track.as_ref();
-    let title = track.map(|t| t.title.as_str()).unwrap_or("No track playing");
+    let title = track
+        .map(|t| t.title.as_str())
+        .unwrap_or("No track playing");
     let artist = track.map(|t| t.artist.as_str()).unwrap_or("Halcyon");
     let duration_ms = track.map(|t| t.duration_ms).unwrap_or(0);
     let position_ms = state.position_ms.min(duration_ms);
@@ -211,32 +230,57 @@ pub fn view<'a, M: Clone + 'static>(
     let lit = Tab::for_page(active);
     let mut nav = row![].spacing(4).align_y(Alignment::Center);
     for tab in Tab::ALL {
-        nav = nav.push(nav_button(tab, lit == Some(tab), palette, on_select(tab.page())));
+        nav = nav.push(nav_button(
+            tab,
+            lit == Some(tab),
+            palette,
+            on_select(tab.page()),
+        ));
     }
     let left = row![account, Space::with_width(8), nav].align_y(Alignment::Center);
 
     // --- The song ---
-    let title_chars = if mini.is_some() { TITLE_CHARS_WITH_MINI } else { TITLE_CHARS };
+    let title_chars = if mini.is_some() {
+        TITLE_CHARS_WITH_MINI
+    } else {
+        TITLE_CHARS
+    };
     let meta = iced::widget::column![
-        text(crate::views::ellipsize(title, title_chars)).size(13).color(palette.text),
-        text(crate::views::ellipsize(artist, title_chars)).size(11).color(palette.text_muted),
+        text(crate::views::ellipsize(title, title_chars))
+            .size(13)
+            .color(palette.text),
+        text(crate::views::ellipsize(artist, title_chars))
+            .size(11)
+            .color(palette.text_muted),
     ]
     .spacing(1);
-    let mut song = row![cover(state, palette, on_toggle_fullscreen.clone()), Space::with_width(10), meta]
-        .align_y(Alignment::Center);
+    let mut song = row![
+        cover(state, palette, on_toggle_fullscreen.clone()),
+        Space::with_width(10),
+        meta
+    ]
+    .align_y(Alignment::Center);
     // The mini visualizer sits between the song and the transport (no label).
     if let Some(bands) = mini {
-        song = song.push(Space::with_width(MINI_GAP)).push(crate::views::viz_canvas::mini(
-            MiniPlacement::Dock,
-            bands,
-            palette.accent,
-        ));
+        song = song
+            .push(Space::with_width(MINI_GAP))
+            .push(crate::views::viz_canvas::mini(
+                MiniPlacement::Dock,
+                bands,
+                palette.accent,
+            ));
     }
     let song = song.width(Length::FillPortion(1));
 
     // --- Transport ---
     let on_colour = |on: bool| if on { palette.text } else { palette.text_muted };
-    let shuffle = plain_button(Icon::Shuffle, 15.0, on_colour(state.shuffle), palette, on_toggle_shuffle);
+    let shuffle = plain_button(
+        Icon::Shuffle,
+        15.0,
+        on_colour(state.shuffle),
+        palette,
+        on_toggle_shuffle,
+    );
     let prev = plain_button(Icon::SkipBack, 16.0, palette.text, palette, on_prev);
     let next = plain_button(Icon::SkipForward, 16.0, palette.text, palette, on_next);
     let (repeat_icon, repeat_on) = match state.repeat {
@@ -244,8 +288,18 @@ pub fn view<'a, M: Clone + 'static>(
         RepeatMode::All => (Icon::Repeat, true),
         RepeatMode::One => (Icon::Repeat1, true),
     };
-    let repeat = plain_button(repeat_icon, 15.0, on_colour(repeat_on), palette, on_cycle_repeat);
-    let play_icon = if state.playing { Icon::Pause } else { Icon::Play };
+    let repeat = plain_button(
+        repeat_icon,
+        15.0,
+        on_colour(repeat_on),
+        palette,
+        on_cycle_repeat,
+    );
+    let play_icon = if state.playing {
+        Icon::Pause
+    } else {
+        Icon::Play
+    };
     let play = button(
         container(icon(play_icon, 18.0, palette.on_accent()))
             .width(PLAY_PX)
@@ -258,11 +312,16 @@ pub fn view<'a, M: Clone + 'static>(
     .style(move |_t, _status| button::Style {
         background: Some(palette.accent_background()),
         text_color: palette.on_accent(),
-        border: iced::Border { radius: (PLAY_PX / 2.0).into(), ..Default::default() },
+        border: iced::Border {
+            radius: (PLAY_PX / 2.0).into(),
+            ..Default::default()
+        },
         // Calm: no glow and no shadow.
         shadow: iced::Shadow::default(),
     });
-    let transport = row![shuffle, prev, play, next, repeat].spacing(4).align_y(Alignment::Center);
+    let transport = row![shuffle, prev, play, next, repeat]
+        .spacing(4)
+        .align_y(Alignment::Center);
 
     // --- Progress ---
     let dur = (duration_ms as u32).max(1);
@@ -273,11 +332,15 @@ pub fn view<'a, M: Clone + 'static>(
         .style(crate::views::slider_style(palette));
     let progress = container(
         row![
-            text(format_duration(position_ms)).size(10).color(palette.text_muted),
+            text(format_duration(position_ms))
+                .size(10)
+                .color(palette.text_muted),
             Space::with_width(8),
             seek,
             Space::with_width(8),
-            text(format_duration(duration_ms)).size(10).color(palette.text_muted),
+            text(format_duration(duration_ms))
+                .size(10)
+                .color(palette.text_muted),
         ]
         .align_y(Alignment::Center),
     )
@@ -295,7 +358,13 @@ pub fn view<'a, M: Clone + 'static>(
             Icon::Volume2
         };
         right = right
-            .push(plain_button(vol_icon, 16.0, palette.text_muted, palette, on_toggle_mute))
+            .push(plain_button(
+                vol_icon,
+                16.0,
+                palette.text_muted,
+                palette,
+                on_toggle_mute,
+            ))
             .push(
                 slider(0..=100, state.volume, on_volume)
                     .width(VOLUME_SLIDER_W)
@@ -305,11 +374,23 @@ pub fn view<'a, M: Clone + 'static>(
     }
     right = right
         .push(tooltip(
-            plain_button(Icon::Queue, 16.0, on_colour(queue_open), palette, on_toggle_queue),
+            plain_button(
+                Icon::Queue,
+                16.0,
+                on_colour(queue_open),
+                palette,
+                on_toggle_queue,
+            ),
             crate::views::titlebar::tip("Queue", palette),
             tooltip::Position::Top,
         ))
-        .push(plain_button(Icon::Maximize, 16.0, palette.text_muted, palette, on_toggle_fullscreen));
+        .push(plain_button(
+            Icon::Maximize,
+            16.0,
+            palette.text_muted,
+            palette,
+            on_toggle_fullscreen,
+        ));
 
     // The pill: one step lighter than the frame under it. No border, no shadow.
     let fill = theme::mix(palette.chrome_at(1.0), palette.text, 0.07);
@@ -333,11 +414,19 @@ pub fn view<'a, M: Clone + 'static>(
     )
     .width(width_for(window_width))
     .height(HEIGHT)
-    .padding(Padding { top: 0.0, right: PAD, bottom: 0.0, left: PAD })
+    .padding(Padding {
+        top: 0.0,
+        right: PAD,
+        bottom: 0.0,
+        left: PAD,
+    })
     .align_y(iced::alignment::Vertical::Center)
     .style(move |_t| container::Style {
         background: Some(fill.into()),
-        border: iced::Border { radius: theme::radius::PILL.into(), ..Default::default() },
+        border: iced::Border {
+            radius: theme::radius::PILL.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
 
@@ -345,7 +434,12 @@ pub fn view<'a, M: Clone + 'static>(
         .width(Length::Fill)
         .height(STRIP_HEIGHT)
         .center_x(Length::Fill)
-        .padding(Padding { top: STRIP_HEIGHT - HEIGHT - BOTTOM_GAP, right: 0.0, bottom: BOTTOM_GAP, left: 0.0 })
+        .padding(Padding {
+            top: STRIP_HEIGHT - HEIGHT - BOTTOM_GAP,
+            right: 0.0,
+            bottom: BOTTOM_GAP,
+            left: 0.0,
+        })
         .into()
 }
 
@@ -422,29 +516,45 @@ mod tests {
     fn the_two_stretching_parts_keep_room_at_the_smallest_window() {
         // 960 px wide, no volume (it is hidden below 1100): song and progress share the rest.
         let rest = width_for(960.0) - FIXED_WIDTH;
-        assert!(rest / 2.0 >= MIN_STRETCH, "each stretching part would get {}", rest / 2.0);
+        assert!(
+            rest / 2.0 >= MIN_STRETCH,
+            "each stretching part would get {}",
+            rest / 2.0
+        );
     }
 
     #[test]
     fn the_song_keeps_room_with_the_mini_visualizer_at_the_narrowest_width_that_shows_it() {
         // The strip is hidden below 1000 px, so 1000 px is the tightest case (no volume yet).
         use crate::visualizer::{mini_shown, MiniPlacement, MINI_HIDE_BELOW_WIDTH};
-        assert!(mini_shown(Some(MiniPlacement::Dock), MINI_HIDE_BELOW_WIDTH, true, false));
+        assert!(mini_shown(
+            Some(MiniPlacement::Dock),
+            MINI_HIDE_BELOW_WIDTH,
+            true,
+            false
+        ));
         let rest = width_for(MINI_HIDE_BELOW_WIDTH) - FIXED_WIDTH;
         let (mini_w, _) = MiniPlacement::Dock.size();
         // The song part shares `rest` with the progress bar, and also holds the strip.
         let song_text = rest / 2.0 - COVER_PX - 10.0 - MINI_GAP - mini_w;
-        assert!(song_text >= 100.0, "only {song_text} px left for the title and artist");
+        assert!(
+            song_text >= 100.0,
+            "only {song_text} px left for the title and artist"
+        );
         // The progress bar keeps its minimum.
         assert!(rest / 2.0 >= MIN_STRETCH);
     }
 
     #[test]
     fn the_dock_builds_with_the_mini_visualizer_on_and_off() {
-        let state = PlayerState { playing: true, ..Default::default() };
+        let state = PlayerState {
+            playing: true,
+            ..Default::default()
+        };
         for mini in [None, Some([0.0; BANDS]), Some([1.0; BANDS])] {
             for width in [1000.0, 1100.0, 1920.0] {
-                let _: Element<'_, ()> = build_with(&state, NavPage::Home, width, width >= 1100.0, false, mini);
+                let _: Element<'_, ()> =
+                    build_with(&state, NavPage::Home, width, width >= 1100.0, false, mini);
             }
         }
     }

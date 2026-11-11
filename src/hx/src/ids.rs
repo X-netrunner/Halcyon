@@ -7,7 +7,10 @@ use std::os::unix::fs::MetadataExt;
 use std::time::Duration;
 
 fn sig(p: &str) -> Regex {
-    RegexBuilder::new(p).case_insensitive(true).build().expect("bad IDS signature")
+    RegexBuilder::new(p)
+        .case_insensitive(true)
+        .build()
+        .expect("bad IDS signature")
 }
 
 /// uid of SYS_USER (the desktop user whose session gets the notification).
@@ -49,11 +52,20 @@ pub fn desktop_env() -> Vec<(String, String)> {
                 .split(|b| *b == 0)
                 .filter_map(|kv| {
                     let s = String::from_utf8_lossy(kv).into_owned();
-                    s.split_once('=').map(|(k, v)| (k.to_string(), v.to_string()))
+                    s.split_once('=')
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
                 })
                 .collect();
-            if vars.iter().any(|(k, _)| k == "WAYLAND_DISPLAY" || k == "DISPLAY") {
-                for want in ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"] {
+            if vars
+                .iter()
+                .any(|(k, _)| k == "WAYLAND_DISPLAY" || k == "DISPLAY")
+            {
+                for want in [
+                    "DISPLAY",
+                    "WAYLAND_DISPLAY",
+                    "XDG_RUNTIME_DIR",
+                    "DBUS_SESSION_BUS_ADDRESS",
+                ] {
                     if let Some((_, v)) = vars.iter().find(|(k, _)| k == want) {
                         env.retain(|(k, _)| k != want);
                         env.push((want.to_string(), v.clone()));
@@ -77,9 +89,21 @@ pub fn notify(title: &str, message: &str, urgency: &str, icon: &str) {
         args.push(format!("{}={}", k, v));
     }
     if !have_bus {
-        args.push(format!("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus", uid));
+        args.push(format!(
+            "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{}/bus",
+            uid
+        ));
     }
-    for a in ["notify-send", "-u", urgency, "-i", icon, "--", &title.replace('\0', ""), &message.replace('\0', "")] {
+    for a in [
+        "notify-send",
+        "-u",
+        urgency,
+        "-i",
+        icon,
+        "--",
+        &title.replace('\0', ""),
+        &message.replace('\0', ""),
+    ] {
         args.push(a.to_string());
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -92,15 +116,35 @@ pub fn run() {
     let alert_log = format!("{}/ids-alerts.log", logs);
 
     let sigs: Vec<(&str, Regex)> = vec![
-        ("Metasploit / Automated Login Scan", sig(r"CREDENTIALS HARVESTED.*(Username|USER)=(admin|root|1234)")),
-        ("Directory Brute Force Attempt", sig(r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)")),
-        ("Automated SSH Scanner Footprint", sig(r"\[PAYLOAD\] SSH packet.*(libssh|Paramiko|Go-SSH)")),
-        ("SQL Injection Probing Pattern", sig(r"(' OR '1'='1|UNION SELECT|SELECT.*FROM|waitfor delay)")),
-        ("Cross-Site Scripting Probe", sig(r"(<script>|alert\(|javascript:)")),
+        (
+            "Metasploit / Automated Login Scan",
+            sig(r"CREDENTIALS HARVESTED.*(Username|USER)=(admin|root|1234)"),
+        ),
+        (
+            "Directory Brute Force Attempt",
+            sig(
+                r"Directory brute-force detected|GET /(wp-admin|admin|config|backup|shell|phpmyadmin|\.env)",
+            ),
+        ),
+        (
+            "Automated SSH Scanner Footprint",
+            sig(r"\[PAYLOAD\] SSH packet.*(libssh|Paramiko|Go-SSH)"),
+        ),
+        (
+            "SQL Injection Probing Pattern",
+            sig(r"(' OR '1'='1|UNION SELECT|SELECT.*FROM|waitfor delay)"),
+        ),
+        (
+            "Cross-Site Scripting Probe",
+            sig(r"(<script>|alert\(|javascript:)"),
+        ),
     ];
 
     if !std::path::Path::new(&log_file).exists() {
-        println!("[!] Target log file {} does not exist yet. Waiting for initialization...", log_file);
+        println!(
+            "[!] Target log file {} does not exist yet. Waiting for initialization...",
+            log_file
+        );
         let _ = fs::create_dir_all(&logs);
         let _ = File::create(&log_file);
     }
@@ -147,8 +191,19 @@ pub fn run() {
 
 fn alert(path: &str, name: &str, raw: &str) {
     if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = write!(f, "[{}] [CRITICAL ALERT] Match Found: {}\n    Raw Log Entry: {}\n\n", util::now_stamp(), name, raw);
+        let _ = write!(
+            f,
+            "[{}] [CRITICAL ALERT] Match Found: {}\n    Raw Log Entry: {}\n\n",
+            util::now_stamp(),
+            name,
+            raw
+        );
     }
     let short: String = raw.chars().take(100).collect();
-    notify("IDS Attack Detected", &format!("Signature: {}\nLog: {}...", name, short), "critical", "security-high");
+    notify(
+        "IDS Attack Detected",
+        &format!("Signature: {}\nLog: {}...", name, short),
+        "critical",
+        "security-high",
+    );
 }

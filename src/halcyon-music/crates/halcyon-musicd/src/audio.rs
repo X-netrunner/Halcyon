@@ -22,8 +22,8 @@ use halcyon_music_core::protocol::{self, EventBody};
 use halcyon_music_core::state::Bitrate;
 use halcyon_music_core::Track;
 use librespot_core::authentication::Credentials;
-use librespot_core::error::ErrorKind;
 use librespot_core::config::SessionConfig;
+use librespot_core::error::ErrorKind;
 use librespot_core::session::Session;
 use librespot_core::spotify_uri::SpotifyUri;
 use librespot_playback::audio_backend;
@@ -113,9 +113,9 @@ pub fn classify_login_failure(kind: ErrorKind, text: &str) -> FailureCause {
         ErrorKind::Unavailable | ErrorKind::DeadlineExceeded | ErrorKind::ResourceExhausted => {
             FailureCause::Network
         }
-        ErrorKind::Unauthenticated | ErrorKind::PermissionDenied | ErrorKind::FailedPrecondition => {
-            FailureCause::CredentialsRejected
-        }
+        ErrorKind::Unauthenticated
+        | ErrorKind::PermissionDenied
+        | ErrorKind::FailedPrecondition => FailureCause::CredentialsRejected,
         _ => FailureCause::Other,
     }
 }
@@ -331,7 +331,14 @@ impl AudioEngine {
             return;
         }
         let _ = self.cache.put_tracks(std::slice::from_ref(prev));
-        match self.cache.log_skip(&prev.id, &prev.title, &prev.artist, &prev.album, rt.track_started_at, ms) {
+        match self.cache.log_skip(
+            &prev.id,
+            &prev.title,
+            &prev.artist,
+            &prev.album,
+            rt.track_started_at,
+            ms,
+        ) {
             Ok(_) => info!(track_id = %prev.id, ms, "recorded a skip in the local skip log"),
             Err(e) => warn!("failed to write skip log: {e}"),
         }
@@ -347,9 +354,11 @@ impl AudioEngine {
                 // Only send AuthRequired when browsing is signed out too: the GUI answers it with
                 // the sign-in screen, which would hide a library that still works.
                 if e.needs_sign_in() && load_token().ok().flatten().is_none() {
-                    let _ = self.events_tx.send(protocol::event(EventBody::AuthRequired {
-                        reason: "Sign in with Spotify to browse and play music.".to_string(),
-                    }));
+                    let _ = self
+                        .events_tx
+                        .send(protocol::event(EventBody::AuthRequired {
+                            reason: "Sign in with Spotify to browse and play music.".to_string(),
+                        }));
                 }
                 return Err(e.to_string());
             }
@@ -370,7 +379,9 @@ impl AudioEngine {
             }
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.to_lowercase().contains("free") || err_str.to_lowercase().contains("premium") {
+                if err_str.to_lowercase().contains("free")
+                    || err_str.to_lowercase().contains("premium")
+                {
                     self.is_free_account.store(true, Ordering::SeqCst);
                     let msg = "Spotify Free accounts cannot stream via librespot / Spotify Connect API. Browsing remains fully available.";
                     warn!("{msg}");
@@ -406,11 +417,15 @@ impl AudioEngine {
         let state = self.player.snapshot().await;
         let config = self.make_player_config(&state);
 
-        let sink_fn = audio_backend::find(None).ok_or_else(|| "No audio backend found".to_string())?;
+        let sink_fn =
+            audio_backend::find(None).ok_or_else(|| "No audio backend found".to_string())?;
         // The real sink, wrapped so the GUI's visuals can follow the actual sound (see `tap`).
         let bus = crate::tap::audio_bus().clone();
         let sink_builder = move || -> Box<dyn audio_backend::Sink> {
-            Box::new(crate::tap::TapSink::new(sink_fn(None, AudioFormat::F32), bus))
+            Box::new(crate::tap::TapSink::new(
+                sink_fn(None, AudioFormat::F32),
+                bus,
+            ))
         };
         let player = LibrespotPlayer::new(config, session, Box::new(NoOpVolume), sink_builder);
 
@@ -483,11 +498,13 @@ impl AudioEngine {
         rt.failed_track_id = track_id;
         rt.native_wants_play = false;
         rt.status = EngineStatus::Idle;
-        let _ = self.events_tx.send(protocol::event(EventBody::PlaybackFailed {
-            reason,
-            consecutive_failures: failures,
-            will_retry,
-        }));
+        let _ = self
+            .events_tx
+            .send(protocol::event(EventBody::PlaybackFailed {
+                reason,
+                consecutive_failures: failures,
+                will_retry,
+            }));
         self.broadcast_state().await;
     }
 
@@ -502,7 +519,8 @@ impl AudioEngine {
     ) {
         if playing {
             let failures = self.consecutive_failures();
-            self.fail_playback(rt, track_id, reason, false, failures).await;
+            self.fail_playback(rt, track_id, reason, false, failures)
+                .await;
         } else {
             debug!("playback not available while paused: {reason}");
             rt.failed_track_id = track_id;
@@ -728,11 +746,15 @@ impl AudioEngine {
             )
             .await;
         } else {
-            let _ = self.events_tx.send(protocol::event(EventBody::PlaybackFailed {
-                reason: "Playback stalled; restarting the audio engine and reloading the track…".to_string(),
-                consecutive_failures: failures,
-                will_retry: true,
-            }));
+            let _ = self
+                .events_tx
+                .send(protocol::event(EventBody::PlaybackFailed {
+                    reason:
+                        "Playback stalled; restarting the audio engine and reloading the track…"
+                            .to_string(),
+                    consecutive_failures: failures,
+                    will_retry: true,
+                }));
             // The next tick builds a new player and loads the current track at the last real position.
         }
     }
@@ -855,18 +877,23 @@ impl AudioEngine {
         // Live current lyric line
         if let Ok(Some(Some(lrc))) = self.cache.get_lyrics(&track.id) {
             if lrc.synced && !lrc.lines.is_empty() {
-                let offset = self.cache.get_lyric_offset(&track.id).unwrap_or(lrc.offset_ms);
+                let offset = self
+                    .cache
+                    .get_lyric_offset(&track.id)
+                    .unwrap_or(lrc.offset_ms);
                 let eff = (pos as i64).saturating_add(offset).max(0) as u64;
                 let active_idx = lrc.lines.iter().rposition(|l| eff >= l.start_ms);
                 if active_idx != rt.last_lyric_idx {
                     rt.last_lyric_idx = active_idx;
                     if let Some(idx) = active_idx {
                         let line_text = lrc.lines.get(idx).map(|l| l.text.clone());
-                        let _ = self.events_tx.send(protocol::event(EventBody::CurrentLyric {
-                            track_id: track.id.clone(),
-                            line_idx: idx,
-                            line: line_text,
-                        }));
+                        let _ = self
+                            .events_tx
+                            .send(protocol::event(EventBody::CurrentLyric {
+                                track_id: track.id.clone(),
+                                line_idx: idx,
+                                line: line_text,
+                            }));
                     }
                 }
             }
@@ -948,7 +975,13 @@ mod tests {
     use super::*;
 
     fn song(id: &str, dur: u64) -> Track {
-        Track::simple(id.to_string(), "T".to_string(), "A".to_string(), "B".to_string(), dur)
+        Track::simple(
+            id.to_string(),
+            "T".to_string(),
+            "A".to_string(),
+            "B".to_string(),
+            dur,
+        )
     }
 
     #[test]
@@ -992,17 +1025,37 @@ mod tests {
         let very_long = LOAD_TIMEOUT + Duration::from_secs(1);
 
         // playing, events arriving: fine; silent for 5 s: stall
-        assert!(!stall_detected(EngineStatus::Playing, true, short, very_long));
+        assert!(!stall_detected(
+            EngineStatus::Playing,
+            true,
+            short,
+            very_long
+        ));
         assert!(stall_detected(EngineStatus::Playing, true, long, short));
         // paused by the user: never a stall, however quiet
-        assert!(!stall_detected(EngineStatus::Paused, false, very_long, very_long));
+        assert!(!stall_detected(
+            EngineStatus::Paused,
+            false,
+            very_long,
+            very_long
+        ));
         // paused although playback is wanted: stall
         assert!(stall_detected(EngineStatus::Paused, true, long, short));
         // a load gets 20 s, not 5 s
         assert!(!stall_detected(EngineStatus::Loading, true, long, long));
-        assert!(stall_detected(EngineStatus::Loading, true, short, very_long));
+        assert!(stall_detected(
+            EngineStatus::Loading,
+            true,
+            short,
+            very_long
+        ));
         // nothing loaded: nothing to stall
-        assert!(!stall_detected(EngineStatus::Idle, true, very_long, very_long));
+        assert!(!stall_detected(
+            EngineStatus::Idle,
+            true,
+            very_long,
+            very_long
+        ));
     }
 
     #[test]
@@ -1047,7 +1100,9 @@ mod tests {
 
     #[test]
     fn engine_start_errors_map_to_hints() {
-        assert!(describe_engine_start_error("No token found; user must log in").contains("signed in"));
+        assert!(
+            describe_engine_start_error("No token found; user must log in").contains("signed in")
+        );
         assert!(describe_engine_start_error("No audio backend found").contains("PipeWire"));
         assert!(describe_engine_start_error("session connect failed: boom").contains("session"));
         assert!(describe_engine_start_error("???").contains("--doctor"));

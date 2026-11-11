@@ -66,9 +66,19 @@ pub fn run(args: &[String]) -> i32 {
             }
             if util::command_exists("hyprsunset") {
                 start_hyprsunset(&temp);
-                util::notify("Nightlight", &format!("On ({}K)", temp), Some("weather-clear-night"), 2500);
+                util::notify(
+                    "Nightlight",
+                    &format!("On ({}K)", temp),
+                    Some("weather-clear-night"),
+                    2500,
+                );
             } else {
-                util::notify("Nightlight", "hyprsunset is not installed", Some("dialog-warning"), 3000);
+                util::notify(
+                    "Nightlight",
+                    "hyprsunset is not installed",
+                    Some("dialog-warning"),
+                    3000,
+                );
             }
             0
         }
@@ -85,9 +95,19 @@ pub fn run(args: &[String]) -> i32 {
                 util::notify("Nightlight", "Off", Some("weather-clear"), 2500);
             } else if util::command_exists("hyprsunset") {
                 start_hyprsunset(&temp);
-                util::notify("Nightlight", &format!("On ({}K)", temp), Some("weather-clear-night"), 2500);
+                util::notify(
+                    "Nightlight",
+                    &format!("On ({}K)", temp),
+                    Some("weather-clear-night"),
+                    2500,
+                );
             } else {
-                util::notify("Nightlight", "hyprsunset is not installed", Some("dialog-warning"), 3000);
+                util::notify(
+                    "Nightlight",
+                    "hyprsunset is not installed",
+                    Some("dialog-warning"),
+                    3000,
+                );
             }
             0
         }

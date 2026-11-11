@@ -70,7 +70,12 @@ fn on() -> i32 {
         let _ = fs::write(&p, format!("{}\n", cur));
     }
     fade_to("1%");
-    util::notify("Extra Dim", "Screen brightness dimmed to minimum", None, 2000);
+    util::notify(
+        "Extra Dim",
+        "Screen brightness dimmed to minimum",
+        None,
+        2000,
+    );
     println!("on");
     0
 }

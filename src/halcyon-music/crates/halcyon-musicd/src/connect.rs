@@ -176,8 +176,12 @@ pub fn doctor_view(
     compiled: bool,
 ) -> DoctorView {
     match status {
-        Some(s) if alive => DoctorView::Registered { name: s.name.clone() },
-        Some(s) => DoctorView::Stale { name: s.name.clone() },
+        Some(s) if alive => DoctorView::Registered {
+            name: s.name.clone(),
+        },
+        Some(s) => DoctorView::Stale {
+            name: s.name.clone(),
+        },
         None if requested => DoctorView::RequestedNotRegistered { compiled },
         None => DoctorView::Off { compiled },
     }
@@ -209,18 +213,23 @@ mod spike {
         let session = Session::new(SessionConfig::default(), None);
 
         // A real software mixer: the phone's volume changes land here (NoOpVolume ignores them).
-        let mixer = Arc::new(
-            SoftMixer::open(MixerConfig::default()).map_err(|e| format!("mixer: {e}"))?,
-        );
+        let mixer =
+            Arc::new(SoftMixer::open(MixerConfig::default()).map_err(|e| format!("mixer: {e}"))?);
 
         let sink_fn =
             audio_backend::find(None).ok_or_else(|| "No audio backend found".to_string())?;
         let bus = crate::tap::audio_bus().clone();
         let sink_builder = move || -> Box<dyn audio_backend::Sink> {
-            Box::new(crate::tap::TapSink::new(sink_fn(None, AudioFormat::F32), bus))
+            Box::new(crate::tap::TapSink::new(
+                sink_fn(None, AudioFormat::F32),
+                bus,
+            ))
         };
         let player = Player::new(
-            PlayerConfig { gapless: true, ..Default::default() },
+            PlayerConfig {
+                gapless: true,
+                ..Default::default()
+            },
             session.clone(),
             mixer.get_soft_volume(),
             sink_builder,
@@ -367,7 +376,11 @@ mod tests {
 
     #[test]
     fn status_round_trips_as_json() {
-        let s = ConnectStatus { name: "Halcyon (x)".into(), pid: 42, since: 7 };
+        let s = ConnectStatus {
+            name: "Halcyon (x)".into(),
+            pid: 42,
+            since: 7,
+        };
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(serde_json::from_str::<ConnectStatus>(&json).unwrap(), s);
         assert!(serde_json::from_str::<ConnectStatus>("{}").is_err());
@@ -382,16 +395,27 @@ mod tests {
 
     #[test]
     fn doctor_views() {
-        let s = ConnectStatus { name: "Halcyon (x)".into(), pid: 1, since: 0 };
+        let s = ConnectStatus {
+            name: "Halcyon (x)".into(),
+            pid: 1,
+            since: 0,
+        };
         assert_eq!(
             doctor_view(Some(&s), true, false, true),
-            DoctorView::Registered { name: "Halcyon (x)".into() }
+            DoctorView::Registered {
+                name: "Halcyon (x)".into()
+            }
         );
         assert_eq!(
             doctor_view(Some(&s), false, true, true),
-            DoctorView::Stale { name: "Halcyon (x)".into() }
+            DoctorView::Stale {
+                name: "Halcyon (x)".into()
+            }
         );
-        assert_eq!(doctor_view(None, false, false, false), DoctorView::Off { compiled: false });
+        assert_eq!(
+            doctor_view(None, false, false, false),
+            DoctorView::Off { compiled: false }
+        );
         assert_eq!(
             doctor_view(None, false, true, true),
             DoctorView::RequestedNotRegistered { compiled: true }

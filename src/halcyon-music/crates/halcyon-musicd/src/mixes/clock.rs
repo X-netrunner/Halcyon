@@ -86,7 +86,9 @@ pub fn next_weekday_after(day: u64, target: u32) -> u64 {
 
 /// A listener-local moment (`day`, `hour`) as unix seconds.
 pub fn to_unix(day: u64, hour: u32, tz: i64) -> u64 {
-    ((day * DAY + u64::from(hour) * 3600) as i64).saturating_sub(tz).max(0) as u64
+    ((day * DAY + u64::from(hour) * 3600) as i64)
+        .saturating_sub(tz)
+        .max(0) as u64
 }
 
 #[cfg(test)]
@@ -120,7 +122,11 @@ mod tests {
         let monday = local_day(MON, 0);
         assert_eq!(last_weekday_on_or_before(monday, 0), monday);
         assert_eq!(last_weekday_on_or_before(monday + 3, 0), monday);
-        assert_eq!(last_weekday_on_or_before(monday + 3, 4), monday - 3, "last Friday");
+        assert_eq!(
+            last_weekday_on_or_before(monday + 3, 4),
+            monday - 3,
+            "last Friday"
+        );
         assert_eq!(next_weekday_after(monday, 0), monday + 7);
         assert_eq!(next_weekday_after(monday, 4), monday + 4);
         assert_eq!(next_weekday_after(monday + 4, 4), monday + 11);

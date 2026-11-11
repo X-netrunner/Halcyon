@@ -26,9 +26,13 @@ pub fn run(args: &[String]) -> i32 {
     candidates.push(h.join(".face"));
     candidates.push(h.join(".face.icon"));
 
-    let user = env::var("USER").unwrap_or_else(|_| crate::util::out("id", &["-un"]).trim().to_string());
+    let user =
+        env::var("USER").unwrap_or_else(|_| crate::util::out("id", &["-un"]).trim().to_string());
     if !user.is_empty() {
-        candidates.push(PathBuf::from(format!("/var/lib/AccountsService/icons/{}", user)));
+        candidates.push(PathBuf::from(format!(
+            "/var/lib/AccountsService/icons/{}",
+            user
+        )));
     }
 
     let extensions = ["png", "jpg", "jpeg", "webp"];

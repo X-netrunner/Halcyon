@@ -71,7 +71,12 @@ pub struct VizFrame {
 impl VizFrame {
     /// A resting frame: no swell, no ripples (paused, motion reduced, or no audio).
     pub fn still() -> Self {
-        Self { pulse: 0.0, bass: 0.0, ripples: [None; MAX_RIPPLES], live: false }
+        Self {
+            pulse: 0.0,
+            bass: 0.0,
+            ripples: [None; MAX_RIPPLES],
+            live: false,
+        }
     }
 }
 
@@ -99,7 +104,10 @@ impl AudioViz {
             *slot = f32::from(b) / 255.0;
         }
         if beat > 0 {
-            let spaced = self.beats.back().is_none_or(|(at, _)| now.saturating_duration_since(*at) >= MIN_BEAT_GAP);
+            let spaced = self
+                .beats
+                .back()
+                .is_none_or(|(at, _)| now.saturating_duration_since(*at) >= MIN_BEAT_GAP);
             if spaced {
                 self.beats.push_back((now, f32::from(beat) / 255.0));
                 while self.beats.len() > MAX_RIPPLES {
@@ -112,12 +120,16 @@ impl AudioViz {
 
     /// True while frames keep arriving.
     pub fn is_live(&self, now: Instant) -> bool {
-        self.last_frame.is_some_and(|t| now.saturating_duration_since(t) <= LIVE_FOR)
+        self.last_frame
+            .is_some_and(|t| now.saturating_duration_since(t) <= LIVE_FOR)
     }
 
     /// Move the smoothed bass toward the latest frame. Call once per animation tick.
     pub fn tick(&mut self, now: Instant, playing: bool) {
-        let dt = now.saturating_duration_since(self.last_tick).as_secs_f32().min(0.1);
+        let dt = now
+            .saturating_duration_since(self.last_tick)
+            .as_secs_f32()
+            .min(0.1);
         self.last_tick = now;
         let silent = !playing || !self.is_live(now);
         let attack = 1.0 - (-dt / ATTACK).exp();
@@ -149,7 +161,11 @@ impl AudioViz {
         let src = if calm { &self.calm } else { &self.shown };
         let mut out = [0.0; BANDS];
         for (o, &v) in out.iter_mut().zip(src) {
-            *o = if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+            *o = if v.is_finite() {
+                v.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
         }
         out
     }
@@ -162,7 +178,9 @@ impl AudioViz {
 
     /// The newest beat's swell at `now`: a soft rise, then a slow fade.
     fn pulse_at(&self, now: Instant) -> f32 {
-        let Some(&(at, strength)) = self.beats.back() else { return 0.0 };
+        let Some(&(at, strength)) = self.beats.back() else {
+            return 0.0;
+        };
         let age = now.saturating_duration_since(at).as_secs_f32();
         let rise = (age / PULSE_RISE).min(1.0);
         let rise = rise * rise * (3.0 - 2.0 * rise);
@@ -187,7 +205,12 @@ impl AudioViz {
             }
         }
         let bass = self.shown[..4].iter().sum::<f32>() / 4.0;
-        VizFrame { pulse: self.pulse_at(now), bass, ripples, live: true }
+        VizFrame {
+            pulse: self.pulse_at(now),
+            bass,
+            ripples,
+            live: true,
+        }
     }
 }
 
@@ -246,9 +269,21 @@ mod tests {
         let t0 = Instant::now();
         let mut v = AudioViz::new();
         v.push(&[255; BANDS], 255, t0);
-        assert_eq!(v.frame(ms(t0, 2000), true, false), VizFrame::still(), "stale frames");
-        assert_eq!(v.frame(ms(t0, 10), false, false), VizFrame::still(), "paused");
-        assert_eq!(v.frame(ms(t0, 10), true, true), VizFrame::still(), "reduced motion");
+        assert_eq!(
+            v.frame(ms(t0, 2000), true, false),
+            VizFrame::still(),
+            "stale frames"
+        );
+        assert_eq!(
+            v.frame(ms(t0, 10), false, false),
+            VizFrame::still(),
+            "paused"
+        );
+        assert_eq!(
+            v.frame(ms(t0, 10), true, true),
+            VizFrame::still(),
+            "reduced motion"
+        );
         assert!(v.frame(ms(t0, 10), true, false).live);
     }
 
@@ -275,7 +310,10 @@ mod tests {
         v.tick(ms(t0, 100), true);
         assert!(v.bands(true, false).iter().all(|&b| b == 0.0));
         assert!(v.bands(true, true).iter().all(|&b| b == 0.0));
-        assert!(v.bands(false, false).iter().all(|&b| (0.0..=1.0).contains(&b)));
+        assert!(v
+            .bands(false, false)
+            .iter()
+            .all(|&b| (0.0..=1.0).contains(&b)));
     }
 
     #[test]

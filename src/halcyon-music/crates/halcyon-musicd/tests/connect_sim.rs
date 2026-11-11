@@ -62,7 +62,10 @@ impl SimDevice {
     }
 
     fn current(&self) -> Option<String> {
-        self.list.get(self.index).and_then(|u| u.rsplit(':').next()).map(str::to_string)
+        self.list
+            .get(self.index)
+            .and_then(|u| u.rsplit(':').next())
+            .map(str::to_string)
     }
 
     fn say(&mut self, ev: DeviceEvent) {
@@ -72,9 +75,15 @@ impl SimDevice {
     fn announce(&mut self) {
         if let Some(id) = self.current() {
             let ev = if self.playing {
-                DeviceEvent::Playing { track_id: id, position_ms: self.position_ms }
+                DeviceEvent::Playing {
+                    track_id: id,
+                    position_ms: self.position_ms,
+                }
             } else {
-                DeviceEvent::Paused { track_id: id, position_ms: self.position_ms }
+                DeviceEvent::Paused {
+                    track_id: id,
+                    position_ms: self.position_ms,
+                }
             };
             self.say(ev);
         }
@@ -126,7 +135,12 @@ impl ConnectTransport for SimDevice {
         self.commands_seen.push(cmd.clone());
         match cmd {
             TransportCmd::Activate => self.active = true,
-            TransportCmd::Load { uris, index, start_playing, position_ms } => {
+            TransportCmd::Load {
+                uris,
+                index,
+                start_playing,
+                position_ms,
+            } => {
                 if !self.active {
                     return Err("load before activate".into());
                 }
@@ -183,7 +197,12 @@ impl Rig {
     fn new(lag: u32) -> Self {
         let state = PlayerState::default();
         let mirror = Mirror::new(state.volume);
-        Self { state, mirror, dev: SimDevice::new(lag), now_ms: 0 }
+        Self {
+            state,
+            mirror,
+            dev: SimDevice::new(lag),
+            now_ms: 0,
+        }
     }
 
     /// One 250 ms tick.
@@ -194,7 +213,12 @@ impl Rig {
             let mut edit = event_to_edit(&self.state, &mut self.mirror, &ev, self.now_ms);
             if let Some(unknown) = edit.unknown.take() {
                 // stands in for the metadata lookup
-                edit = adopt_foreign(&self.state, &mut self.mirror, track(&unknown.track_id), &unknown);
+                edit = adopt_foreign(
+                    &self.state,
+                    &mut self.mirror,
+                    track(&unknown.track_id),
+                    &unknown,
+                );
             }
             apply_edit(&mut self.state, &edit);
         }
@@ -217,7 +241,8 @@ impl Rig {
 #[test]
 fn gui_play_then_phone_pause_and_resume() {
     let mut rig = Rig::new(1);
-    rig.state.play_context(vec![track("a"), track("b"), track("c")], 0);
+    rig.state
+        .play_context(vec![track("a"), track("b"), track("c")], 0);
     rig.run(4);
     assert!(rig.dev.playing && rig.dev.active);
     assert_eq!(rig.dev.current().as_deref(), Some("a"));
@@ -236,12 +261,15 @@ fn gui_play_then_phone_pause_and_resume() {
 #[test]
 fn gui_next_does_not_ping_pong_with_late_events() {
     let mut rig = Rig::new(3); // events arrive 750 ms late
-    rig.state.play_context(vec![track("a"), track("b"), track("c")], 0);
+    rig.state
+        .play_context(vec![track("a"), track("b"), track("c")], 0);
     rig.run(6);
     assert!(rig.state.advance_next());
     let cmds = rig.run(12);
     assert_eq!(
-        cmds.iter().filter(|c| matches!(c, TransportCmd::Next | TransportCmd::Prev)).count(),
+        cmds.iter()
+            .filter(|c| matches!(c, TransportCmd::Next | TransportCmd::Prev))
+            .count(),
         1,
         "exactly one skip, no Prev: {cmds:?}"
     );
@@ -252,7 +280,8 @@ fn gui_next_does_not_ping_pong_with_late_events() {
 #[test]
 fn rapid_gui_skips_settle_on_the_last_track() {
     let mut rig = Rig::new(2);
-    rig.state.play_context((0..6).map(|i| track(&format!("t{i}"))).collect(), 0);
+    rig.state
+        .play_context((0..6).map(|i| track(&format!("t{i}"))).collect(), 0);
     rig.run(6);
     for _ in 0..3 {
         assert!(rig.state.advance_next());
@@ -266,7 +295,8 @@ fn rapid_gui_skips_settle_on_the_last_track() {
 #[test]
 fn phone_skip_moves_the_gui_without_commands() {
     let mut rig = Rig::new(1);
-    rig.state.play_context(vec![track("a"), track("b"), track("c"), track("d")], 0);
+    rig.state
+        .play_context(vec![track("a"), track("b"), track("c"), track("d")], 0);
     rig.run(4);
     rig.dev.phone_skip_to(3);
     let cmds = rig.run(6);
@@ -283,7 +313,12 @@ fn volume_goes_both_ways_without_looping() {
 
     rig.state.volume = 80;
     let cmds = rig.run(4);
-    assert_eq!(cmds.iter().filter(|c| matches!(c, TransportCmd::SetVolume(_))).count(), 1);
+    assert_eq!(
+        cmds.iter()
+            .filter(|c| matches!(c, TransportCmd::SetVolume(_)))
+            .count(),
+        1
+    );
     assert_eq!(connect_to_percent(rig.dev.volume_raw), 80);
 
     rig.dev.phone_volume(16_384);
@@ -320,7 +355,10 @@ fn music_started_on_the_phone_appears_in_the_gui_and_stays_quiet() {
     assert_eq!(rig.id(), Some("zzz"));
     assert!(rig.state.playing);
     assert_eq!(rig.state.queue.len(), 1);
-    assert!(cmds.is_empty(), "adopting phone music must not send a load back: {cmds:?}");
+    assert!(
+        cmds.is_empty(),
+        "adopting phone music must not send a load back: {cmds:?}"
+    );
 }
 
 #[test]

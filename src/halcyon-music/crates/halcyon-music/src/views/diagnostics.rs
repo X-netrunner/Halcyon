@@ -4,8 +4,8 @@
 //! a single-click "Copy Diagnostics" button for reporting.
 
 use crate::animation::{motion, FrameStats};
-use crate::icons::{icon, Icon};
 use crate::client::ConnStatus;
+use crate::icons::{icon, Icon};
 use crate::theme::HalcyonPalette;
 use halcyon_music_core::models::AuthStatus;
 use halcyon_music_core::state::PlayerState;
@@ -30,7 +30,11 @@ pub fn view_build_line(f: &FrameStats) -> String {
     }
     format!(
         "{} builds, average {:.1} ms, worst {:.1} ms, {} over {} ms",
-        f.views, f.avg_view_ms, f.worst_view_ms, f.slow_views, motion::FRAME_BUDGET_MS as u32
+        f.views,
+        f.avg_view_ms,
+        f.worst_view_ms,
+        f.slow_views,
+        motion::FRAME_BUDGET_MS as u32
     )
 }
 
@@ -94,7 +98,13 @@ pub fn view<'a, Message: Clone + 'static>(
             .padding(12),
         )
         .style(move |_t| container::Style {
-            background: Some(iced::Color { a: 0.1, ..palette.danger }.into()),
+            background: Some(
+                iced::Color {
+                    a: 0.1,
+                    ..palette.danger
+                }
+                .into(),
+            ),
             border: iced::Border {
                 radius: 18.0.into(),
                 color: palette.danger,
@@ -139,7 +149,9 @@ pub fn view<'a, Message: Clone + 'static>(
 
     let content = column![
         row![
-            text("Something went wrong? — Diagnostics").size(18).color(palette.text),
+            text("Something went wrong? — Diagnostics")
+                .size(18)
+                .color(palette.text),
             Space::with_width(Length::Fill),
             button(icon(Icon::Close, 16.0, palette.text_muted))
                 .on_press(on_close.clone())
@@ -155,10 +167,26 @@ pub fn view<'a, Message: Clone + 'static>(
         info_row("Playback Engine:", playback_str),
         info_row("Queue Length:", format!("{} tracks", state.queue.len())),
         info_row("Volume:", format!("{}%", state.volume)),
-        info_row("Control Socket:", "$XDG_RUNTIME_DIR/halcyon-music/ctl.sock".to_string()),
-        info_row("Cache Database:", "~/.cache/halcyon-music/cache.db".to_string()),
-        info_row("Self-healing:", "Watchdog active (auto-recovers on stall)".to_string()),
-        info_row("Motion:", if reduce_motion { "Reduced (nothing animates)".to_string() } else { "On".to_string() }),
+        info_row(
+            "Control Socket:",
+            "$XDG_RUNTIME_DIR/halcyon-music/ctl.sock".to_string()
+        ),
+        info_row(
+            "Cache Database:",
+            "~/.cache/halcyon-music/cache.db".to_string()
+        ),
+        info_row(
+            "Self-healing:",
+            "Watchdog active (auto-recovers on stall)".to_string()
+        ),
+        info_row(
+            "Motion:",
+            if reduce_motion {
+                "Reduced (nothing animates)".to_string()
+            } else {
+                "On".to_string()
+            }
+        ),
         info_row("Frame cadence:", frame_cadence_line(&frame)),
         info_row("Interface build:", view_build_line(&frame)),
         Space::with_height(20),
@@ -187,7 +215,11 @@ pub fn view<'a, Message: Clone + 'static>(
                 .padding([8, 16])
                 .style(move |_t, s| button::Style {
                     background: Some(
-                        if s == button::Status::Hovered { crate::theme::mix(palette.surface, palette.accent, 0.16) } else { crate::theme::alpha(palette.surface, 0.62) }
+                        if s == button::Status::Hovered {
+                            crate::theme::mix(palette.surface, palette.accent, 0.16)
+                        } else {
+                            crate::theme::alpha(palette.surface, 0.62)
+                        }
                         .into(),
                     ),
                     border: iced::Border {
@@ -214,7 +246,10 @@ pub fn view<'a, Message: Clone + 'static>(
                     width: 1.0,
                 },
                 shadow: iced::Shadow {
-                    color: iced::Color { a: 0.5, ..iced::Color::BLACK },
+                    color: iced::Color {
+                        a: 0.5,
+                        ..iced::Color::BLACK
+                    },
                     offset: iced::Vector::new(0.0, 8.0),
                     blur_radius: 24.0,
                 },
@@ -226,7 +261,13 @@ pub fn view<'a, Message: Clone + 'static>(
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_t| container::Style {
-        background: Some(iced::Color { a: 0.65, ..iced::Color::BLACK }.into()),
+        background: Some(
+            iced::Color {
+                a: 0.65,
+                ..iced::Color::BLACK
+            }
+            .into(),
+        ),
         ..Default::default()
     })
     .into()
@@ -245,8 +286,23 @@ mod tests {
 
     #[test]
     fn readout_shows_numbers_and_the_budget() {
-        let f = FrameStats { ticks: 120, avg_gap_ms: 16.7, worst_gap_ms: 31.2, late_ticks: 2, views: 300, avg_view_ms: 2.4, worst_view_ms: 9.1, slow_views: 0 };
-        assert_eq!(frame_cadence_line(&f), "120 ticks, average 16.7 ms, worst 31.2 ms, 2 late");
-        assert_eq!(view_build_line(&f), "300 builds, average 2.4 ms, worst 9.1 ms, 0 over 16 ms");
+        let f = FrameStats {
+            ticks: 120,
+            avg_gap_ms: 16.7,
+            worst_gap_ms: 31.2,
+            late_ticks: 2,
+            views: 300,
+            avg_view_ms: 2.4,
+            worst_view_ms: 9.1,
+            slow_views: 0,
+        };
+        assert_eq!(
+            frame_cadence_line(&f),
+            "120 ticks, average 16.7 ms, worst 31.2 ms, 2 late"
+        );
+        assert_eq!(
+            view_build_line(&f),
+            "300 builds, average 2.4 ms, worst 9.1 ms, 0 over 16 ms"
+        );
     }
 }

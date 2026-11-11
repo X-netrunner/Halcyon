@@ -22,7 +22,11 @@ pub enum AvatarSource {
 
 impl AvatarSource {
     #[cfg(test)]
-    pub const ALL: [AvatarSource; 3] = [AvatarSource::Halcyon, AvatarSource::Spotify, AvatarSource::Initial];
+    pub const ALL: [AvatarSource; 3] = [
+        AvatarSource::Halcyon,
+        AvatarSource::Spotify,
+        AvatarSource::Initial,
+    ];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -130,7 +134,10 @@ mod tests {
         for s in AvatarSource::ALL {
             assert_eq!(AvatarSource::from_key(s.key()), Some(s));
         }
-        assert_eq!(AvatarSource::from_key(" spotify\n"), Some(AvatarSource::Spotify));
+        assert_eq!(
+            AvatarSource::from_key(" spotify\n"),
+            Some(AvatarSource::Spotify)
+        );
         assert_eq!(AvatarSource::from_key("nonsense"), None);
         assert_eq!(AvatarSource::default(), AvatarSource::Halcyon);
     }
@@ -139,21 +146,41 @@ mod tests {
     fn the_chosen_source_goes_first_and_the_other_is_the_fallback() {
         let h = Some("file:///h.png");
         let s = Some("https://i.scdn.co/image/x");
-        assert_eq!(order(AvatarSource::Halcyon, h, s), vec!["file:///h.png", "https://i.scdn.co/image/x"]);
-        assert_eq!(order(AvatarSource::Spotify, h, s), vec!["https://i.scdn.co/image/x", "file:///h.png"]);
+        assert_eq!(
+            order(AvatarSource::Halcyon, h, s),
+            vec!["file:///h.png", "https://i.scdn.co/image/x"]
+        );
+        assert_eq!(
+            order(AvatarSource::Spotify, h, s),
+            vec!["https://i.scdn.co/image/x", "file:///h.png"]
+        );
         assert!(order(AvatarSource::Initial, h, s).is_empty());
         // A missing or empty source is skipped.
-        assert_eq!(order(AvatarSource::Halcyon, None, s), vec!["https://i.scdn.co/image/x"]);
-        assert_eq!(order(AvatarSource::Spotify, h, Some("")), vec!["file:///h.png"]);
+        assert_eq!(
+            order(AvatarSource::Halcyon, None, s),
+            vec!["https://i.scdn.co/image/x"]
+        );
+        assert_eq!(
+            order(AvatarSource::Spotify, h, Some("")),
+            vec!["file:///h.png"]
+        );
         assert!(order(AvatarSource::Halcyon, None, None).is_empty());
     }
 
     #[test]
     fn pick_prefers_a_ready_picture_but_never_returns_nothing_when_there_is_one() {
         let c = vec!["a".to_string(), "b".to_string()];
-        assert_eq!(pick(&c, |u| u == "b").as_deref(), Some("b"), "first ready wins");
+        assert_eq!(
+            pick(&c, |u| u == "b").as_deref(),
+            Some("b"),
+            "first ready wins"
+        );
         assert_eq!(pick(&c, |_| true).as_deref(), Some("a"));
-        assert_eq!(pick(&c, |_| false).as_deref(), Some("a"), "none ready yet: the first is on its way");
+        assert_eq!(
+            pick(&c, |_| false).as_deref(),
+            Some("a"),
+            "none ready yet: the first is on its way"
+        );
         assert_eq!(pick(&[], |_| true), None);
     }
 

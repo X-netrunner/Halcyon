@@ -20,7 +20,13 @@ fn msg(gui: bool, text: &str) {
 
 /// The few lines worth showing in the terminal: size, type, speed and slot of each module, up to 12.
 fn summary_lines(text: &str) -> Vec<&str> {
-    const KEYS: [&str; 5] = ["Size:", "Type:", "Speed:", "Configured Memory Speed:", "Locator:"];
+    const KEYS: [&str; 5] = [
+        "Size:",
+        "Type:",
+        "Speed:",
+        "Configured Memory Speed:",
+        "Locator:",
+    ];
     text.lines()
         .filter(|l| {
             let t = l.trim_start();
@@ -53,11 +59,17 @@ pub fn run(args: &[String]) -> i32 {
             let _ = fs::create_dir_all(dir);
         }
         if fs::write(&out, &text).is_err() {
-            msg(gui, "Could not save the RAM details to ~/.cache/island/dmi-memory.txt.");
+            msg(
+                gui,
+                "Could not save the RAM details to ~/.cache/island/dmi-memory.txt.",
+            );
             return 1;
         }
         let _ = fs::set_permissions(&out, fs::Permissions::from_mode(0o644));
-        msg(gui, "Saved. Reopen the Performance page (or restart the island) to see type and speed.");
+        msg(
+            gui,
+            "Saved. Reopen the Performance page (or restart the island) to see type and speed.",
+        );
         if !gui {
             for line in summary_lines(&text) {
                 println!("{}", line);

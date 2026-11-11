@@ -29,7 +29,10 @@ pub struct NavHistory {
 
 impl NavHistory {
     pub fn new(start: Place) -> Self {
-        Self { places: vec![start], at: 0 }
+        Self {
+            places: vec![start],
+            at: 0,
+        }
     }
 
     #[allow(dead_code)]

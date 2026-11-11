@@ -26,19 +26,41 @@ impl CaseResult {
         if self.latencies.is_empty() {
             0
         } else {
-            self.latencies.iter().map(Duration::as_millis).sum::<u128>() / self.latencies.len() as u128
+            self.latencies.iter().map(Duration::as_millis).sum::<u128>()
+                / self.latencies.len() as u128
         }
     }
     pub fn max_ms(&self) -> u128 {
-        self.latencies.iter().map(Duration::as_millis).max().unwrap_or(0)
+        self.latencies
+            .iter()
+            .map(Duration::as_millis)
+            .max()
+            .unwrap_or(0)
     }
 }
 
 pub fn taste() -> TasteSummary {
-    let a = |n: &str, w: f32, s: f32| ArtistTaste { name: n.to_string(), weight: w, skip_rate: s };
+    let a = |n: &str, w: f32, s: f32| ArtistTaste {
+        name: n.to_string(),
+        weight: w,
+        skip_rate: s,
+    };
     TasteSummary {
-        top_artists: vec![a("Nova", 1.0, 0.05), a("Echo", 0.7, 0.1), a("Pulse", 0.4, 0.5)],
-        top_genres: vec![GenreTaste { name: "ambient".into(), weight: 1.0 }, GenreTaste { name: "synthwave".into(), weight: 0.6 }],
+        top_artists: vec![
+            a("Nova", 1.0, 0.05),
+            a("Echo", 0.7, 0.1),
+            a("Pulse", 0.4, 0.5),
+        ],
+        top_genres: vec![
+            GenreTaste {
+                name: "ambient".into(),
+                weight: 1.0,
+            },
+            GenreTaste {
+                name: "synthwave".into(),
+                weight: 0.6,
+            },
+        ],
         completion_rate: 0.8,
         currently_into: vec!["Echo".into()],
         stale_favourites: vec!["Nova".into()],
@@ -54,7 +76,11 @@ fn tracks(n: usize) -> Vec<Track> {
             Track::simple(
                 format!("id{i}"),
                 format!("Song {i}"),
-                artists.get(i % artists.len()).copied().unwrap_or("Nova").to_string(),
+                artists
+                    .get(i % artists.len())
+                    .copied()
+                    .unwrap_or("Nova")
+                    .to_string(),
                 "Album".to_string(),
                 200_000,
             )
@@ -73,7 +99,11 @@ fn mix(id: &str, title: &str, n: usize) -> MusicMix {
     }
 }
 
-const MOODS: &[&str] = &["rainy night coding, no lyrics", "upbeat 90s workout", "slow sunday morning with coffee"];
+const MOODS: &[&str] = &[
+    "rainy night coding, no lyrics",
+    "upbeat 90s workout",
+    "slow sunday morning with coffee",
+];
 
 /// Run every case `runs` times against `llm`.
 pub async fn run(llm: &dyn TasteLlm, runs: usize) -> Vec<CaseResult> {
@@ -81,12 +111,23 @@ pub async fn run(llm: &dyn TasteLlm, runs: usize) -> Vec<CaseResult> {
     let timeout = llm.call_timeout();
     let mut out = Vec::new();
 
-    let mixes = [mix("a", "On Repeat", 10), mix("b", "Rediscover", 10), mix("c", "Late Night", 10)];
+    let mixes = [
+        mix("a", "On Repeat", 10),
+        mix("b", "Rediscover", 10),
+        mix("c", "Late Night", 10),
+    ];
     let refs: Vec<&MusicMix> = mixes.iter().collect();
     let why = prompts::build_why_mix(&t, &refs);
     out.push(
-        one(llm, "why-mix", runs, timeout, |_| why.request.clone(), |raw| validate::parse_why_mix(raw, &why.aliases).len() == mixes.len())
-            .await,
+        one(
+            llm,
+            "why-mix",
+            runs,
+            timeout,
+            |_| why.request.clone(),
+            |raw| validate::parse_why_mix(raw, &why.aliases).len() == mixes.len(),
+        )
+        .await,
     );
 
     out.push(
@@ -96,26 +137,51 @@ pub async fn run(llm: &dyn TasteLlm, runs: usize) -> Vec<CaseResult> {
             runs,
             timeout,
             |i| prompts::build_query(&t, MOODS.get(i % MOODS.len()).copied().unwrap_or("calm")),
-            |raw| validate::parse_query(raw).map(|q| !q.genres.is_empty()).unwrap_or(false),
+            |raw| {
+                validate::parse_query(raw)
+                    .map(|q| !q.genres.is_empty())
+                    .unwrap_or(false)
+            },
         )
         .await,
     );
 
     let cands = tracks(14);
-    let plan = validate::QuerySpec { genres: vec!["ambient".into()], ..Default::default() };
+    let plan = validate::QuerySpec {
+        genres: vec!["ambient".into()],
+        ..Default::default()
+    };
     let pick = prompts::build_pick(&t, MOODS.first().copied().unwrap_or("calm"), &plan, &cands);
     out.push(
-        one(llm, "mood-pick", runs, timeout, |_| pick.request.clone(), |raw| {
-            validate::parse_pick(raw, &pick.aliases).map(|p| !p.ids.is_empty()).unwrap_or(false)
-        })
+        one(
+            llm,
+            "mood-pick",
+            runs,
+            timeout,
+            |_| pick.request.clone(),
+            |raw| {
+                validate::parse_pick(raw, &pick.aliases)
+                    .map(|p| !p.ids.is_empty())
+                    .unwrap_or(false)
+            },
+        )
         .await,
     );
 
     let rr = prompts::build_rerank(&t, "On Repeat", &cands);
     out.push(
-        one(llm, "rerank", runs, timeout, |_| rr.request.clone(), |raw| {
-            validate::parse_pick(raw, &rr.aliases).map(|p| p.ids.len() >= 3).unwrap_or(false)
-        })
+        one(
+            llm,
+            "rerank",
+            runs,
+            timeout,
+            |_| rr.request.clone(),
+            |raw| {
+                validate::parse_pick(raw, &rr.aliases)
+                    .map(|p| p.ids.len() >= 3)
+                    .unwrap_or(false)
+            },
+        )
         .await,
     );
     out
@@ -129,7 +195,14 @@ async fn one(
     request: impl Fn(usize) -> super::backend::LlmRequest,
     usable: impl Fn(&str) -> bool,
 ) -> CaseResult {
-    let mut r = CaseResult { case, runs, valid: 0, errors: 0, latencies: Vec::new(), samples: Vec::new() };
+    let mut r = CaseResult {
+        case,
+        runs,
+        valid: 0,
+        errors: 0,
+        latencies: Vec::new(),
+        samples: Vec::new(),
+    };
     for i in 0..runs {
         let req = request(i);
         let start = Instant::now();
@@ -174,7 +247,15 @@ pub fn report(model: &str, rows: &[CaseResult], threads: usize) -> String {
     let (rss, peak) = memory_mb();
     let mut s = format!("### {model}\n\n| case | valid | errors | avg ms | max ms |\n| --- | --- | --- | --- | --- |\n");
     for r in rows {
-        s.push_str(&format!("| {} | {}/{} | {} | {} | {} |\n", r.case, r.valid, r.runs, r.errors, r.avg_ms(), r.max_ms()));
+        s.push_str(&format!(
+            "| {} | {}/{} | {} | {} | {} |\n",
+            r.case,
+            r.valid,
+            r.runs,
+            r.errors,
+            r.avg_ms(),
+            r.max_ms()
+        ));
     }
     s.push_str(&format!("\nProcess memory after the run: {rss} MB resident, {peak} MB peak. CPU threads available: {threads}.\n\nSamples (read these for quality):\n\n"));
     for r in rows {

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const ADAPT_DAYS: f64 = 3.0;
 const ADAPT_MIN_SAMPLES: usize = 150;
 const ADAPT_KEEP_DAYS: f64 = 14.0;
-const ADAPT_RAM_HEADROOM: f64 = 1.10;       // 10 % above what is normal: a steady 500 MB gives a 550 MB limit
+const ADAPT_RAM_HEADROOM: f64 = 1.10; // 10 % above what is normal: a steady 500 MB gives a 550 MB limit
 const ADAPT_CPU_HEADROOM: f64 = 1.5;
 const ADAPT_RAM_RANGE: (i32, i32) = (300, 1500);
 const ADAPT_CPU_RANGE: (i32, i32) = (3, 30);
@@ -29,7 +29,17 @@ fn is_halcyon_proc(pid: i32) -> bool {
     if let Ok(mut f) = File::open(format!("/proc/{}/comm", pid)) {
         if f.read_to_string(&mut b).is_ok() {
             let comm = b.trim();
-            if matches!(comm, "quickshell" | "Hyprland" | "hx" | "power-manager" | "touchpad-gestures" | "cava" | "swww-daemon" | "awww-daemon") {
+            if matches!(
+                comm,
+                "quickshell"
+                    | "Hyprland"
+                    | "hx"
+                    | "power-manager"
+                    | "touchpad-gestures"
+                    | "cava"
+                    | "swww-daemon"
+                    | "awww-daemon"
+            ) {
                 return true;
             }
         }
@@ -37,9 +47,10 @@ fn is_halcyon_proc(pid: i32) -> bool {
     b.clear();
     if let Ok(mut f) = File::open(format!("/proc/{}/cmdline", pid)) {
         if f.read_to_string(&mut b).is_ok()
-            && (b.contains("/Halcyon/") || b.contains(".config/Halcyon") || b.contains("halcyon")) {
-                return true;
-            }
+            && (b.contains("/Halcyon/") || b.contains(".config/Halcyon") || b.contains("halcyon"))
+        {
+            return true;
+        }
     }
     false
 }
@@ -62,7 +73,11 @@ fn read_proc_pss_mb(pid: i32, page_mb: f64) -> f64 {
         if f.read_to_string(&mut buf).is_ok() {
             for l in buf.lines() {
                 if let Some(r) = l.strip_prefix("Pss:") {
-                    if let Some(kb) = r.split_whitespace().next().and_then(|x| x.parse::<f64>().ok()) {
+                    if let Some(kb) = r
+                        .split_whitespace()
+                        .next()
+                        .and_then(|x| x.parse::<f64>().ok())
+                    {
                         return kb / 1024.0;
                     }
                 }
@@ -72,7 +87,11 @@ fn read_proc_pss_mb(pid: i32, page_mb: f64) -> f64 {
     buf.clear();
     if let Ok(mut f) = File::open(format!("/proc/{}/statm", pid)) {
         if f.read_to_string(&mut buf).is_ok() {
-            if let Some(pages) = buf.split_whitespace().nth(1).and_then(|x| x.parse::<f64>().ok()) {
+            if let Some(pages) = buf
+                .split_whitespace()
+                .nth(1)
+                .and_then(|x| x.parse::<f64>().ok())
+            {
                 return pages * page_mb;
             }
         }
@@ -85,7 +104,9 @@ pub fn sample() {
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
     // SAFETY: sysconf with a valid name constant only reads a system value.
     let page_mb = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as f64 / 1048576.0;
-    let ncpu = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
+    let ncpu = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1) as f64;
 
     let mut hal_pids = Vec::new();
     if let Ok(rd) = std::fs::read_dir("/proc") {
@@ -164,8 +185,14 @@ fn read_rows() -> Vec<(f64, f64, f64)> {
         if f.read_to_string(&mut buf).is_ok() {
             for ln in buf.lines() {
                 let mut parts = ln.split('\t');
-                if let (Some(t_str), Some(r_str), Some(c_str)) = (parts.next(), parts.next(), parts.next()) {
-                    if let (Ok(t), Ok(r), Ok(c)) = (t_str.parse::<f64>(), r_str.parse::<f64>(), c_str.parse::<f64>()) {
+                if let (Some(t_str), Some(r_str), Some(c_str)) =
+                    (parts.next(), parts.next(), parts.next())
+                {
+                    if let (Ok(t), Ok(r), Ok(c)) = (
+                        t_str.parse::<f64>(),
+                        r_str.parse::<f64>(),
+                        c_str.parse::<f64>(),
+                    ) {
                         if now_ts - t <= ADAPT_KEEP_DAYS * 86400.0 {
                             rows.push((t, r, c));
                         }
@@ -189,16 +216,19 @@ fn pct95(mut vals: Vec<f64>) -> f64 {
 pub fn status() {
     let rows = read_rows();
     if rows.is_empty() {
-        println!("{}", serde_json::json!({
-            "state": "learning",
-            "need_days": ADAPT_DAYS,
-            "days": 0.0,
-            "samples": 0,
-            "ram_limit": serde_json::Value::Null,
-            "cpu_limit": serde_json::Value::Null,
-            "base_ram": serde_json::Value::Null,
-            "base_cpu": serde_json::Value::Null
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "state": "learning",
+                "need_days": ADAPT_DAYS,
+                "days": 0.0,
+                "samples": 0,
+                "ram_limit": serde_json::Value::Null,
+                "cpu_limit": serde_json::Value::Null,
+                "base_ram": serde_json::Value::Null,
+                "base_cpu": serde_json::Value::Null
+            })
+        );
         return;
     }
 
@@ -218,27 +248,33 @@ pub fn status() {
         let ram_limit = ram_target.clamp(ADAPT_RAM_RANGE.0, ADAPT_RAM_RANGE.1);
         let cpu_limit = cpu_target.clamp(ADAPT_CPU_RANGE.0, ADAPT_CPU_RANGE.1);
 
-        println!("{}", serde_json::json!({
-            "state": "ready",
-            "need_days": ADAPT_DAYS,
-            "days": days,
-            "samples": samples,
-            "base_ram": br.round(),
-            "base_cpu": (bc * 10.0).round() / 10.0,
-            "ram_limit": ram_limit,
-            "cpu_limit": cpu_limit
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "state": "ready",
+                "need_days": ADAPT_DAYS,
+                "days": days,
+                "samples": samples,
+                "base_ram": br.round(),
+                "base_cpu": (bc * 10.0).round() / 10.0,
+                "ram_limit": ram_limit,
+                "cpu_limit": cpu_limit
+            })
+        );
     } else {
-        println!("{}", serde_json::json!({
-            "state": "learning",
-            "need_days": ADAPT_DAYS,
-            "days": days,
-            "samples": samples,
-            "ram_limit": serde_json::Value::Null,
-            "cpu_limit": serde_json::Value::Null,
-            "base_ram": serde_json::Value::Null,
-            "base_cpu": serde_json::Value::Null
-        }));
+        println!(
+            "{}",
+            serde_json::json!({
+                "state": "learning",
+                "need_days": ADAPT_DAYS,
+                "days": days,
+                "samples": samples,
+                "ram_limit": serde_json::Value::Null,
+                "cpu_limit": serde_json::Value::Null,
+                "base_ram": serde_json::Value::Null,
+                "base_cpu": serde_json::Value::Null
+            })
+        );
     }
 }
 

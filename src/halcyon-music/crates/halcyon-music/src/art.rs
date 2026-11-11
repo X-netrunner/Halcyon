@@ -18,12 +18,12 @@ use crate::icons::{icon, Icon};
 use crate::theme::{extract_dominant_color, HalcyonPalette};
 use halcyon_music_core::art::ArtSize;
 use halcyon_music_core::models::{Album, Artist, HomeFeed, Playlist, Track};
-use std::collections::HashSet;
 use halcyon_music_core::protocol::CommandBody;
 use iced::widget::image::Handle;
 use iced::widget::{container, image as image_widget, Space};
 use iced::{Color, ContentFit, Element, Length};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -44,7 +44,12 @@ enum Slot {
     Requested,
     /// File is on disk, decode running.
     Decoding,
-    Ready { handle: Handle, since: Instant, bytes: usize, dominant: Color },
+    Ready {
+        handle: Handle,
+        since: Instant,
+        bytes: usize,
+        dominant: Color,
+    },
     Failed(Instant),
 }
 
@@ -83,16 +88,31 @@ impl Store {
         let now = self.tick();
         match self.entries.get(&key) {
             None => {}
-            Some(Entry { slot: Slot::Failed(at), .. }) if at.elapsed() >= RETRY_AFTER => {}
+            Some(Entry {
+                slot: Slot::Failed(at),
+                ..
+            }) if at.elapsed() >= RETRY_AFTER => {}
             Some(_) => return false,
         }
-        self.entries.insert(key, Entry { slot: Slot::Requested, last_used: now });
+        self.entries.insert(
+            key,
+            Entry {
+                slot: Slot::Requested,
+                last_used: now,
+            },
+        );
         true
     }
 
     fn begin_decode(&mut self, url: &str, size: ArtSize) {
         let now = self.tick();
-        self.entries.insert((url.to_string(), size), Entry { slot: Slot::Decoding, last_used: now });
+        self.entries.insert(
+            (url.to_string(), size),
+            Entry {
+                slot: Slot::Decoding,
+                last_used: now,
+            },
+        );
     }
 
     fn fail(&mut self, url: &str, size: ArtSize) {
@@ -102,7 +122,13 @@ impl Store {
                 self.ready_bytes = self.ready_bytes.saturating_sub(bytes);
             }
         }
-        self.entries.insert((url.to_string(), size), Entry { slot: Slot::Failed(Instant::now()), last_used: now });
+        self.entries.insert(
+            (url.to_string(), size),
+            Entry {
+                slot: Slot::Failed(Instant::now()),
+                last_used: now,
+            },
+        );
     }
 
     fn finish(&mut self, url: &str, size: ArtSize, handle: Handle, bytes: usize, dominant: Color) {
@@ -111,10 +137,25 @@ impl Store {
         // A little past the fade, so one last frame is drawn with the veil fully gone.
         self.fade_until = Some(since + FADE + Duration::from_millis(60));
         let key = (url.to_string(), size);
-        if let Some(Entry { slot: Slot::Ready { bytes: old, .. }, .. }) = self.entries.get(&key) {
+        if let Some(Entry {
+            slot: Slot::Ready { bytes: old, .. },
+            ..
+        }) = self.entries.get(&key)
+        {
             self.ready_bytes = self.ready_bytes.saturating_sub(*old);
         }
-        self.entries.insert(key, Entry { slot: Slot::Ready { handle, since, bytes, dominant }, last_used: now });
+        self.entries.insert(
+            key,
+            Entry {
+                slot: Slot::Ready {
+                    handle,
+                    since,
+                    bytes,
+                    dominant,
+                },
+                last_used: now,
+            },
+        );
         self.ready_bytes += bytes;
         self.evict();
     }
@@ -130,7 +171,11 @@ impl Store {
                 .min_by_key(|(_, e)| e.last_used)
                 .map(|(k, _)| k.clone());
             let Some(key) = victim else { break };
-            if let Some(Entry { slot: Slot::Ready { bytes, .. }, .. }) = self.entries.remove(&key) {
+            if let Some(Entry {
+                slot: Slot::Ready { bytes, .. },
+                ..
+            }) = self.entries.remove(&key)
+            {
                 self.ready_bytes = self.ready_bytes.saturating_sub(bytes);
             }
         }
@@ -145,7 +190,10 @@ impl Store {
                 match &entry.slot {
                     Slot::Ready { handle, since, .. } => {
                         let t = since.elapsed().as_secs_f32() / FADE.as_secs_f32();
-                        Lookup::Ready { handle: handle.clone(), fade_left: (1.0 - t).clamp(0.0, 1.0) }
+                        Lookup::Ready {
+                            handle: handle.clone(),
+                            fade_left: (1.0 - t).clamp(0.0, 1.0),
+                        }
                     }
                     Slot::Requested | Slot::Decoding => Lookup::Pending,
                     Slot::Failed(_) => Lookup::Failed,
@@ -156,14 +204,18 @@ impl Store {
 
     fn dominant(&self, url: &str, size: ArtSize) -> Option<Color> {
         match self.entries.get(&(url.to_string(), size)) {
-            Some(Entry { slot: Slot::Ready { dominant, .. }, .. }) => Some(*dominant),
+            Some(Entry {
+                slot: Slot::Ready { dominant, .. },
+                ..
+            }) => Some(*dominant),
             _ => None,
         }
     }
 
     /// Forget requests that can no longer be answered (daemon restarted).
     fn reset_pending(&mut self) {
-        self.entries.retain(|_, e| !matches!(e.slot, Slot::Requested | Slot::Decoding));
+        self.entries
+            .retain(|_, e| !matches!(e.slot, Slot::Requested | Slot::Decoding));
     }
 }
 
@@ -180,14 +232,18 @@ fn with_store<R>(f: impl FnOnce(&mut Store) -> R) -> R {
 
 /// Turn (url, size) pairs into `GetArt` commands, skipping everything that is
 /// already requested, decoding, cached in memory or recently failed.
-pub fn commands_for<'a>(items: impl IntoIterator<Item = (Option<&'a str>, ArtSize)>) -> Vec<CommandBody> {
+pub fn commands_for<'a>(
+    items: impl IntoIterator<Item = (Option<&'a str>, ArtSize)>,
+) -> Vec<CommandBody> {
     with_store(|s| {
         items
             .into_iter()
             .filter_map(|(url, size)| {
                 let url = url.filter(|u| !u.is_empty())?;
-                s.claim(url, size)
-                    .then(|| CommandBody::GetArt { url: url.to_string(), size })
+                s.claim(url, size).then(|| CommandBody::GetArt {
+                    url: url.to_string(),
+                    size,
+                })
             })
             .collect()
     })
@@ -200,14 +256,31 @@ pub fn track_row(t: &Track) -> (Option<&str>, ArtSize) {
 /// Only what the Home page actually draws: quick-pick thumbnails and shelf cards.
 pub fn home_items(feed: &HomeFeed) -> Vec<(Option<&str>, ArtSize)> {
     let mut v = Vec::new();
-    v.extend(feed.quick_picks.iter().map(|p| (p.art_url.as_deref(), ArtSize::Small)));
-    for shelf in [&feed.jump_back_in, &feed.new_releases, &feed.fresh_releases, &feed.popular_charts] {
-        v.extend(shelf.iter().map(|i| (i.art_url.as_deref(), ArtSize::Medium)));
+    v.extend(
+        feed.quick_picks
+            .iter()
+            .map(|p| (p.art_url.as_deref(), ArtSize::Small)),
+    );
+    for shelf in [
+        &feed.jump_back_in,
+        &feed.new_releases,
+        &feed.fresh_releases,
+        &feed.popular_charts,
+    ] {
+        v.extend(
+            shelf
+                .iter()
+                .map(|i| (i.art_url.as_deref(), ArtSize::Medium)),
+        );
     }
     // Made-for-you cards cross-fade through their songs' covers, one after the other.
     for mix in &feed.made_for_you {
         v.push((mix.art_url.as_deref(), ArtSize::Small));
-        v.extend(unique_covers(mix, crate::views::home::MIX_SLIDES).into_iter().map(|u| (Some(u), ArtSize::Medium)));
+        v.extend(
+            unique_covers(mix, crate::views::home::MIX_SLIDES)
+                .into_iter()
+                .map(|u| (Some(u), ArtSize::Medium)),
+        );
     }
     v
 }
@@ -215,7 +288,12 @@ pub fn home_items(feed: &HomeFeed) -> Vec<(Option<&str>, ArtSize)> {
 /// The first `max` different covers among a mix's songs, in order.
 pub fn unique_covers(mix: &halcyon_music_core::models::MusicMix, max: usize) -> Vec<&str> {
     let mut uniq: Vec<&str> = Vec::new();
-    for u in mix.tracks.iter().filter_map(|t| t.art_url.as_deref()).filter(|u| !u.is_empty()) {
+    for u in mix
+        .tracks
+        .iter()
+        .filter_map(|t| t.art_url.as_deref())
+        .filter(|u| !u.is_empty())
+    {
         if !uniq.contains(&u) {
             uniq.push(u);
         }
@@ -227,19 +305,33 @@ pub fn unique_covers(mix: &halcyon_music_core::models::MusicMix, max: usize) -> 
 }
 
 /// Every cover the Discover page draws.
-pub fn discover_items(feed: &halcyon_music_core::models::DiscoverFeed) -> Vec<(Option<&str>, ArtSize)> {
+pub fn discover_items(
+    feed: &halcyon_music_core::models::DiscoverFeed,
+) -> Vec<(Option<&str>, ArtSize)> {
     let mut v = Vec::new();
     for shelf in [&feed.new_albums, &feed.from_artists] {
-        v.extend(shelf.iter().map(|i| (i.art_url.as_deref(), ArtSize::Medium)));
+        v.extend(
+            shelf
+                .iter()
+                .map(|i| (i.art_url.as_deref(), ArtSize::Medium)),
+        );
     }
     for list in [&feed.new_songs, &feed.trending] {
         v.extend(list.iter().map(|t| (t.art_url.as_deref(), ArtSize::Small)));
     }
     for mix in &feed.mixes {
-        v.extend(mix.tracks.iter().map(|t| (t.art_url.as_deref(), ArtSize::Small)));
+        v.extend(
+            mix.tracks
+                .iter()
+                .map(|t| (t.art_url.as_deref(), ArtSize::Small)),
+        );
     }
     // Genre playlists are cards: one cover each (their songs load when a playlist is opened).
-    v.extend(feed.genres.iter().map(|m| (m.art_url.as_deref(), ArtSize::Medium)));
+    v.extend(
+        feed.genres
+            .iter()
+            .map(|m| (m.art_url.as_deref(), ArtSize::Medium)),
+    );
     v
 }
 
@@ -257,7 +349,9 @@ pub fn artist_items(a: &[Artist]) -> Vec<(Option<&str>, ArtSize)> {
             s.circles.insert(url.to_string());
         }
     });
-    a.iter().map(|a| (a.image_url.as_deref(), ArtSize::Medium)).collect()
+    a.iter()
+        .map(|a| (a.image_url.as_deref(), ArtSize::Medium))
+        .collect()
 }
 
 pub fn track_items(t: &[Track]) -> impl Iterator<Item = (Option<&str>, ArtSize)> {
@@ -308,7 +402,11 @@ pub fn decode_task(url: String, size: ArtSize, path: String) -> iced::Task<crate
                 .map_err(|e| e.to_string())
                 .and_then(|r| r)
         },
-        move |result| crate::Message::ArtDecoded { url: u.clone(), size, result: result.map(Box::new) },
+        move |result| crate::Message::ArtDecoded {
+            url: u.clone(),
+            size,
+            result: result.map(Box::new),
+        },
     )
 }
 
@@ -342,7 +440,11 @@ pub fn local_decode_task(url: String, path: PathBuf) -> iced::Task<crate::Messag
                 .map_err(|e| e.to_string())
                 .and_then(|r| r)
         },
-        move |result| crate::Message::ArtDecoded { url: u.clone(), size, result: result.map(Box::new) },
+        move |result| crate::Message::ArtDecoded {
+            url: u.clone(),
+            size,
+            result: result.map(Box::new),
+        },
     )
 }
 
@@ -353,7 +455,15 @@ pub fn is_known(url: &str, size: ArtSize) -> bool {
 
 /// True when the cover is decoded and can be drawn right now.
 pub fn is_ready(url: &str, size: ArtSize) -> bool {
-    with_store(|s| matches!(s.entries.get(&(url.to_string(), size)), Some(Entry { slot: Slot::Ready { .. }, .. })))
+    with_store(|s| {
+        matches!(
+            s.entries.get(&(url.to_string(), size)),
+            Some(Entry {
+                slot: Slot::Ready { .. },
+                ..
+            })
+        )
+    })
 }
 
 /// Dominant colour of a cover that is already decoded (for the palette tint).
@@ -394,7 +504,11 @@ fn decode_file(path: &std::path::Path, size: ArtSize, circle: bool) -> Result<De
     let fraction = if circle { 0.5 } else { CORNER_FRACTION };
     round_corners(&mut rgba, w, h, w as f32 * fraction);
     let bytes = rgba.as_raw().len();
-    Ok(Decoded { handle: Handle::from_rgba(w, h, rgba.into_raw()), bytes, dominant })
+    Ok(Decoded {
+        handle: Handle::from_rgba(w, h, rgba.into_raw()),
+        bytes,
+        dominant,
+    })
 }
 
 /// Corner radius as a fraction of the cover's edge, baked into the pixels so
@@ -459,7 +573,11 @@ pub fn cover<'a, M: 'a>(
             // background, all in ONE draw layer. (It used to stack a veil over the picture;
             // a stacked layer is drawn after the whole window, so it could land on top of
             // the player bar while a card was scrolled partly out of view.)
-            let opacity = if fade_left > 0.0 { (1.0 - fade_left).clamp(0.0, 1.0) } else { 1.0 };
+            let opacity = if fade_left > 0.0 {
+                (1.0 - fade_left).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
             let pic: iced::widget::Image<Handle> = image_widget(handle)
                 .width(Length::Fixed(px))
                 .height(Length::Fixed(px))
@@ -472,9 +590,15 @@ pub fn cover<'a, M: 'a>(
                 .height(Length::Fixed(px))
                 .style(move |_t| container::Style {
                     background: fading.then(|| placeholder.into()),
-                    border: iced::Border { radius: radius.into(), ..Default::default() },
+                    border: iced::Border {
+                        radius: radius.into(),
+                        ..Default::default()
+                    },
                     shadow: iced::Shadow {
-                        color: Color { a: if px >= 120.0 { 0.35 } else { 0.18 }, ..Color::BLACK },
+                        color: Color {
+                            a: if px >= 120.0 { 0.35 } else { 0.18 },
+                            ..Color::BLACK
+                        },
                         offset: iced::Vector::new(0.0, if px >= 120.0 { 10.0 } else { 3.0 }),
                         blur_radius: if px >= 120.0 { 28.0 } else { 10.0 },
                     },
@@ -485,7 +609,12 @@ pub fn cover<'a, M: 'a>(
         Lookup::Pending | Lookup::Missing => block(px, radius, palette.surface_variant, None),
         Lookup::Failed => {
             let (bg, fg) = tile_colors(label);
-            block(px, radius, bg, Some(icon(fallback, (px * 0.42).max(10.0), fg)))
+            block(
+                px,
+                radius,
+                bg,
+                Some(icon(fallback, (px * 0.42).max(10.0), fg)),
+            )
         }
     }
 }
@@ -493,7 +622,13 @@ pub fn cover<'a, M: 'a>(
 /// The cover drawn at `opacity` (0.0 ..= 1.0) with no shadow, for laying one cover over another
 /// to cross-fade. `None` when the picture is not decoded yet: the caller then just keeps
 /// showing what it has, so a slideshow never fades to a grey placeholder.
-pub fn cover_overlay<'a, M: 'a>(url: &str, size: ArtSize, px: f32, radius: f32, opacity: f32) -> Option<Element<'a, M>> {
+pub fn cover_overlay<'a, M: 'a>(
+    url: &str,
+    size: ArtSize,
+    px: f32,
+    radius: f32,
+    opacity: f32,
+) -> Option<Element<'a, M>> {
     match with_store(|s| s.lookup(url, size)) {
         Lookup::Ready { handle, .. } => {
             let pic: iced::widget::Image<Handle> = image_widget(handle)
@@ -506,7 +641,10 @@ pub fn cover_overlay<'a, M: 'a>(url: &str, size: ArtSize, px: f32, radius: f32, 
                     .width(Length::Fixed(px))
                     .height(Length::Fixed(px))
                     .style(move |_t| container::Style {
-                        border: iced::Border { radius: radius.into(), ..Default::default() },
+                        border: iced::Border {
+                            radius: radius.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     })
                     .into(),
@@ -533,7 +671,10 @@ fn block<'a, M: 'a>(
         .center_y(Length::Fixed(px))
         .style(move |_t| container::Style {
             background: Some(bg.into()),
-            border: iced::Border { radius: radius.into(), ..Default::default() },
+            border: iced::Border {
+                radius: radius.into(),
+                ..Default::default()
+            },
             ..Default::default()
         })
         .into()
@@ -580,7 +721,10 @@ mod tests {
         let mut s = Store::default();
         assert!(s.claim("u", ArtSize::Small));
         assert!(!s.claim("u", ArtSize::Small), "already requested");
-        assert!(s.claim("u", ArtSize::Large), "other size is a different cover");
+        assert!(
+            s.claim("u", ArtSize::Large),
+            "other size is a different cover"
+        );
     }
 
     #[test]
@@ -606,7 +750,10 @@ mod tests {
         s.begin_decode("u", ArtSize::Small);
         assert!(matches!(s.lookup("u", ArtSize::Small), Lookup::Pending));
         s.finish("u", ArtSize::Small, dummy_handle(), 4, Color::BLACK);
-        assert!(matches!(s.lookup("u", ArtSize::Small), Lookup::Ready { .. }));
+        assert!(matches!(
+            s.lookup("u", ArtSize::Small),
+            Lookup::Ready { .. }
+        ));
         assert!(s.fade_until.is_some());
     }
 
@@ -618,17 +765,35 @@ mod tests {
         s.finish("b", ArtSize::Small, dummy_handle(), 4, Color::BLACK);
         s.reset_pending();
         assert!(matches!(s.lookup("a", ArtSize::Small), Lookup::Missing));
-        assert!(matches!(s.lookup("b", ArtSize::Small), Lookup::Ready { .. }));
+        assert!(matches!(
+            s.lookup("b", ArtSize::Small),
+            Lookup::Ready { .. }
+        ));
     }
 
     #[test]
     fn eviction_drops_least_recently_drawn_first() {
         let mut s = Store::default();
-        s.finish("old", ArtSize::Medium, dummy_handle(), MAX_BYTES / 2 + 1, Color::BLACK);
-        s.finish("new", ArtSize::Medium, dummy_handle(), MAX_BYTES / 2 + 1, Color::BLACK);
+        s.finish(
+            "old",
+            ArtSize::Medium,
+            dummy_handle(),
+            MAX_BYTES / 2 + 1,
+            Color::BLACK,
+        );
+        s.finish(
+            "new",
+            ArtSize::Medium,
+            dummy_handle(),
+            MAX_BYTES / 2 + 1,
+            Color::BLACK,
+        );
         // Total now exceeds the budget: "old" goes, and can be requested again.
         assert!(matches!(s.lookup("old", ArtSize::Medium), Lookup::Missing));
-        assert!(matches!(s.lookup("new", ArtSize::Medium), Lookup::Ready { .. }));
+        assert!(matches!(
+            s.lookup("new", ArtSize::Medium),
+            Lookup::Ready { .. }
+        ));
         assert!(s.ready_bytes <= MAX_BYTES);
         assert!(s.claim("old", ArtSize::Medium));
     }
@@ -670,7 +835,11 @@ mod tests {
 
     #[test]
     fn commands_skip_items_without_a_url() {
-        let cmds = commands_for([(None, ArtSize::Small), (Some(""), ArtSize::Small), (Some("https://x/test-cmds"), ArtSize::Small)]);
+        let cmds = commands_for([
+            (None, ArtSize::Small),
+            (Some(""), ArtSize::Small),
+            (Some("https://x/test-cmds"), ArtSize::Small),
+        ]);
         assert_eq!(cmds.len(), 1);
         assert!(matches!(cmds[0], CommandBody::GetArt { .. }));
     }

@@ -36,8 +36,13 @@ impl Machine {
     /// A few small reads; call it once at start-up, not from `view`.
     pub fn detect() -> Self {
         Machine {
-            ram_mb: std::fs::read_to_string("/proc/meminfo").ok().and_then(|t| parse_meminfo_mb(&t)).unwrap_or(0),
-            threads: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+            ram_mb: std::fs::read_to_string("/proc/meminfo")
+                .ok()
+                .and_then(|t| parse_meminfo_mb(&t))
+                .unwrap_or(0),
+            threads: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
             nvidia: Path::new("/proc/driver/nvidia").exists() || Path::new("/dev/nvidia0").exists(),
             ollama_installed: on_path("ollama"),
         }
@@ -127,7 +132,12 @@ mod tests {
     use super::*;
 
     fn m(ram_mb: u64, threads: usize, nvidia: bool, ollama_installed: bool) -> Machine {
-        Machine { ram_mb, threads, nvidia, ollama_installed }
+        Machine {
+            ram_mb,
+            threads,
+            nvidia,
+            ollama_installed,
+        }
     }
 
     #[test]
@@ -140,16 +150,28 @@ mod tests {
     #[test]
     fn a_small_machine_gets_the_smallest_built_in_model() {
         let a = advise(&m(2_000, 2, false, false), true);
-        assert_eq!((a.backend, a.local_model), ("local", Some("qwen2.5-0.5b-instruct")));
+        assert_eq!(
+            (a.backend, a.local_model),
+            ("local", Some("qwen2.5-0.5b-instruct"))
+        );
         // Few threads alone is enough to stay small, however much memory there is.
-        assert_eq!(advise(&m(16_000, 2, false, false), true).local_model, Some("qwen2.5-0.5b-instruct"));
+        assert_eq!(
+            advise(&m(16_000, 2, false, false), true).local_model,
+            Some("qwen2.5-0.5b-instruct")
+        );
     }
 
     #[test]
     fn a_comfortable_machine_steps_up_but_stays_built_in() {
         let a = advise(&m(16_000, 8, false, true), true);
-        assert_eq!((a.backend, a.local_model), ("local", Some("llama3.2-1b-instruct")));
-        assert_eq!(advise(&m(5_000, 4, false, false), true).local_model, Some("qwen2.5-0.5b-instruct"));
+        assert_eq!(
+            (a.backend, a.local_model),
+            ("local", Some("llama3.2-1b-instruct"))
+        );
+        assert_eq!(
+            advise(&m(5_000, 4, false, false), true).local_model,
+            Some("qwen2.5-0.5b-instruct")
+        );
     }
 
     #[test]
@@ -165,12 +187,18 @@ mod tests {
         let a = advise(&m(8_000, 8, false, false), false);
         assert_eq!(a.backend, "ollama");
         assert_eq!(a.ollama_model, Some("qwen2.5:3b"));
-        assert_eq!(advise(&m(4_000, 4, false, false), false).ollama_model, Some("qwen2.5:1.5b"));
+        assert_eq!(
+            advise(&m(4_000, 4, false, false), false).ollama_model,
+            Some("qwen2.5:1.5b")
+        );
     }
 
     #[test]
     fn the_machine_reads_naturally() {
-        assert_eq!(m(16_000, 8, true, false).describe(), "16 GB memory, 8 CPU threads, NVIDIA GPU");
+        assert_eq!(
+            m(16_000, 8, true, false).describe(),
+            "16 GB memory, 8 CPU threads, NVIDIA GPU"
+        );
         assert_eq!(m(0, 1, false, false).describe(), "1 CPU threads");
     }
 }

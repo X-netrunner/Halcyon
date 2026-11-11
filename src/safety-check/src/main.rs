@@ -1,9 +1,9 @@
-use std::process::{Command, exit, Stdio};
-use std::fs;
-use std::io::{self, Write, BufRead, BufReader};
 use chrono::Local;
 use colored::*;
+use std::fs;
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
+use std::process::{exit, Command, Stdio};
 
 /// Where the safety check keeps its logs. It runs as root, so this must be a root-owned folder: it used to be ~/logs of the user,
 /// and a symlink planted there by any program of that user made root write (or create files) anywhere. /var/log/halcyon is made
@@ -54,7 +54,11 @@ fn write_to_log(msg: &str) {
     if let Some(log_dir) = Path::new(&log_path).parent() {
         fs::create_dir_all(log_dir).ok();
     }
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
         let clean_msg = strip_ansi(msg);
         writeln!(file, "[{}] {}", Local::now().format("%H:%M:%S"), clean_msg).ok();
     }
@@ -88,7 +92,10 @@ fn notify(msg: &str, urgency: &str, real_user: &str) {
 
 fn main() {
     if !is_root() {
-        eprintln!("{}", "Error: This script must be run with root privileges (sudo).".red());
+        eprintln!(
+            "{}",
+            "Error: This script must be run with root privileges (sudo).".red()
+        );
         exit(1);
     }
 
@@ -96,8 +103,13 @@ fn main() {
     // answer questions, so it never updates the system, never asks for a disk and never formats anything)
     let auto = std::env::args().any(|a| a == "--auto");
 
-    let real_user = std::env::var("SUDO_USER").unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "root".to_string()));
-    let real_home = if real_user == "root" { "/root".to_string() } else { format!("/home/{}", real_user) };
+    let real_user = std::env::var("SUDO_USER")
+        .unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "root".to_string()));
+    let real_home = if real_user == "root" {
+        "/root".to_string()
+    } else {
+        format!("/home/{}", real_user)
+    };
     let log_dir = log_dir_path();
 
     let start_time = Local::now();
@@ -120,7 +132,12 @@ fn main() {
             errors += 1;
         }
     } else if command_exists("apt-get") {
-        if run_command("apt-get", &["update"]) && run_command("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "upgrade", "-y"]) {
+        if run_command("apt-get", &["update"])
+            && run_command(
+                "env",
+                &["DEBIAN_FRONTEND=noninteractive", "apt-get", "upgrade", "-y"],
+            )
+        {
             log_success("System updated successfully (apt)");
         } else {
             log_error("System update failed");
@@ -138,11 +155,21 @@ fn main() {
         run_command("freshclam", &[]);
     }
     if command_exists("clamscan") {
-        let scan_dirs = [real_home.as_str(), "/etc", "/usr/bin", "/usr/local/bin", "/tmp", "/var/tmp"];
+        let scan_dirs = [
+            real_home.as_str(),
+            "/etc",
+            "/usr/bin",
+            "/usr/local/bin",
+            "/tmp",
+            "/var/tmp",
+        ];
         println!("↻ Scanning: {:?}", scan_dirs);
-        println!("{}", "  [EXEC] Running: clamscan -r --bell ...".bold().yellow());
+        println!(
+            "{}",
+            "  [EXEC] Running: clamscan -r --bell ...".bold().yellow()
+        );
         write_to_log("Running: clamscan -r --bell ...");
-        
+
         let status = Command::new("clamscan")
             .arg("-r")
             .arg("--bell")
@@ -153,7 +180,7 @@ fn main() {
             .and_then(|mut child| {
                 let stdout = child.stdout.take().expect("spawned with a pipe");
                 let stderr = child.stderr.take().expect("spawned with a pipe");
-                
+
                 let stderr_handle = std::thread::spawn(move || {
                     let reader = BufReader::new(stderr);
                     for l in reader.lines().map_while(Result::ok) {
@@ -187,7 +214,11 @@ fn main() {
                     log_success("No threats found by ClamAV");
                 } else {
                     log_error(&format!("ClamAV found {} infected file(s)!", infected));
-                    notify(&format!("⚠ ClamAV found {} infected file(s)!", infected), "critical", &real_user);
+                    notify(
+                        &format!("⚠ ClamAV found {} infected file(s)!", infected),
+                        "critical",
+                        &real_user,
+                    );
                     errors += 1;
                 }
             }
@@ -206,22 +237,25 @@ fn main() {
     if command_exists("rkhunter") {
         println!("↻ Updating rkhunter database...");
         run_command("rkhunter", &["--update"]);
-        
+
         println!("↻ Running rkhunter rootkit check...");
-        println!("{}", "  [EXEC] Running: rkhunter --check --sk".bold().yellow());
+        println!(
+            "{}",
+            "  [EXEC] Running: rkhunter --check --sk".bold().yellow()
+        );
         write_to_log("Running: rkhunter --check --sk");
-        
+
         let child = Command::new("rkhunter")
             .args(["--check", "--sk"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
-            
+
         match child {
             Ok(mut child_proc) => {
                 let stdout = child_proc.stdout.take().expect("spawned with a pipe");
                 let stderr = child_proc.stderr.take().expect("spawned with a pipe");
-                
+
                 let stderr_handle = std::thread::spawn(move || {
                     let reader = BufReader::new(stderr);
                     for l in reader.lines().map_while(Result::ok) {
@@ -229,7 +263,7 @@ fn main() {
                         write_to_log(&format!("rkhunter stderr: {}", l));
                     }
                 });
-                
+
                 let reader = BufReader::new(stdout);
                 let mut warn_count = 0;
                 for l in reader.lines().map_while(Result::ok) {
@@ -241,13 +275,20 @@ fn main() {
                         println!("    {}", l.dimmed());
                     }
                 }
-                
+
                 let _ = stderr_handle.join();
                 let _status = child_proc.wait();
-                
+
                 if warn_count > 0 {
-                    log_error(&format!("rkhunter found {} warning(s) — review logs", warn_count));
-                    notify(&format!("⚠ rkhunter: {} warning(s) found", warn_count), "critical", &real_user);
+                    log_error(&format!(
+                        "rkhunter found {} warning(s) — review logs",
+                        warn_count
+                    ));
+                    notify(
+                        &format!("⚠ rkhunter: {} warning(s) found", warn_count),
+                        "critical",
+                        &real_user,
+                    );
                     errors += 1;
                 } else {
                     log_success("No rootkits detected");
@@ -268,11 +309,20 @@ fn main() {
     // ai-firewall (install.sh --firewall ai) replaces ufw: check it instead, and never switch ufw on beside it
     // (two filters on the same traffic fight each other)
     // install.sh puts it in /usr/local/bin, the Arch package in /usr/bin
-    let aifw = ["/usr/local/bin/ai-firewall", "/usr/bin/ai-firewall"].into_iter().find(|p| Path::new(p).exists());
+    let aifw = ["/usr/local/bin/ai-firewall", "/usr/bin/ai-firewall"]
+        .into_iter()
+        .find(|p| Path::new(p).exists());
     if let Some(aifw) = aifw {
         println!("{}", "  [EXEC] Running: ai-firewall status".bold().yellow());
         let (ok, text) = match Command::new(aifw).arg("status").output() {
-            Ok(o) => (o.status.success(), format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))),
+            Ok(o) => (
+                o.status.success(),
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                ),
+            ),
             Err(e) => (false, format!("could not run: {}", e)),
         };
         println!("  Firewall Status output:");
@@ -282,7 +332,11 @@ fn main() {
         }
         if !ok || !text.contains("running") || text.contains("NOT RESPONDING") {
             log_error("Firewall is INACTIVE (ai-firewall). Starting...");
-            notify("⚠ Firewall was OFF — restarting ai-firewall!", "critical", &real_user);
+            notify(
+                "⚠ Firewall was OFF — restarting ai-firewall!",
+                "critical",
+                &real_user,
+            );
             run_command("systemctl", &["restart", "ai-firewall.service"]);
         } else {
             log_success("Firewall is active (ai-firewall)");
@@ -328,10 +382,14 @@ fn main() {
     if command_exists("aide") {
         let db_path = "/var/lib/aide/aide.db";
         let month_marker = format!("{}/.last_aide_run", log_dir);
-        
+
         if !Path::new(db_path).exists() {
             println!("↻ No AIDE database found — initializing (this takes a while)...");
-            notify("AIDE initializing database — please wait...", "normal", &real_user);
+            notify(
+                "AIDE initializing database — please wait...",
+                "normal",
+                &real_user,
+            );
             if run_command("aide", &["--init"]) {
                 let aide_new = "/var/lib/aide/aide.db.new";
                 if Path::new(aide_new).exists() {
@@ -352,30 +410,36 @@ fn main() {
             } else {
                 let modified = fs::metadata(&month_marker)
                     .and_then(|m| m.modified())
-                    .unwrap_or(std::time::UNIX_EPOCH);          // unreadable marker: treat as very old, so AIDE runs
+                    .unwrap_or(std::time::UNIX_EPOCH); // unreadable marker: treat as very old, so AIDE runs
                 let now = std::time::SystemTime::now();
                 let thirty_days = std::time::Duration::from_secs(30 * 24 * 60 * 60);
-                now.duration_since(modified).unwrap_or(std::time::Duration::from_secs(0)) > thirty_days
+                now.duration_since(modified)
+                    .unwrap_or(std::time::Duration::from_secs(0))
+                    > thirty_days
             };
 
             if run_aide {
                 println!("↻ Running AIDE integrity check...");
-                notify("Running AIDE scan — this may take a few minutes...", "normal", &real_user);
-                
+                notify(
+                    "Running AIDE scan — this may take a few minutes...",
+                    "normal",
+                    &real_user,
+                );
+
                 println!("{}", "  [EXEC] Running: aide --check".bold().yellow());
                 write_to_log("Running: aide --check");
-                
+
                 let child = Command::new("aide")
                     .arg("--check")
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn();
-                
+
                 match child {
                     Ok(mut child_proc) => {
                         let stdout = child_proc.stdout.take().expect("spawned with a pipe");
                         let stderr = child_proc.stderr.take().expect("spawned with a pipe");
-                        
+
                         let stderr_handle = std::thread::spawn(move || {
                             let reader = BufReader::new(stderr);
                             for l in reader.lines().map_while(Result::ok) {
@@ -383,25 +447,30 @@ fn main() {
                                 write_to_log(&format!("AIDE stderr: {}", l));
                             }
                         });
-                        
+
                         let reader = BufReader::new(stdout);
                         let mut changes = 0;
                         for l in reader.lines().map_while(Result::ok) {
                             write_to_log(&format!("AIDE: {}", l));
-                            if l.contains("changed") || l.contains("added") || l.contains("removed") {
+                            if l.contains("changed") || l.contains("added") || l.contains("removed")
+                            {
                                 changes += 1;
                                 println!("    {}", l.bold().red());
                             } else {
                                 println!("    {}", l.dimmed());
                             }
                         }
-                        
+
                         let _ = stderr_handle.join();
                         let _status = child_proc.wait();
-                        
+
                         if changes > 0 {
                             log_error(&format!("AIDE detected {} changes — review logs", changes));
-                            notify(&format!("⚠ AIDE: {} file change(s) detected!", changes), "critical", &real_user);
+                            notify(
+                                &format!("⚠ AIDE: {} file change(s) detected!", changes),
+                                "critical",
+                                &real_user,
+                            );
                             errors += 1;
                         } else {
                             log_success("No integrity changes detected");
@@ -412,7 +481,7 @@ fn main() {
                         errors += 1;
                     }
                 }
-                
+
                 run_command("aide", &["--update"]);
                 let aide_new = "/var/lib/aide/aide.db.new";
                 if Path::new(aide_new).exists() {
@@ -430,29 +499,39 @@ fn main() {
     // 7. Backup
     section("7/7 — Backup to External Drive");
     notify("7/7 — Backup to External Drive", "normal", &real_user);
-    
+
     let uuid_conf = format!("{}/.config/Halcyon/backup-uuid.conf", real_home);
     let target_uuid = std::env::var("HALCYON_BACKUP_UUID")
         .ok()
-        .or_else(|| fs::read_to_string(&uuid_conf).ok().map(|s| s.trim().to_string()))
+        .or_else(|| {
+            fs::read_to_string(&uuid_conf)
+                .ok()
+                .map(|s| s.trim().to_string())
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "none".to_string());
     let uuid_path = format!("/dev/disk/by-uuid/{}", target_uuid);
     let backup_dest = "/mnt/backup";
-    
+
     let backup_dev;
     let mut auto_backup = false;
-    
+
     if Path::new(&uuid_path).exists() {
-        println!("✓ Auto-detected backup partition with UUID: {}", target_uuid.cyan());
+        println!(
+            "✓ Auto-detected backup partition with UUID: {}",
+            target_uuid.cyan()
+        );
         backup_dev = uuid_path;
         auto_backup = true;
     } else if auto {
-        backup_dev = String::new();       // automatic run: no question can be answered, so no disk = no backup this time
+        backup_dev = String::new(); // automatic run: no question can be answered, so no disk = no backup this time
     } else {
         println!("\nAvailable disks:");
-        Command::new("lsblk").args(["-o", "NAME,SIZE,TYPE,MOUNTPOINT"]).status().ok();
-        
+        Command::new("lsblk")
+            .args(["-o", "NAME,SIZE,TYPE,MOUNTPOINT"])
+            .status()
+            .ok();
+
         print!("\nEnter backup device [Default: sda1]: ");
         let _ = io::stdout().flush();
         let mut user_input = String::new();
@@ -468,16 +547,33 @@ fn main() {
     }
 
     if auto && backup_dev.is_empty() {
-        log_warn("Automatic run: the backup disk is not connected, so there is no backup this time");
+        log_warn(
+            "Automatic run: the backup disk is not connected, so there is no backup this time",
+        );
     } else if !Path::new(&backup_dev).exists() {
-        log_error(&format!("Device {} not found — skipping backup", backup_dev));
+        log_error(&format!(
+            "Device {} not found — skipping backup",
+            backup_dev
+        ));
         notify("⚠ Backup skipped — drive not found", "critical", &real_user);
     } else {
-        let label_output = Command::new("blkid").args(["-o", "value", "-s", "LABEL", &backup_dev]).output().ok();
-        let label = label_output.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_else(|| "none".to_string());
-        
-        println!("Selected backup device: {} (Label: {})", backup_dev.yellow(), label.cyan());
-        write_to_log(&format!("Selected backup device: {} (Label: {})", backup_dev, label));
+        let label_output = Command::new("blkid")
+            .args(["-o", "value", "-s", "LABEL", &backup_dev])
+            .output()
+            .ok();
+        let label = label_output
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_else(|| "none".to_string());
+
+        println!(
+            "Selected backup device: {} (Label: {})",
+            backup_dev.yellow(),
+            label.cyan()
+        );
+        write_to_log(&format!(
+            "Selected backup device: {} (Label: {})",
+            backup_dev, label
+        ));
 
         let mut proceed = true;
         if !auto_backup {
@@ -488,14 +584,21 @@ fn main() {
                         backup_dev,
                         mounts.lines().collect::<Vec<_>>().join(", ")
                     ));
-                    notify("⚠ Backup skipped — that device is in use", "critical", &real_user);
+                    notify(
+                        "⚠ Backup skipped — that device is in use",
+                        "critical",
+                        &real_user,
+                    );
                     proceed = false;
                 }
             }
         }
         if !auto_backup && proceed {
             if backup_dev.contains("nvme") {
-                println!("\n{} DANGER: You selected an INTERNAL NVMe partition!", "⚠".red());
+                println!(
+                    "\n{} DANGER: You selected an INTERNAL NVMe partition!",
+                    "⚠".red()
+                );
                 print!("Type WIPE-NVME to confirm: ");
                 let _ = io::stdout().flush();
                 let mut confirm = String::new();
@@ -507,7 +610,11 @@ fn main() {
             }
 
             if proceed {
-                println!("\n{} WARNING: This will FORMAT {} as ext4 and ERASE ALL DATA!", "⚠".red(), backup_dev);
+                println!(
+                    "\n{} WARNING: This will FORMAT {} as ext4 and ERASE ALL DATA!",
+                    "⚠".red(),
+                    backup_dev
+                );
                 print!("Type YES to continue: ");
                 let _ = io::stdout().flush();
                 let mut confirm = String::new();
@@ -520,9 +627,14 @@ fn main() {
         }
 
         if proceed {
-            let fs_type_output = Command::new("blkid").args(["-o", "value", "-s", "TYPE", &backup_dev]).output().ok();
-            let fs_type = fs_type_output.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-            
+            let fs_type_output = Command::new("blkid")
+                .args(["-o", "value", "-s", "TYPE", &backup_dev])
+                .output()
+                .ok();
+            let fs_type = fs_type_output
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+
             if fs_type != "ext4" {
                 if auto_backup {
                     log_error("Auto-detected device is not ext4 formatted! Skipping auto-backup.");
@@ -542,19 +654,27 @@ fn main() {
 
             if proceed {
                 fs::create_dir_all(backup_dest).ok();
-                
+
                 // Unmount if already mounted
-                Command::new("umount").arg(backup_dest).stderr(Stdio::null()).status().ok();
-                
+                Command::new("umount")
+                    .arg(backup_dest)
+                    .stderr(Stdio::null())
+                    .status()
+                    .ok();
+
                 if run_command("mount", &[&backup_dev, backup_dest]) {
                     log_success(&format!("Mounted {} at {}", backup_dev, backup_dest));
-                    
+
                     println!("↻ Starting rsync backup (this will take a while)...");
-                    notify("Backing up system with rsync — please wait...", "normal", &real_user);
-                    
+                    notify(
+                        "Backing up system with rsync — please wait...",
+                        "normal",
+                        &real_user,
+                    );
+
                     println!("{}", "  [EXEC] Running rsync ...".bold().yellow());
                     write_to_log("Running rsync ...");
-                    
+
                     let child = Command::new("rsync")
                         .args([
                             "-aAXH",
@@ -577,12 +697,12 @@ fn main() {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn();
-                        
+
                     match child {
                         Ok(mut child_proc) => {
                             let stdout = child_proc.stdout.take().expect("spawned with a pipe");
                             let stderr = child_proc.stderr.take().expect("spawned with a pipe");
-                            
+
                             let stderr_handle = std::thread::spawn(move || {
                                 let reader = BufReader::new(stderr);
                                 for l in reader.lines().map_while(Result::ok) {
@@ -590,16 +710,16 @@ fn main() {
                                     write_to_log(&format!("rsync stderr: {}", l));
                                 }
                             });
-                            
+
                             let reader = BufReader::new(stdout);
                             for l in reader.lines().map_while(Result::ok) {
                                 println!("    {}", l);
                                 write_to_log(&l);
                             }
-                            
+
                             let _ = stderr_handle.join();
                             let status = child_proc.wait();
-                            
+
                             if status.map(|s| s.success()).unwrap_or(false) {
                                 log_success("Backup completed successfully");
                                 notify("✓ Backup complete!", "normal", &real_user);
@@ -622,15 +742,25 @@ fn main() {
                     Command::new("umount").arg(backup_dest).status().ok();
                     log_success("Drive unmounted safely");
                 } else {
-                    log_error(&format!("Failed to mount {} at {}", backup_dev, backup_dest));
+                    log_error(&format!(
+                        "Failed to mount {} at {}",
+                        backup_dev, backup_dest
+                    ));
                     errors += 1;
                 }
             }
         }
     }
 
-    let end_msg = format!("\n Check complete — {}\n Errors found: {}", Local::now().format("%Y-%m-%d %H:%M:%S"), errors);
-    println!("\n{}", "═══════════════════════════════════════════════".cyan());
+    let end_msg = format!(
+        "\n Check complete — {}\n Errors found: {}",
+        Local::now().format("%Y-%m-%d %H:%M:%S"),
+        errors
+    );
+    println!(
+        "\n{}",
+        "═══════════════════════════════════════════════".cyan()
+    );
     write_to_log(&end_msg);
     if errors == 0 {
         let ok_msg = "✓ All checks passed!";
@@ -641,12 +771,18 @@ fn main() {
         println!("{}", err_msg.bold().yellow());
         notify(&err_msg, "critical", &real_user);
     }
-    println!("{}", "═══════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════".cyan()
+    );
 }
 
 /// Where a device is mounted right now (one mount point per line), or None when it is not mounted.
 fn mounted_at(dev: &str) -> Option<String> {
-    let out = Command::new("findmnt").args(["-rn", "-o", "TARGET", "-S", dev]).output().ok()?;
+    let out = Command::new("findmnt")
+        .args(["-rn", "-o", "TARGET", "-S", dev])
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if text.is_empty() {
         None
@@ -685,25 +821,33 @@ fn log_warn(msg: &str) {
 }
 
 fn command_exists(cmd: &str) -> bool {
-    Command::new("which").arg(cmd).output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("which")
+        .arg(cmd)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn run_command(cmd: &str, args: &[&str]) -> bool {
     let cmd_str = format!("{} {}", cmd, args.join(" "));
-    println!("{}", format!("  [EXEC] Running: {}", cmd_str).bold().yellow());
+    println!(
+        "{}",
+        format!("  [EXEC] Running: {}", cmd_str).bold().yellow()
+    );
     write_to_log(&format!("[EXEC] Running: {}", cmd_str));
 
     let mut child = match Command::new(cmd)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                log_error(&format!("Failed to start command {}: {}", cmd, e));
-                return false;
-            }
-        };
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log_error(&format!("Failed to start command {}: {}", cmd, e));
+            return false;
+        }
+    };
 
     let stdout = child.stdout.take().expect("Failed to open stdout");
     let stderr = child.stderr.take().expect("Failed to open stderr");
@@ -731,7 +875,10 @@ fn run_command(cmd: &str, args: &[&str]) -> bool {
             if success {
                 println!("{}", format!("  [EXEC] Command completed: {}", cmd).green());
             } else {
-                println!("{}", format!("  [EXEC] Command failed with code: {:?}", status.code()).red());
+                println!(
+                    "{}",
+                    format!("  [EXEC] Command failed with code: {:?}", status.code()).red()
+                );
             }
             success
         }

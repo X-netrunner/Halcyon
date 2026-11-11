@@ -57,7 +57,11 @@ impl NavPage {
     /// Which row of the sidebar lights up for this page, if any. Liked Songs lives inside
     /// Your Library, so Library stays lit while it is open.
     pub fn slot(&self) -> Option<usize> {
-        let page = if *self == NavPage::Liked { NavPage::Library } else { *self };
+        let page = if *self == NavPage::Liked {
+            NavPage::Library
+        } else {
+            *self
+        };
         NavPage::all().iter().position(|p| *p == page)
     }
 
@@ -107,7 +111,11 @@ fn item_button<'a, Message: Clone + 'static>(
     density: Density,
     msg: Message,
 ) -> Element<'a, Message> {
-    let tint = if is_active { palette.accent } else { palette.text };
+    let tint = if is_active {
+        palette.accent
+    } else {
+        palette.text
+    };
     // Labels start to appear once the strip is a third open, so they never show squashed.
     let label_alpha = ((expand - 0.35) / 0.65).clamp(0.0, 1.0);
 
@@ -197,7 +205,10 @@ fn labelled<'a, Message: 'a>(
 fn active_pill<'a, Message: 'a>(palette: HalcyonPalette) -> Element<'a, Message> {
     let bar = container(Space::new(3, 20)).style(move |_t| container::Style {
         background: Some(palette.accent_background()),
-        border: iced::Border { radius: 2.0.into(), ..Default::default() },
+        border: iced::Border {
+            radius: 2.0.into(),
+            ..Default::default()
+        },
         shadow: palette.glow_shadow(0.55, 10.0),
         ..Default::default()
     });
@@ -266,7 +277,9 @@ pub fn view<'a, Message: Clone + 'static>(
     }
     let nav_items = nav_items.height(group_height);
     let nav_group = iced::widget::stack![
-        container(pill_layer).width(Length::Fill).height(group_height),
+        container(pill_layer)
+            .width(Length::Fill)
+            .height(group_height),
         nav_items,
     ];
 
@@ -285,9 +298,17 @@ pub fn view<'a, Message: Clone + 'static>(
         let hot = queue_open || matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: Some(
-                if hot { crate::theme::alpha(palette.accent, 0.12) } else { iced::Color::TRANSPARENT }.into(),
+                if hot {
+                    crate::theme::alpha(palette.accent, 0.12)
+                } else {
+                    iced::Color::TRANSPARENT
+                }
+                .into(),
             ),
-            border: iced::Border { radius: crate::theme::radius::MD.into(), ..Default::default() },
+            border: iced::Border {
+                radius: crate::theme::radius::MD.into(),
+                ..Default::default()
+            },
             ..Default::default()
         }
     });

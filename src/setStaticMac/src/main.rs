@@ -97,8 +97,16 @@ fn get_active_wifi_info() -> Option<WifiInfo> {
         }
     }
 
-    let (stdout_ssid, _, code_ssid) =
-        run_args("nmcli", &["-g", "802-11-wireless.ssid", "connection", "show", &active_uuid]);
+    let (stdout_ssid, _, code_ssid) = run_args(
+        "nmcli",
+        &[
+            "-g",
+            "802-11-wireless.ssid",
+            "connection",
+            "show",
+            &active_uuid,
+        ],
+    );
     let ssid = if code_ssid == 0 && !stdout_ssid.is_empty() {
         stdout_ssid
     } else {
@@ -127,8 +135,10 @@ fn resolve_connection(conn_identifier: &str) -> Option<(String, String, String)>
             if conn_type == "802-11-wireless"
                 && (name == conn_identifier || uuid == conn_identifier)
             {
-                let (stdout_ssid, _, code_ssid) =
-                    run_args("nmcli", &["-g", "802-11-wireless.ssid", "connection", "show", uuid]);
+                let (stdout_ssid, _, code_ssid) = run_args(
+                    "nmcli",
+                    &["-g", "802-11-wireless.ssid", "connection", "show", uuid],
+                );
                 let ssid = if code_ssid == 0 && !stdout_ssid.is_empty() {
                     stdout_ssid
                 } else {
@@ -259,15 +269,40 @@ fn show_status() {
     let filepath = match find_iwd_config_file(ssid) {
         Some(p) => p,
         None => {
-            let (nm_mac, _, _) = run_args("nmcli", &["-g", "802-11-wireless.cloned-mac-address", "connection", "show", &wifi_info.uuid]);
+            let (nm_mac, _, _) = run_args(
+                "nmcli",
+                &[
+                    "-g",
+                    "802-11-wireless.cloned-mac-address",
+                    "connection",
+                    "show",
+                    &wifi_info.uuid,
+                ],
+            );
             let current_mac = get_current_mac(device).unwrap_or_else(|| "Unknown".to_string());
             let perm_mac = get_permanent_mac(device).unwrap_or_else(|| "Unknown".to_string());
             println!("{BOLD}Active Wi-Fi SSID:    {RESET} {GREEN}{}{RESET}", ssid);
-            println!("{BOLD}Profile Name:          {RESET} {} (NetworkManager)", wifi_info.name);
+            println!(
+                "{BOLD}Profile Name:          {RESET} {} (NetworkManager)",
+                wifi_info.name
+            );
             println!("{BOLD}Interface Device:      {RESET} {}", device);
-            println!("{BOLD}Current MAC Address:   {RESET} {YELLOW}{}{RESET}", current_mac);
-            println!("{BOLD}Permanent MAC Address: {RESET} {CYAN}{}{RESET}", perm_mac);
-            println!("{BOLD}Configured Policy:     {RESET} {}", if nm_mac.is_empty() { "Default/Randomized" } else { &nm_mac });
+            println!(
+                "{BOLD}Current MAC Address:   {RESET} {YELLOW}{}{RESET}",
+                current_mac
+            );
+            println!(
+                "{BOLD}Permanent MAC Address: {RESET} {CYAN}{}{RESET}",
+                perm_mac
+            );
+            println!(
+                "{BOLD}Configured Policy:     {RESET} {}",
+                if nm_mac.is_empty() {
+                    "Default/Randomized"
+                } else {
+                    &nm_mac
+                }
+            );
             return;
         }
     };
@@ -294,11 +329,20 @@ fn show_status() {
     println!("{BOLD}Active Wi-Fi SSID:    {RESET} {GREEN}{}{RESET}", ssid);
     println!("{BOLD}Profile Name:          {RESET} {}", wifi_info.name);
     println!("{BOLD}Interface Device:      {RESET} {}", device);
-    println!("{BOLD}Current MAC Address:   {RESET} {YELLOW}{}{RESET}", current_mac);
-    println!("{BOLD}Permanent MAC Address: {RESET} {CYAN}{}{RESET}", perm_mac);
+    println!(
+        "{BOLD}Current MAC Address:   {RESET} {YELLOW}{}{RESET}",
+        current_mac
+    );
+    println!(
+        "{BOLD}Permanent MAC Address: {RESET} {CYAN}{}{RESET}",
+        perm_mac
+    );
 
     if let Some(ref override_val) = override_mac {
-        println!("{BOLD}Configured Policy:     {RESET} {GREEN}Static Override ({}){RESET}", override_val);
+        println!(
+            "{BOLD}Configured Policy:     {RESET} {GREEN}Static Override ({}){RESET}",
+            override_val
+        );
         if current_mac.eq_ignore_ascii_case(override_val) {
             println!("\n{GREEN}✓ Connection is currently using the configured STATIC MAC address.{RESET}");
         } else {
@@ -309,7 +353,9 @@ fn show_status() {
         }
     } else {
         println!("{BOLD}Configured Policy:     {RESET} {YELLOW}Randomized (default){RESET}");
-        println!("\n{YELLOW}! Connection is currently using a DYNAMIC/RANDOMIZED MAC address.{RESET}");
+        println!(
+            "\n{YELLOW}! Connection is currently using a DYNAMIC/RANDOMIZED MAC address.{RESET}"
+        );
     }
 }
 
@@ -378,7 +424,11 @@ fn list_connections() {
             } else {
                 "Randomized (default)".to_string()
             };
-            let policy_color = if override_val.is_some() { GREEN } else { YELLOW };
+            let policy_color = if override_val.is_some() {
+                GREEN
+            } else {
+                YELLOW
+            };
 
             println!(
                 "{} {:<15} {}{:<25}{}",
@@ -446,11 +496,10 @@ fn main() {
                     i += 1;
                 }
             }
-            "-m" | "--mac"
-                if i + 1 < args.len() => {
-                    mac_arg = Some(args[i + 1].clone());
-                    i += 1;
-                }
+            "-m" | "--mac" if i + 1 < args.len() => {
+                mac_arg = Some(args[i + 1].clone());
+                i += 1;
+            }
             _ => {}
         }
         i += 1;
@@ -504,14 +553,25 @@ fn main() {
             modify_iwd_config(fp, None);
         }
         if let Some(ref uuid) = target_uuid {
-            let _ = Command::new("nmcli").args(["connection", "modify", uuid, "802-11-wireless.cloned-mac-address", "random"]).status();
+            let _ = Command::new("nmcli")
+                .args([
+                    "connection",
+                    "modify",
+                    uuid,
+                    "802-11-wireless.cloned-mac-address",
+                    "random",
+                ])
+                .status();
         }
         println!("{GREEN}✓ Successfully removed MAC override policy.{RESET}");
     } else {
-        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
+        let mac_regex =
+            Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
         let target_mac = if let Some(ref m) = mac_arg {
             if !mac_regex.is_match(m) {
-                println!("{RED}Error: Invalid MAC address format. Expected XX:XX:XX:XX:XX:XX.{RESET}");
+                println!(
+                    "{RED}Error: Invalid MAC address format. Expected XX:XX:XX:XX:XX:XX.{RESET}"
+                );
                 std::process::exit(1);
             }
             m.to_lowercase()
@@ -533,7 +593,15 @@ fn main() {
             modify_iwd_config(fp, Some(&target_mac));
         }
         if let Some(ref uuid) = target_uuid {
-            let _ = Command::new("nmcli").args(["connection", "modify", uuid, "802-11-wireless.cloned-mac-address", &target_mac]).status();
+            let _ = Command::new("nmcli")
+                .args([
+                    "connection",
+                    "modify",
+                    uuid,
+                    "802-11-wireless.cloned-mac-address",
+                    &target_mac,
+                ])
+                .status();
         }
         println!("{GREEN}✓ Successfully set static MAC override policy.{RESET}");
     }
@@ -549,7 +617,10 @@ fn main() {
             thread::sleep(Duration::from_secs(1));
             let (_, err, code) = run_args("nmcli", &["connection", "up", &reconnect_uuid]);
             if code != 0 {
-                println!("{RED}Error reconnecting to '{}': {}{RESET}", target_ssid, err);
+                println!(
+                    "{RED}Error reconnecting to '{}': {}{RESET}",
+                    target_ssid, err
+                );
                 println!("{YELLOW}Please reconnect manually using your network manager.{RESET}");
             } else {
                 let new_mac = get_current_mac(&device).unwrap_or_else(|| "Unknown".to_string());
@@ -566,7 +637,8 @@ mod tests {
 
     #[test]
     fn test_mac_regex() {
-        let mac_regex = Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
+        let mac_regex =
+            Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").expect("valid regex");
         assert!(mac_regex.is_match("00:11:22:33:44:55"));
         assert!(mac_regex.is_match("AA:BB:CC:DD:EE:FF"));
         assert!(mac_regex.is_match("aa-bb-cc-dd-ee-ff"));

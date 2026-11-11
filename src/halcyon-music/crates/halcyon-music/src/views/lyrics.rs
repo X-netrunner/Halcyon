@@ -174,7 +174,13 @@ fn view_synced_lines<'a, Message: Clone + 'static>(
         } else if distance == 2 {
             (15, palette.text_muted)
         } else {
-            (14, iced::Color { a: 0.35, ..palette.text_muted })
+            (
+                14,
+                iced::Color {
+                    a: 0.35,
+                    ..palette.text_muted
+                },
+            )
         };
 
         let start_ms = line.start_ms;
@@ -187,7 +193,10 @@ fn view_synced_lines<'a, Message: Clone + 'static>(
                     .color(if is_active {
                         palette.accent
                     } else {
-                        iced::Color { a: 0.3, ..palette.text_muted }
+                        iced::Color {
+                            a: 0.3,
+                            ..palette.text_muted
+                        }
                     })
                     .width(42),
                 Space::with_width(12),
@@ -239,7 +248,9 @@ fn view_plain_lines<'a, Message: 'static>(
             row![
                 icon(Icon::Lyrics, 14.0, palette.accent),
                 Space::with_width(8),
-                text("Plain lyrics (unsynced timestamps)").size(12).color(palette.text_muted),
+                text("Plain lyrics (unsynced timestamps)")
+                    .size(12)
+                    .color(palette.text_muted),
             ]
             .align_y(Alignment::Center),
         )
@@ -293,7 +304,9 @@ fn view_empty_state<'a, Message: Clone + 'static>(
                 row![
                     icon(Icon::Search, 14.0, palette.background),
                     Space::with_width(6),
-                    text("Search LRCLIB Again").size(12).color(palette.background),
+                    text("Search LRCLIB Again")
+                        .size(12)
+                        .color(palette.background),
                 ]
                 .align_y(Alignment::Center),
             )
@@ -353,8 +366,12 @@ fn view_empty_state<'a, Message: Clone + 'static>(
             });
 
         col = col.push(Space::with_height(16));
-        col = col.push(row![input_box, Space::with_width(8), submit_btn].align_y(Alignment::Center));
+        col =
+            col.push(row![input_box, Space::with_width(8), submit_btn].align_y(Alignment::Center));
     }
 
-    container(col).width(Length::Fill).center_x(Length::Fill).into()
+    container(col)
+        .width(Length::Fill)
+        .center_x(Length::Fill)
+        .into()
 }

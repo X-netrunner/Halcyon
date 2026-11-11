@@ -14,11 +14,11 @@ use crate::session_browse::SessionBrowse;
 use crate::stream_auth::{self, StreamAuthError};
 use crate::token_store::{load_token, TokenData};
 use halcyon_music_core::models::AuthMode;
-use std::sync::atomic::{AtomicBool, Ordering};
 use halcyon_music_core::models::{Album, Artist, DetailedSearchResults, Page, Playlist, Track};
 use rand::Rng;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -76,7 +76,8 @@ fn stream_auth_to_api_error(e: StreamAuthError) -> ApiError {
             "Your Spotify sign-in is missing or was revoked. Please sign in with Spotify.".into(),
         ),
         StreamAuthError::Unreadable => ApiError::AuthRequired(
-            "The saved Spotify sign-in could not be read. Please sign in with Spotify again.".into(),
+            "The saved Spotify sign-in could not be read. Please sign in with Spotify again."
+                .into(),
         ),
         StreamAuthError::Network | StreamAuthError::Other => ApiError::Network(e.to_string()),
     }
@@ -199,7 +200,11 @@ impl SpotifyClient {
         Self::with_timeout(base_url, token_url, REQUEST_TIMEOUT)
     }
 
-    pub fn with_timeout(base_url: Option<String>, token_url: Option<String>, timeout: Duration) -> Self {
+    pub fn with_timeout(
+        base_url: Option<String>,
+        token_url: Option<String>,
+        timeout: Duration,
+    ) -> Self {
         let http = reqwest::Client::builder()
             .timeout(timeout)
             .build()
@@ -212,7 +217,9 @@ impl SpotifyClient {
             base_url: base_url.unwrap_or_else(|| SPOTIFY_API_BASE.to_string()),
             token_url,
             token: Arc::new(Mutex::new(token)),
-            own_client: Arc::new(AtomicBool::new(auth_mode::initial() == AuthMode::OwnClientId)),
+            own_client: Arc::new(AtomicBool::new(
+                auth_mode::initial() == AuthMode::OwnClientId,
+            )),
             browse: SessionBrowse::new(),
             circuits: Arc::new(Mutex::new(HashMap::new())),
             cooldowns: Arc::new(Mutex::new(HashMap::new())),
@@ -355,7 +362,11 @@ impl SpotifyClient {
                 None => None,
             }
         };
-        global.into_iter().chain(own).max().map(|d| d.as_secs().max(1))
+        global
+            .into_iter()
+            .chain(own)
+            .max()
+            .map(|d| d.as_secs().max(1))
     }
 
     async fn fail_fast_if_rate_limited(&self, family: EndpointFamily) -> Result<(), ApiError> {
@@ -376,10 +387,7 @@ impl SpotifyClient {
                 .map_or(global_until, |old| old.max(global_until)),
         );
         drop(limiter);
-        self.cooldowns
-            .lock()
-            .await
-            .insert(family, until);
+        self.cooldowns.lock().await.insert(family, until);
     }
 
     /// Check circuit breaker for endpoint family.
@@ -540,11 +548,12 @@ impl SpotifyClient {
         self.check_circuit(family).await?;
         self.fail_fast_if_rate_limited(family).await?;
 
-        let url = if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
-            endpoint_or_url.to_string()
-        } else {
-            format!("{}{}", self.base_url, endpoint_or_url)
-        };
+        let url =
+            if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
+                endpoint_or_url.to_string()
+            } else {
+                format!("{}{}", self.base_url, endpoint_or_url)
+            };
 
         let mut token = self.ensure_valid_token().await?;
         let mut refreshed_on_401 = false;
@@ -676,7 +685,12 @@ impl SpotifyClient {
     // --- High Level API Methods ---
 
     /// Search tracks (capped at 10 results per request as per brief).
-    pub async fn search_tracks(&self, query: &str, limit: u32, offset: u32) -> Result<Page<Track>, ApiError> {
+    pub async fn search_tracks(
+        &self,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Page<Track>, ApiError> {
         let safe_limit = limit.min(10); // Hard rule: search capped at 10 results per request
         let limit_str = safe_limit.to_string();
         let offset_str = offset.to_string();
@@ -759,7 +773,10 @@ impl SpotifyClient {
         offset: u32,
     ) -> Result<Page<Track>, ApiError> {
         if self.auth_mode() == AuthMode::Librespot {
-            return self.browse.get_playlist_tracks(playlist_id, limit, offset).await;
+            return self
+                .browse
+                .get_playlist_tracks(playlist_id, limit, offset)
+                .await;
         }
         let limit_str = limit.to_string();
         let offset_str = offset.to_string();
@@ -870,11 +887,12 @@ impl SpotifyClient {
         self.check_circuit(family).await?;
         self.fail_fast_if_rate_limited(family).await?;
 
-        let url = if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
-            endpoint_or_url.to_string()
-        } else {
-            format!("{}{}", self.base_url, endpoint_or_url)
-        };
+        let url =
+            if endpoint_or_url.starts_with("http://") || endpoint_or_url.starts_with("https://") {
+                endpoint_or_url.to_string()
+            } else {
+                format!("{}{}", self.base_url, endpoint_or_url)
+            };
 
         let mut token = self.ensure_valid_token().await?;
         let mut refreshed_on_401 = false;
@@ -976,11 +994,19 @@ impl SpotifyClient {
         let parsed: SpotifyRecentlyPlayedResponse = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse recently-played: {e}")))?;
 
-        Ok(parsed.items.into_iter().map(|item| convert_spotify_track(item.track)).collect())
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(|item| convert_spotify_track(item.track))
+            .collect())
     }
 
     /// Get user's top tracks.
-    pub async fn get_top_tracks(&self, limit: u32, time_range: &str) -> Result<Vec<Track>, ApiError> {
+    pub async fn get_top_tracks(
+        &self,
+        limit: u32,
+        time_range: &str,
+    ) -> Result<Vec<Track>, ApiError> {
         let limit_str = limit.to_string();
         let json = self
             .request(
@@ -994,11 +1020,19 @@ impl SpotifyClient {
         let parsed: SpotifyPaging<SpotifyTrack> = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse top tracks: {e}")))?;
 
-        Ok(parsed.items.into_iter().map(convert_spotify_track).collect())
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(convert_spotify_track)
+            .collect())
     }
 
     /// Get user's top artists.
-    pub async fn get_top_artists(&self, limit: u32, time_range: &str) -> Result<Vec<Artist>, ApiError> {
+    pub async fn get_top_artists(
+        &self,
+        limit: u32,
+        time_range: &str,
+    ) -> Result<Vec<Artist>, ApiError> {
         let limit_str = limit.to_string();
         let json = self
             .request(
@@ -1012,14 +1046,21 @@ impl SpotifyClient {
         let parsed: SpotifyPaging<SpotifyArtistItem> = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse top artists: {e}")))?;
 
-        Ok(parsed.items.into_iter().map(convert_spotify_artist).collect())
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(convert_spotify_artist)
+            .collect())
     }
 
     /// Get artists the user follows.
     pub async fn get_followed_artists(&self, limit: u32) -> Result<Vec<Artist>, ApiError> {
         if self.auth_mode() == AuthMode::Librespot {
             // The session list is not paged, so the library asks for everything (50 and up).
-            return self.browse.get_followed_artists(if limit >= 50 { 1000 } else { limit }).await;
+            return self
+                .browse
+                .get_followed_artists(if limit >= 50 { 1000 } else { limit })
+                .await;
         }
         let limit_str = limit.to_string();
         let json = self
@@ -1034,11 +1075,20 @@ impl SpotifyClient {
         let parsed: SpotifyFollowedResponse = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse followed artists: {e}")))?;
 
-        Ok(parsed.artists.items.into_iter().map(convert_spotify_artist).collect())
+        Ok(parsed
+            .artists
+            .items
+            .into_iter()
+            .map(convert_spotify_artist)
+            .collect())
     }
 
     /// Get an artist's latest albums and singles.
-    pub async fn get_artist_albums(&self, artist_id: &str, limit: u32) -> Result<Vec<Album>, ApiError> {
+    pub async fn get_artist_albums(
+        &self,
+        artist_id: &str,
+        limit: u32,
+    ) -> Result<Vec<Album>, ApiError> {
         let limit_str = limit.to_string();
         let endpoint = format!("/artists/{artist_id}/albums");
         let json = self
@@ -1053,7 +1103,11 @@ impl SpotifyClient {
         let parsed: SpotifyPaging<SpotifyAlbumItem> = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse artist albums: {e}")))?;
 
-        Ok(parsed.items.into_iter().map(convert_spotify_album).collect())
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(convert_spotify_album)
+            .collect())
     }
 
     /// Spotify's own list of the newest album and single releases (`/browse/new-releases`).
@@ -1074,7 +1128,12 @@ impl SpotifyClient {
             .await?;
         let parsed: NewReleases = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse new releases: {e}")))?;
-        Ok(parsed.albums.items.into_iter().map(convert_spotify_album).collect())
+        Ok(parsed
+            .albums
+            .items
+            .into_iter()
+            .map(convert_spotify_album)
+            .collect())
     }
 
     /// Get tracks of a specific album.
@@ -1092,7 +1151,11 @@ impl SpotifyClient {
         let parsed: SpotifyPaging<SpotifyTrack> = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse album tracks: {e}")))?;
 
-        Ok(parsed.items.into_iter().map(convert_spotify_track).collect())
+        Ok(parsed
+            .items
+            .into_iter()
+            .map(convert_spotify_track)
+            .collect())
     }
 
     /// Get user's saved albums.
@@ -1111,7 +1174,11 @@ impl SpotifyClient {
         let parsed: SpotifyPaging<SpotifySavedAlbumItem> = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse saved albums: {e}")))?;
 
-        let albums = parsed.items.into_iter().map(|item| convert_spotify_album(item.album)).collect();
+        let albums = parsed
+            .items
+            .into_iter()
+            .map(|item| convert_spotify_album(item.album))
+            .collect();
 
         Ok(Page {
             items: albums,
@@ -1124,7 +1191,12 @@ impl SpotifyClient {
     }
 
     /// Create a new private playlist on Spotify.
-    pub async fn create_playlist(&self, user_id: &str, name: &str, description: &str) -> Result<Playlist, ApiError> {
+    pub async fn create_playlist(
+        &self,
+        user_id: &str,
+        name: &str,
+        description: &str,
+    ) -> Result<Playlist, ApiError> {
         let endpoint = format!("/users/{user_id}/playlists");
         #[derive(serde::Serialize)]
         struct CreateBody<'a> {
@@ -1140,7 +1212,12 @@ impl SpotifyClient {
         };
 
         let json = self
-            .request_json(EndpointFamily::Playlists, reqwest::Method::POST, &endpoint, &body)
+            .request_json(
+                EndpointFamily::Playlists,
+                reqwest::Method::POST,
+                &endpoint,
+                &body,
+            )
             .await?;
 
         let parsed: SpotifyPlaylist = serde_json::from_str(&json)
@@ -1150,7 +1227,11 @@ impl SpotifyClient {
     }
 
     /// Add tracks to a playlist.
-    pub async fn add_tracks_to_playlist(&self, playlist_id: &str, uris: &[String]) -> Result<(), ApiError> {
+    pub async fn add_tracks_to_playlist(
+        &self,
+        playlist_id: &str,
+        uris: &[String],
+    ) -> Result<(), ApiError> {
         let endpoint = format!("/playlists/{playlist_id}/tracks");
         #[derive(serde::Serialize)]
         struct AddBody<'a> {
@@ -1159,7 +1240,12 @@ impl SpotifyClient {
 
         let body = AddBody { uris };
         let _ = self
-            .request_json(EndpointFamily::Playlists, reqwest::Method::POST, &endpoint, &body)
+            .request_json(
+                EndpointFamily::Playlists,
+                reqwest::Method::POST,
+                &endpoint,
+                &body,
+            )
             .await?;
 
         Ok(())
@@ -1185,13 +1271,22 @@ impl SpotifyClient {
         }
 
         let json = self
-            .request(EndpointFamily::Recommendations, reqwest::Method::GET, "/recommendations", &query)
+            .request(
+                EndpointFamily::Recommendations,
+                reqwest::Method::GET,
+                "/recommendations",
+                &query,
+            )
             .await?;
 
         let parsed: SpotifyRecommendationsResponse = serde_json::from_str(&json)
             .map_err(|e| ApiError::Serialization(format!("parse recommendations: {e}")))?;
 
-        Ok(parsed.tracks.into_iter().map(convert_spotify_track).collect())
+        Ok(parsed
+            .tracks
+            .into_iter()
+            .map(convert_spotify_track)
+            .collect())
     }
 
     /// Multi-category search (Top, Songs, Artists, Albums, Playlists).
@@ -1203,7 +1298,10 @@ impl SpotifyClient {
         offset: u32,
     ) -> Result<DetailedSearchResults, ApiError> {
         if self.auth_mode() == AuthMode::Librespot {
-            return self.browse.search_detailed(query, search_type, limit, offset).await;
+            return self
+                .browse
+                .search_detailed(query, search_type, limit, offset)
+                .await;
         }
         let safe_limit = limit.min(10);
         let limit_str = safe_limit.to_string();
@@ -1280,7 +1378,12 @@ impl SpotifyClient {
         }
         let body = RenameBody { name: new_name };
         let _ = self
-            .request_json(EndpointFamily::Playlists, reqwest::Method::PUT, &endpoint, &body)
+            .request_json(
+                EndpointFamily::Playlists,
+                reqwest::Method::PUT,
+                &endpoint,
+                &body,
+            )
             .await?;
         Ok(())
     }
@@ -1289,13 +1392,22 @@ impl SpotifyClient {
     pub async fn delete_playlist(&self, playlist_id: &str) -> Result<(), ApiError> {
         let endpoint = format!("/playlists/{playlist_id}/followers");
         let _ = self
-            .request(EndpointFamily::Playlists, reqwest::Method::DELETE, &endpoint, &[])
+            .request(
+                EndpointFamily::Playlists,
+                reqwest::Method::DELETE,
+                &endpoint,
+                &[],
+            )
             .await?;
         Ok(())
     }
 
     /// Remove a track from a playlist.
-    pub async fn remove_track_from_playlist(&self, playlist_id: &str, track_uri: &str) -> Result<(), ApiError> {
+    pub async fn remove_track_from_playlist(
+        &self,
+        playlist_id: &str,
+        track_uri: &str,
+    ) -> Result<(), ApiError> {
         let endpoint = format!("/playlists/{playlist_id}/tracks");
         #[derive(serde::Serialize)]
         struct TrackUri<'a> {
@@ -1309,7 +1421,12 @@ impl SpotifyClient {
             tracks: vec![TrackUri { uri: track_uri }],
         };
         let _ = self
-            .request_json(EndpointFamily::Playlists, reqwest::Method::DELETE, &endpoint, &body)
+            .request_json(
+                EndpointFamily::Playlists,
+                reqwest::Method::DELETE,
+                &endpoint,
+                &body,
+            )
             .await?;
         Ok(())
     }
@@ -1357,7 +1474,12 @@ impl SpotifyClient {
     ) -> Result<(Artist, Vec<Track>, Vec<Album>), ApiError> {
         let artist_endpoint = format!("/artists/{artist_id}");
         let json_artist = self
-            .request(EndpointFamily::Artists, reqwest::Method::GET, &artist_endpoint, &[])
+            .request(
+                EndpointFamily::Artists,
+                reqwest::Method::GET,
+                &artist_endpoint,
+                &[],
+            )
             .await?;
         let parsed_artist: SpotifyArtistItem = serde_json::from_str(&json_artist)
             .map_err(|e| ApiError::Serialization(format!("parse artist: {e}")))?;
@@ -1374,9 +1496,16 @@ impl SpotifyClient {
             .await?;
         let parsed_tracks: SpotifyRecommendationsResponse = serde_json::from_str(&json_tracks)
             .map_err(|e| ApiError::Serialization(format!("parse artist top tracks: {e}")))?;
-        let top_tracks = parsed_tracks.tracks.into_iter().map(convert_spotify_track).collect();
+        let top_tracks = parsed_tracks
+            .tracks
+            .into_iter()
+            .map(convert_spotify_track)
+            .collect();
 
-        let albums = self.get_artist_albums(artist_id, 20).await.unwrap_or_default();
+        let albums = self
+            .get_artist_albums(artist_id, 20)
+            .await
+            .unwrap_or_default();
 
         Ok((artist, top_tracks, albums))
     }
@@ -1516,10 +1645,7 @@ fn convert_spotify_track(t: SpotifyTrack) -> Track {
 }
 
 fn convert_spotify_playlist(p: SpotifyPlaylist) -> Playlist {
-    let owner = p
-        .owner
-        .display_name
-        .unwrap_or(p.owner.id);
+    let owner = p.owner.display_name.unwrap_or(p.owner.id);
 
     let art_url = p
         .images
@@ -1528,7 +1654,9 @@ fn convert_spotify_playlist(p: SpotifyPlaylist) -> Playlist {
         .map(|i| i.url.clone());
 
     let total_tracks = p.tracks.map(|t| t.total).unwrap_or(0);
-    let uri = p.uri.unwrap_or_else(|| format!("spotify:playlist:{}", p.id));
+    let uri = p
+        .uri
+        .unwrap_or_else(|| format!("spotify:playlist:{}", p.id));
 
     Playlist {
         id: p.id,
@@ -1566,7 +1694,11 @@ pub struct SpotifyArtistItem {
 }
 
 fn convert_spotify_artist(a: SpotifyArtistItem) -> Artist {
-    let image_url = a.images.as_ref().and_then(|imgs| imgs.first()).map(|i| i.url.clone());
+    let image_url = a
+        .images
+        .as_ref()
+        .and_then(|imgs| imgs.first())
+        .map(|i| i.url.clone());
     let uri = a.uri.unwrap_or_else(|| format!("spotify:artist:{}", a.id));
     Artist {
         id: a.id,
@@ -1594,7 +1726,11 @@ fn convert_spotify_album(a: SpotifyAlbumItem) -> Album {
         .first()
         .map(|r| r.name.clone())
         .unwrap_or_else(|| "Unknown Artist".to_string());
-    let art_url = a.images.as_ref().and_then(|imgs| imgs.first()).map(|i| i.url.clone());
+    let art_url = a
+        .images
+        .as_ref()
+        .and_then(|imgs| imgs.first())
+        .map(|i| i.url.clone());
     let uri = a.uri.unwrap_or_else(|| format!("spotify:album:{}", a.id));
 
     Album {
@@ -1618,7 +1754,6 @@ pub struct SpotifyRecommendationsResponse {
     pub tracks: Vec<SpotifyTrack>,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1629,8 +1764,14 @@ mod tests {
             id: "123".into(),
             name: "Song".into(),
             artists: vec![
-                SpotifyArtistRef { id: Some("a1".into()), name: "Artist 1".into() },
-                SpotifyArtistRef { id: Some("a2".into()), name: "Artist 2".into() },
+                SpotifyArtistRef {
+                    id: Some("a1".into()),
+                    name: "Artist 1".into(),
+                },
+                SpotifyArtistRef {
+                    id: Some("a2".into()),
+                    name: "Artist 2".into(),
+                },
             ],
             album: Some(SpotifyAlbumRef {
                 id: Some("alb1".into()),
@@ -1663,7 +1804,10 @@ mod log_safety_tests {
 
     #[test]
     fn log_endpoint_has_no_host_and_no_query() {
-        assert_eq!(endpoint_for_log("/me/playlists?limit=1&offset=0"), "/me/playlists");
+        assert_eq!(
+            endpoint_for_log("/me/playlists?limit=1&offset=0"),
+            "/me/playlists"
+        );
         assert_eq!(endpoint_for_log("/search"), "/search");
         assert_eq!(
             endpoint_for_log("https://api.spotify.com/v1/me/tracks?offset=50&limit=50"),
@@ -1676,16 +1820,25 @@ mod log_safety_tests {
     fn retry_after_header_is_read_or_defaults_to_one() {
         let mut h = reqwest::header::HeaderMap::new();
         assert_eq!(parse_retry_after(&h), 1);
-        h.insert("Retry-After", reqwest::header::HeaderValue::from_static("86400"));
+        h.insert(
+            "Retry-After",
+            reqwest::header::HeaderValue::from_static("86400"),
+        );
         assert_eq!(parse_retry_after(&h), 86400);
-        h.insert("Retry-After", reqwest::header::HeaderValue::from_static("soon"));
+        h.insert(
+            "Retry-After",
+            reqwest::header::HeaderValue::from_static("soon"),
+        );
         assert_eq!(parse_retry_after(&h), 1);
     }
 
     #[tokio::test]
     async fn a_long_rate_limit_blocks_only_its_own_family_beyond_a_short_pause() {
         let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
-        assert_eq!(client.rate_limit_remaining(EndpointFamily::Player).await, None);
+        assert_eq!(
+            client.rate_limit_remaining(EndpointFamily::Player).await,
+            None
+        );
         client.start_cooldown(EndpointFamily::Player, 86_400).await;
         let left = client.rate_limit_remaining(EndpointFamily::Player).await;
         assert!(matches!(left, Some(s) if s > 86_000));
@@ -1695,22 +1848,38 @@ mod log_safety_tests {
         // The limited family answers at once, without any network call or token.
         let started = Instant::now();
         let res = client
-            .request(EndpointFamily::Player, reqwest::Method::GET, "/me/player/recently-played", &[])
+            .request(
+                EndpointFamily::Player,
+                reqwest::Method::GET,
+                "/me/player/recently-played",
+                &[],
+            )
             .await;
         assert!(matches!(res, Err(ApiError::RateLimited(_))));
         assert!(started.elapsed() < Duration::from_secs(1));
         // An absurd value is capped instead of overflowing.
-        client.start_cooldown(EndpointFamily::Search, u64::MAX).await;
-        assert!(client.rate_limit_remaining(EndpointFamily::Search).await.is_some());
+        client
+            .start_cooldown(EndpointFamily::Search, u64::MAX)
+            .await;
+        assert!(client
+            .rate_limit_remaining(EndpointFamily::Search)
+            .await
+            .is_some());
     }
-
 
     #[tokio::test]
     async fn account_is_cached_and_forgotten() {
         let client = SpotifyClient::new(Some("http://127.0.0.1:9".into()), None);
         assert_eq!(client.cached_account().await, None);
         client
-            .set_cached_account(Some(AccountInfo { id: "u1".into(), display_name: Some("Ada".into()), image_url: None, images_read: false, username: None, plan: None }))
+            .set_cached_account(Some(AccountInfo {
+                id: "u1".into(),
+                display_name: Some("Ada".into()),
+                image_url: None,
+                images_read: false,
+                username: None,
+                plan: None,
+            }))
             .await;
         assert_eq!(client.current_user_id().await.as_deref(), Some("u1"));
         client.set_cached_account(None).await;
@@ -1718,19 +1887,33 @@ mod log_safety_tests {
     }
 
     fn img(url: &str, w: Option<u32>) -> SpotifyImage {
-        SpotifyImage { url: url.into(), width: w, height: w }
+        SpotifyImage {
+            url: url.into(),
+            width: w,
+            height: w,
+        }
     }
 
     #[test]
     fn avatar_prefers_the_smallest_big_enough_picture() {
-        let imgs = [img("https://a/640", Some(640)), img("https://a/300", Some(300)), img("https://a/64", Some(64))];
+        let imgs = [
+            img("https://a/640", Some(640)),
+            img("https://a/300", Some(300)),
+            img("https://a/64", Some(64)),
+        ];
         assert_eq!(pick_avatar(&imgs).as_deref(), Some("https://a/300"));
     }
 
     #[test]
     fn avatar_falls_back_to_the_biggest_and_ignores_non_https() {
-        assert_eq!(pick_avatar(&[img("https://a/64", Some(64)), img("https://a/32", Some(32))]).as_deref(), Some("https://a/64"));
-        assert_eq!(pick_avatar(&[img("https://a/unknown", None)]).as_deref(), Some("https://a/unknown"));
+        assert_eq!(
+            pick_avatar(&[img("https://a/64", Some(64)), img("https://a/32", Some(32))]).as_deref(),
+            Some("https://a/64")
+        );
+        assert_eq!(
+            pick_avatar(&[img("https://a/unknown", None)]).as_deref(),
+            Some("https://a/unknown")
+        );
         assert_eq!(pick_avatar(&[img("http://insecure/x", Some(300))]), None);
         assert_eq!(pick_avatar(&[]), None);
     }
