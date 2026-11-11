@@ -479,10 +479,11 @@ async fn async_main(restored: PlayerState) -> anyhow::Result<()> {
         let cache = cache.clone();
         let events = events_tx.clone();
         tokio::spawn(async move {
+            let changes = events.subscribe();
             match crate::mpris::start_mpris_server(player, cache, events).await {
                 Ok(conn) => {
                     info!("MPRIS 2 server running");
-                    tokio::spawn(crate::mpris::announce_changes(conn.clone()));
+                    tokio::spawn(crate::mpris::announce_changes(conn.clone(), changes));
                     std::future::pending::<()>().await;
                 }
                 Err(e) => {
