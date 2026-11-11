@@ -3147,11 +3147,30 @@ aifw_build() {
     AIFW_BUILT="$tgt/release/ai-firewall"; AIFW_UNIT="$src/packaging/ai-firewall.service"
     [[ -x "$AIFW_BUILT" && -f "$AIFW_UNIT" ]]
 }
+aifw_take_over() {
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_task "[DRY-RUN] would turn off ufw / firewalld once ai-firewall stays active"
+        return 0
+    fi
+    local before after steady=0 i
+    before=$(as_root systemctl show -p NRestarts --value ai-firewall.service 2>/dev/null)
+    for i in 1 2 3 4 5; do
+        sleep 1
+        if as_root systemctl is-active --quiet ai-firewall.service; then steady=$((steady + 1)); else steady=0; fi
+    done
+    after=$(as_root systemctl show -p NRestarts --value ai-firewall.service 2>/dev/null)
+    if [[ $steady -lt 3 || "$before" != "$after" ]]; then
+        warn_later "ai-firewall did not stay running, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
+        return 1
+    fi
+    if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
+    as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
+    return 0
+}
 aifw_install() {
     if [[ -x /usr/bin/ai-firewall ]]; then          # installed as a package (packaging/arch/PKGBUILD): pacman keeps it updated
-        if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
-        as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
         try run_cmd "ai-firewall (package): starting" as_root systemctl enable --now ai-firewall.service
+        aifw_take_over || return 0
         log_success "ai-firewall (installed as a package) is guarding this machine: >firewall in the launcher"
         return 0
     fi
@@ -3173,12 +3192,7 @@ aifw_install() {
     as_root systemctl daemon-reload || true
     try run_cmd "ai-firewall: starting" as_root systemctl enable --now ai-firewall.service
     as_root systemctl restart ai-firewall.service >/dev/null 2>&1 || true      # pick up a new build; filtering never stops (pinned links)
-    if [[ "$DRY_RUN" != "true" ]] && ! as_root systemctl is-active --quiet ai-firewall.service; then
-        warn_later "ai-firewall did not start, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
-        return 0
-    fi
-    if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
-    as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
+    aifw_take_over || return 0
     log_success "ai-firewall is guarding this machine: the island page (>firewall in the launcher), Settings > Firewall, or  sudo ai-firewall top"
 }
 ufw_install() {
