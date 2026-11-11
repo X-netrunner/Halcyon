@@ -26,6 +26,18 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        "health" => {
+            let sock = halcyon_music_core::paths::ctl_socket();
+            let (state, detail) = match std::os::unix::net::UnixStream::connect(&sock) {
+                Ok(_) => ("ok", "daemon answering on its socket"),
+                Err(_) => ("down", "daemon is not running"),
+            };
+            println!(
+                r#"{{"schema":"halcyon.status/1","component":"halcyon-music","version":"{}","contract":1,"state":"{state}","detail":"{detail}"}}"#,
+                halcyon_music_core::CORE_VERSION
+            );
+            ExitCode::SUCCESS
+        }
         "--version" | "-V" => {
             println!("halcyon-musicd {}", halcyon_music_core::CORE_VERSION);
             ExitCode::SUCCESS

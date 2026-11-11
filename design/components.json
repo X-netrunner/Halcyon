@@ -1,0 +1,74 @@
+{
+  "contract": 1,
+  "status_schema": "halcyon.status/1",
+  "event_schema": "halcyon.event/1",
+  "runtime_dir": "halcyon",
+  "components": [
+    {
+      "id": "halcyon",
+      "name": "Halcyon",
+      "bins": ["hal"],
+      "health": ["hal", "health", "--json"],
+      "min_contract": 1,
+      "user_services": [],
+      "services": [],
+      "sockets": [],
+      "private_files": []
+    },
+    {
+      "id": "halcyon-music",
+      "name": "Halcyon Music",
+      "bins": ["halcyon-musicd"],
+      "health": ["halcyon-musicd", "health", "--json"],
+      "min_contract": 1,
+      "user_services": ["halcyon-musicd.service"],
+      "services": [],
+      "sockets": ["$XDG_RUNTIME_DIR/halcyon-music/ctl.sock"],
+      "private_files": []
+    },
+    {
+      "id": "luna",
+      "name": "Luna",
+      "bins": ["luna"],
+      "health": ["luna", "--health"],
+      "min_contract": 1,
+      "user_services": ["luna-daemon.service"],
+      "services": [],
+      "sockets": [],
+      "private_files": ["$XDG_CONFIG_HOME/luna/secrets.toml"]
+    },
+    {
+      "id": "ai-antivirus",
+      "name": "AI Antivirus",
+      "bins": ["ai-antivirus"],
+      "health": ["ai-antivirus", "health", "--json"],
+      "min_contract": 1,
+      "user_services": ["ai-antivirus-notify.service"],
+      "services": ["ai-antivirus-sensord.service", "ai-antivirus-engined.service", "ai-antivirus-responderd.service"],
+      "sockets": ["/run/ai-antivirus/responder.sock"],
+      "private_files": []
+    },
+    {
+      "id": "ai-firewall",
+      "name": "AI Firewall",
+      "bins": ["ai-firewall"],
+      "health": ["ai-firewall", "health", "--json"],
+      "min_contract": 1,
+      "user_services": [],
+      "services": ["ai-firewall.service"],
+      "sockets": [],
+      "private_files": []
+    },
+    {
+      "id": "halcyon-fm",
+      "name": "Halcyon Files",
+      "bins": ["halcyon-fm"],
+      "health": [],
+      "min_contract": 1,
+      "user_services": [],
+      "services": [],
+      "sockets": [],
+      "private_files": []
+    }
+  ]
+}

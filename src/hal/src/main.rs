@@ -66,6 +66,7 @@ mod chargelimit;
 mod cheatsheet;
 mod clipstore;
 mod close;
+mod doctor;
 mod emoji;
 mod extradim;
 mod filemap;
@@ -174,6 +175,8 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rest: &[String] = if args.is_empty() { &[] } else { &args[1..] };
     let code = match args.first().map(|s| s.as_str()) {
+        Some("doctor") => doctor::run(rest),
+        Some("health") => doctor::health(rest),
         Some("input") => input::run(rest),
         Some("wsnav") => wsnav::run(rest),
         Some("brightness") => light::brightness(rest),
