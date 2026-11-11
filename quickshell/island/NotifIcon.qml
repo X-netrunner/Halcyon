@@ -94,7 +94,14 @@ Item {
         return halOwn.indexOf(a) >= 0 || a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0 || a.indexOf("firewall") >= 0
     }
 
-    readonly property string component: notif ? NC.componentFor(notif.appName) : ""
+    readonly property string component: {
+        if (!notif) return ""
+        var a = String(notif.appName || "").trim().toLowerCase()
+        if (a.indexOf("firewall") >= 0) return "ai-firewall"
+        if (a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0) return "ai-antivirus"
+        if (a === "luna") return "luna"
+        return ""
+    }
     readonly property bool halMark: isHal && component === ""
 
     readonly property bool hasImage: !!notif && notif.image !== ""
