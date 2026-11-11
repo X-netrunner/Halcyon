@@ -6,7 +6,6 @@ Rectangle {
     property var vc
     id: hero
     property var comp
-    property bool menuOpen: false
     readonly property var lst: vc.lists[comp.id] || null
     readonly property var res: vc.resFor(comp.id)
     readonly property bool mine: vc.isBusyFor(comp.id)
@@ -31,15 +30,20 @@ Rectangle {
     z: tilt.t > 0.01 ? 2 : 0
     transform: Matrix4x4 { matrix: tilt.matrix }
 
-    // the star: above the scrolling content, so pressing it never starts a flick and the card keeps its tilt while the menu is open
-    VersionCorner {
+    VersionActions {
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 20
         z: 5
         pal: vc.pal
-        open: hero.menuOpen
-        onClicked: hero.menuOpen = !hero.menuOpen
+        mainCard: true
+        comp: hero.comp
+        lst: hero.lst
+        blocked: vc.locked || vc.planBusy
+        onUpdateClicked: vc.askUpdate(hero.comp.id)
+        onRollbackClicked: vc.askRollback(hero.comp.id)
+        onPinClicked: vc.pinToggle(hero.comp.id)
+        onCommitsClicked: vc.toggleList(hero.comp.id)
     }
 
     Flickable {
@@ -80,18 +84,6 @@ Rectangle {
                 VersionBadge { pal: vc.pal; visible: hero.comp.dirty; label: "local changes"; tone: vc.pal.muted; fs: vc.pal.tBody; hgt: 26 }
             }
 
-            VersionActions {
-                pal: vc.pal
-                hero: true
-                shown: hero.menuOpen
-                comp: hero.comp
-                lst: hero.lst
-                blocked: vc.locked || vc.planBusy
-                onUpdateClicked: vc.askUpdate(hero.comp.id)
-                onRollbackClicked: vc.askRollback(hero.comp.id)
-                onPinClicked: vc.pinToggle(hero.comp.id)
-                onCommitsClicked: vc.toggleList(hero.comp.id)
-            }
             GridLayout {
                 Layout.fillWidth: true
                 columns: 2

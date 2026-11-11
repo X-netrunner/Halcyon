@@ -39,9 +39,9 @@ Item {
         if (has(app, ["calendar", "remind"])) return 0xF00ED                         // calendar
         if (has(app, ["focus"])) return 0xF13AB                                       // timer
         // the same icons as the Version Center (VersionCenter.qml iconFor): ai-antivirus, ai-firewall, Luna, Halcyon
-        if (has(app, ["firewall"])) return 0xF0238                                    // fire (ai-firewall)
-        if (has(app, ["security", "antivirus", "clamav"])) return 0xF0565             // shield with a check (ai-antivirus)
-        if (has(app, ["luna"])) return 0xF0594                                        // moon (Luna)
+        if (has(app, ["firewall"])) return root.pal.iconFor("ai-firewall")
+        if (has(app, ["security", "antivirus", "clamav"])) return root.pal.iconFor("ai-antivirus")
+        if (has(app, ["luna"])) return root.pal.iconFor("luna")
         if (has(app, ["notes"])) return 0xF039E                                       // note
         if (has(app, ["study"])) return 0xF0474                                       // school
         var own = has(app, ["luna", "halcyon", "hal"])
@@ -93,6 +93,16 @@ Item {
         return halOwn.indexOf(a) >= 0 || a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0 || a.indexOf("firewall") >= 0
     }
 
+    readonly property string component: {
+        if (!notif) return ""
+        var a = String(notif.appName || "").trim().toLowerCase()
+        if (a.indexOf("firewall") >= 0) return "ai-firewall"
+        if (a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0) return "ai-antivirus"
+        if (a === "luna") return "luna"
+        return ""
+    }
+    readonly property bool halMark: isHal && component === ""
+
     readonly property bool hasImage: !!notif && notif.image !== ""
     // an icon theme name, a file path, or the image the app attached
     readonly property string src: {
@@ -141,8 +151,8 @@ Item {
         antialiasing: true
         Text {
             anchors.centerIn: parent
-            visible: !root.isHal
-            text: String.fromCodePoint(root.glyph)
+            visible: !root.halMark
+            text: String.fromCodePoint(root.component ? root.pal.iconFor(root.component) : root.glyph)
             color: root.tone
             font.family: root.pal.font
             font.pixelSize: Math.round(root.size * 0.48)
@@ -150,7 +160,7 @@ Item {
         // Halcyon's own senders (calendar, Game Center, focus, security ...): the Halcyon mark, not a calendar / timer / shield glyph
         HalMark {
             anchors.centerIn: parent
-            visible: root.isHal
+            visible: root.halMark
             pal: root.pal
             size: Math.round(root.size * 0.58)
         }
@@ -223,7 +233,7 @@ Item {
             anchors.centerIn: parent
             pal: root.pal
             size: Math.round(appBox.width * 0.56)
-            visible: root.isHal
+            visible: root.halMark
         }
         Image {
             id: ico
@@ -239,7 +249,7 @@ Item {
         Text {
             anchors.centerIn: parent
             visible: !ico.visible && !mark.visible && !root.pfpOn
-            text: String.fromCodePoint(0xF009A)
+            text: String.fromCodePoint(root.component ? root.pal.iconFor(root.component) : 0xF009A)
             color: root.tone
             font.family: root.pal.font
             font.pixelSize: Math.round(root.size * 0.4)
