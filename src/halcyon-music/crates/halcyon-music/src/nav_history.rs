@@ -36,8 +36,8 @@ impl NavHistory {
     }
 
     #[allow(dead_code)]
-    pub fn current(&self) -> &Place {
-        &self.places[self.at]
+    pub fn current(&self) -> Option<&Place> {
+        self.places.get(self.at)
     }
 
     pub fn can_back(&self) -> bool {
@@ -51,7 +51,7 @@ impl NavHistory {
     /// The person went somewhere new. Going to the place they are already on changes nothing;
     /// otherwise whatever lay ahead (after a Back) is dropped, like a browser.
     pub fn record(&mut self, place: Place) {
-        if self.places[self.at] == place {
+        if self.places.get(self.at) == Some(&place) {
             return;
         }
         self.places.truncate(self.at + 1);
@@ -68,7 +68,7 @@ impl NavHistory {
             return None;
         }
         self.at -= 1;
-        Some(self.places[self.at].clone())
+        self.places.get(self.at).cloned()
     }
 
     /// Step forward. Returns the place to show, or `None` at the end.
@@ -77,7 +77,7 @@ impl NavHistory {
             return None;
         }
         self.at += 1;
-        Some(self.places[self.at].clone())
+        self.places.get(self.at).cloned()
     }
 }
 
@@ -95,7 +95,7 @@ mod tests {
         assert!(!h.can_back() && !h.can_forward());
         assert_eq!(h.back(), None);
         assert_eq!(h.forward(), None);
-        assert_eq!(h.current(), &page(NavPage::Home));
+        assert_eq!(h.current(), Some(&page(NavPage::Home)));
     }
 
     #[test]
@@ -149,7 +149,10 @@ mod tests {
             h.record(Place::Album(format!("a{i}")));
         }
         assert!(h.places.len() <= MAX_PLACES);
-        assert_eq!(h.current(), &Place::Album(format!("a{}", MAX_PLACES + 19)));
+        assert_eq!(
+            h.current(),
+            Some(&Place::Album(format!("a{}", MAX_PLACES + 19)))
+        );
         assert!(!h.can_forward());
         let mut steps = 0;
         while h.back().is_some() {

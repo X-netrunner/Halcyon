@@ -199,12 +199,15 @@ impl Analyzer {
 
         let mut raw_max = f32::MIN;
         let mut db = [0.0f32; BANDS];
-        for b in 0..BANDS {
-            let (lo, hi) = self.band_bins[b];
+        for ((out, &(lo, hi)), tilt) in db
+            .iter_mut()
+            .zip(self.band_bins.iter())
+            .zip(self.tilt_db.iter())
+        {
             let amp = band_amplitude(&self.mag, lo, hi);
             let d = 20.0 * amp.max(1e-9).log10();
             raw_max = raw_max.max(d);
-            db[b] = d + self.tilt_db[b];
+            *out = d + tilt;
         }
 
         let silent = raw_max < SILENCE_DB;
@@ -217,9 +220,9 @@ impl Analyzer {
             } else {
                 (self.ref_db - 0.12).max(-36.0)
             };
-            for b in 0..BANDS {
-                let level = ((db[b] - (self.ref_db - RANGE_DB)) / RANGE_DB).clamp(0.0, 1.0);
-                frame.bands[b] = (level.powf(1.2) * 255.0).round() as u8;
+            for (band, &d) in frame.bands.iter_mut().zip(db.iter()) {
+                let level = ((d - (self.ref_db - RANGE_DB)) / RANGE_DB).clamp(0.0, 1.0);
+                *band = (level.powf(1.2) * 255.0).round() as u8;
             }
             let bass: f32 = frame.bands[..6].iter().map(|&v| v as f32).sum::<f32>() / 6.0;
             frame.bass = bass.round() as u8;

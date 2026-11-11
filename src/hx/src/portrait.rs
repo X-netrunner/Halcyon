@@ -174,13 +174,11 @@ pub fn run(path: &str, n: usize, max_stars: usize) -> i32 {
     const CELL: usize = 3;
     let gw = n / CELL + 2;
     let mut cells: Vec<Vec<usize>> = vec![Vec::new(); gw * gw];
-    let (mut sx, mut sy, mut ss, mut sr, mut sl): (
-        Vec<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<f64>,
-        Vec<usize>,
-    ) = (vec![], vec![], vec![], vec![], vec![]);
+    let mut sx: Vec<f64> = vec![];
+    let mut sy: Vec<f64> = vec![];
+    let mut ss: Vec<f64> = vec![];
+    let mut sr: Vec<f64> = vec![];
+    let mut sl: Vec<usize> = vec![];
     let rb = [17.0, 10.5, 6.6, 4.4];
     let th = [0.10, 0.08, 0.07, 0.06];
     let (lo, hi) = ([0.0, 0.03, 0.30, 0.65], [0.0, 0.30, 0.65, 0.97]);

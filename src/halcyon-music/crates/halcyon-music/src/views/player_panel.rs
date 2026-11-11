@@ -62,6 +62,7 @@ pub fn mini_height() -> f32 {
 }
 
 /// Width of the transport (five buttons and their gaps); it has to fit the panel's content.
+#[cfg(test)]
 pub const TRANSPORT_W: f32 = 4.0 * ICON_BTN + PLAY_PX + 4.0 * 4.0;
 
 /// Edge of the cover for a window of this height: what is left under the title bar after the
@@ -505,9 +506,9 @@ mod tests {
 
     #[test]
     fn the_transport_fits_the_panel() {
-        assert!(
+        const _: () = assert!(
             TRANSPORT_W <= WIDTH - 2.0 * PAD,
-            "{TRANSPORT_W} does not fit"
+            "the transport does not fit"
         );
     }
 

@@ -6,6 +6,7 @@
 //!   - a window that opens, changes mode or moves is checked once;
 //!   - while the focused window is floating (that is what a drag looks like) it checks every 150 ms, and moves the window only
 //!     once it has STOPPED moving (the drag ended), so it never fights the pointer; Hyprland animates the move back.
+//!
 //! Fullscreen windows and tiled windows are left alone. `~/.local/state/island/keep-clear` containing 0 switches it off.
 //!   hal keep-clear          run the watcher (started by hyprland/execs.lua through scripts/keep-clear.sh; one copy only)
 

@@ -70,7 +70,9 @@ pub fn view<'a, M: 'a>(
             left: 10.0,
         });
     for idx in range {
-        let line = &lrc.lines[idx];
+        let Some(line) = lrc.lines.get(idx) else {
+            continue;
+        };
         let current = active == Some(idx);
         let (size, colour) = if current {
             (13.0, palette.text)

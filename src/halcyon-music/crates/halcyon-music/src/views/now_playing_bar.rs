@@ -54,48 +54,6 @@ const TITLE_CHARS_WITH_MINI: usize = 26;
 const HEIGHT_TIMES_BELOW: f32 = 96.0;
 
 #[allow(clippy::too_many_arguments)]
-pub fn view<'a, Message: Clone + 'static>(
-    state: &'a PlayerState,
-    palette: HalcyonPalette,
-    on_toggle_play: Message,
-    on_next: Message,
-    on_prev: Message,
-    on_seek: impl Fn(u64) -> Message + 'a,
-    on_volume: impl Fn(u8) -> Message + 'a,
-    on_toggle_mute: Message,
-    on_toggle_shuffle: Message,
-    on_cycle_repeat: Message,
-    on_toggle_queue: Message,
-    on_toggle_lyrics: Message,
-    on_toggle_fullscreen: Message,
-    on_toggle_like: Message,
-    liked: bool,
-    lyrics_open: bool,
-    queue_open: bool,
-) -> Element<'a, Message> {
-    view_with(
-        BarOptions::CLASSIC,
-        state,
-        palette,
-        on_toggle_play,
-        on_next,
-        on_prev,
-        on_seek,
-        on_volume,
-        on_toggle_mute,
-        on_toggle_shuffle,
-        on_cycle_repeat,
-        on_toggle_queue,
-        on_toggle_lyrics,
-        on_toggle_fullscreen,
-        on_toggle_like,
-        liked,
-        lyrics_open,
-        queue_open,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 pub fn view_with<'a, Message: Clone + 'static>(
     options: BarOptions,
     state: &'a PlayerState,
@@ -397,13 +355,13 @@ mod tests {
 
     #[test]
     fn classic_options_are_the_bar_as_it_was() {
-        assert!(!BarOptions::CLASSIC.times_below);
-        assert!(BarOptions::CLASSIC.show_volume);
+        const _: () = assert!(!BarOptions::CLASSIC.times_below);
+        const _: () = assert!(BarOptions::CLASSIC.show_volume);
         assert!(
             BarOptions::CLASSIC.mini.is_none(),
             "Classic never gets the mini visualizer"
         );
-        assert!(
+        const _: () = assert!(
             !BarOptions::CLASSIC.calm,
             "Classic keeps its accent-lit toggles"
         );

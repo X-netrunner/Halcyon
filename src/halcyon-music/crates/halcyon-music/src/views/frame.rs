@@ -506,7 +506,7 @@ mod tests {
         assert_eq!(right_width(l, 960.0, 1.0, true), 0.0);
         assert_eq!(right_width(l, 960.0, 0.5, true), 0.0);
         // Only the panel takes room from the page at 960 px, and plenty is left.
-        assert!(960.0 - player_panel::WIDTH - 2.0 * 12.0 >= 700.0);
+        const _: () = assert!(960.0 - player_panel::WIDTH - 2.0 * 12.0 >= 700.0);
     }
 
     #[test]

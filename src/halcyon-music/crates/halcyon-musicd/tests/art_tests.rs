@@ -12,7 +12,7 @@ use tokio::net::TcpListener;
 /// A JPEG-signature blob: enough for the pipeline, which only sniffs the header.
 fn fake_jpeg() -> Vec<u8> {
     let mut v = vec![0xFF, 0xD8, 0xFF, 0xE0];
-    v.extend(std::iter::repeat(7u8).take(2048));
+    v.extend(std::iter::repeat_n(7u8, 2048));
     v
 }
 

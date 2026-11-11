@@ -21,7 +21,7 @@ impl Counter {
     }
     fn most_common(&self) -> Vec<(String, u64)> {
         let mut v = self.items.clone();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|x| std::cmp::Reverse(x.1));
         v
     }
     fn is_empty(&self) -> bool {
@@ -99,12 +99,9 @@ fn ts(t: &str) -> String {
     }
 }
 
-fn load_cowrie(
-    logs: &str,
-) -> (
-    HashMap<String, Cowrie>,
-    Vec<(String, String, String, String)>,
-) {
+type LoginEvent = (String, String, String, String);
+
+fn load_cowrie(logs: &str) -> (HashMap<String, Cowrie>, Vec<LoginEvent>) {
     let mut agg: HashMap<String, Cowrie> = HashMap::new();
     let mut logins = Vec::new();
     let raw = fs::read(format!("{}/cowrie/cowrie.json", logs)).unwrap_or_default();
@@ -263,7 +260,7 @@ pub fn run(target: Option<&str>) {
             )
         })
         .collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (ip, total, c, r) in rows {
         println!(
             "\n  {}   activity: {}   (last cowrie hit {})",
