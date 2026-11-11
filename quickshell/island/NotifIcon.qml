@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import "NotifComponent.js" as NC
 
 // The picture next to a notification. Used by the popup cards and the notification-centre rows.
 //
@@ -84,7 +85,7 @@ Item {
     // Halcyon's own senders (the Calendar worker, the rice's scripts, Luna ...) wear the Halcyon sparkle, not an icon-theme picture or an
     // emoji. Other apps keep their own icon (and a picture they attach: avatar, album art). Halcyon's own senders always get the mark,
     // whatever icon or screenshot thumbnail they pass along.
-    readonly property var halOwn: ["halcyon", "calendar", "hal", "luna", "notes", "study", "focus", "security", "game center", "gamecenter", "games", "hgl", "reminder", "reminders", "island", "sysmode", "firewall", "antivirus", "notify-send", "screenshot", "power manager", "hyprland layout", "emoji picker"]
+    readonly property var halOwn: ["halcyon", "halcyon files", "calendar", "hal", "luna", "notes", "study", "focus", "security", "game center", "gamecenter", "games", "hgl", "reminder", "reminders", "island", "sysmode", "firewall", "antivirus", "notify-send", "screenshot", "power manager", "hyprland layout", "emoji picker"]
     // the security modules name themselves "AI Antivirus" / "AI Firewall" (ai-antivirus, ai-firewall): not an exact entry of the list, so
     // they are matched by the word as well
     readonly property bool isHal: {
@@ -93,14 +94,7 @@ Item {
         return halOwn.indexOf(a) >= 0 || a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0 || a.indexOf("firewall") >= 0
     }
 
-    readonly property string component: {
-        if (!notif) return ""
-        var a = String(notif.appName || "").trim().toLowerCase()
-        if (a.indexOf("firewall") >= 0) return "ai-firewall"
-        if (a.indexOf("antivirus") >= 0 || a.indexOf("anti-virus") >= 0) return "ai-antivirus"
-        if (a === "luna") return "luna"
-        return ""
-    }
+    readonly property string component: notif ? NC.componentFor(notif.appName) : ""
     readonly property bool halMark: isHal && component === ""
 
     readonly property bool hasImage: !!notif && notif.image !== ""
