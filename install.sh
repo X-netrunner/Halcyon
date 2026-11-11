@@ -3197,7 +3197,12 @@ aifw_install() {
     as_root systemctl daemon-reload || true
     try run_cmd "ai-firewall: starting" as_root systemctl enable --now ai-firewall.service
     as_root systemctl restart ai-firewall.service >/dev/null 2>&1 || true      # pick up a new build; filtering never stops (pinned links)
-    aifw_take_over || return 0
+    if [[ "$DRY_RUN" != "true" ]] && ! as_root systemctl is-active --quiet ai-firewall.service; then
+        warn_later "ai-firewall did not start, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
+        return 0
+    fi
+    if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
+    as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
     log_success "ai-firewall is guarding this machine: the island page (>firewall in the launcher), Settings > Firewall, or  sudo ai-firewall top"
 }
 ufw_install() {
