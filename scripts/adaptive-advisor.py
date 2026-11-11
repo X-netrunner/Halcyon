@@ -23,6 +23,7 @@ import sys
 import json
 import glob
 import re
+import shlex
 import subprocess
 import shutil
 import time
@@ -420,7 +421,7 @@ def analyze_system():
         sudo = "" if scope == "user" else "sudo "
         flag = "--user " if scope == "user" else ""
         if d["benign"]:
-            reset_cmd = f"{sudo}systemctl {flag}reset-failed {svc}"
+            reset_cmd = f"{sudo}systemctl {flag}reset-failed {shlex.quote(svc)}"
             suggestions.append({
                 "id": f"harmless_svc_{svc}", "priority": "LOW",
                 "title": f"Harmless failed unit: {svc} ({scope})",
@@ -428,7 +429,7 @@ def analyze_system():
             remediations.append((f"Clear the failed flag of '{svc}'", reset_cmd, "Harmless failure; a restart cannot fix it."))
         else:
             real_failed.append((scope, svc))
-            restart_cmd = f"{sudo}systemctl {flag}restart {svc}"
+            restart_cmd = f"{sudo}systemctl {flag}restart {shlex.quote(svc)}"
             suggestions.append({
                 "id": f"restart_svc_{svc}", "priority": "HIGH",
                 "title": f"Service failure: {svc} ({scope})",
