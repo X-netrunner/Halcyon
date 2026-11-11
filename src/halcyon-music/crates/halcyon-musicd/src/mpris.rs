@@ -17,12 +17,22 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 use zbus::zvariant::{ObjectPath, Value};
-use zbus::{connection::Builder, interface};
+use zbus::{connection::Builder, interface, SignalContext};
 
 pub const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.halcyon";
 pub const MPRIS_OBJECT_PATH: &str = "/org/mpris/MediaPlayer2";
 
 pub struct MprisRoot;
+
+#[derive(Clone, PartialEq)]
+struct ChangeKey {
+    track: Option<String>,
+    has_cover: bool,
+    playing: bool,
+    repeat: RepeatMode,
+    shuffle: bool,
+    volume: u8,
+}
 
 #[interface(name = "org.mpris.MediaPlayer2")]
 impl MprisRoot {
@@ -37,7 +47,7 @@ impl MprisRoot {
 
     #[zbus(property)]
     fn can_quit(&self) -> bool {
-        true
+        false
     }
 
     #[zbus(property)]
@@ -86,8 +96,8 @@ impl MprisPlayer {
     }
 
     /// What MPRIS clients can see: current track, whether its cover is in the
-    /// cache yet, and play/pause. A change in any of them needs a signal.
-    async fn change_key(&self) -> (Option<String>, bool, bool) {
+    /// cache yet, play/pause, repeat, shuffle and volume. A change in any of them needs a signal.
+    async fn change_key(&self) -> ChangeKey {
         let s = self.player.snapshot().await;
         let has_cover = s
             .track
@@ -98,7 +108,21 @@ impl MprisPlayer {
                     .into_iter()
                     .any(|size| matches!(self.cache.get_image(&cache_key(url, size)), Ok(Some(_))))
             });
-        (s.track.as_ref().map(|t| t.id.clone()), has_cover, s.playing)
+        ChangeKey {
+            track: s.track.as_ref().map(|t| t.id.clone()),
+            has_cover,
+            playing: s.playing,
+            repeat: s.repeat,
+            shuffle: s.shuffle,
+            volume: s.volume,
+        }
+    }
+
+    async fn announce_seek(&self, ctxt: &SignalContext<'_>) {
+        let position_us = self.player.snapshot().await.position_ms as i64 * 1000;
+        if let Err(e) = Self::seeked(ctxt, position_us).await {
+            warn!("MPRIS Seeked signal failed: {e}");
+        }
     }
 
     async fn broadcast_state(&self) {
@@ -170,7 +194,7 @@ impl MprisPlayer {
         self.broadcast_state().await;
     }
 
-    async fn seek(&self, offset_us: i64) {
+    async fn seek(&self, offset_us: i64, #[zbus(signal_context)] ctxt: SignalContext<'_>) {
         let delta_ms = offset_us / 1000;
         self.player
             .mutate(|s| {
@@ -182,9 +206,15 @@ impl MprisPlayer {
             })
             .await;
         self.broadcast_state().await;
+        self.announce_seek(&ctxt).await;
     }
 
-    async fn set_position(&self, _track_id: ObjectPath<'_>, position_us: i64) {
+    async fn set_position(
+        &self,
+        _track_id: ObjectPath<'_>,
+        position_us: i64,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) {
         let pos_ms = (position_us.max(0) / 1000) as u64;
         self.player
             .mutate(|s| {
@@ -194,7 +224,11 @@ impl MprisPlayer {
             })
             .await;
         self.broadcast_state().await;
+        self.announce_seek(&ctxt).await;
     }
+
+    #[zbus(signal)]
+    async fn seeked(ctxt: &SignalContext<'_>, position: i64) -> zbus::Result<()>;
 
     async fn open_uri(&self, uri: String) {
         if uri.starts_with("spotify:track:") {
@@ -364,13 +398,18 @@ impl MprisPlayer {
 }
 
 /// Tell MPRIS clients (the island, media keys, notification daemons) when the
-/// track, its cover or play/pause changes. Without the `PropertiesChanged`
-/// signal they only see new metadata the next time they happen to ask.
-pub async fn announce_changes(conn: zbus::Connection) {
-    let mut last: Option<(Option<String>, bool, bool)> = None;
-    let mut tick = tokio::time::interval(std::time::Duration::from_millis(750));
+/// track, its cover, play/pause, repeat, shuffle or volume changes. It wakes on the
+/// daemon's own events and only checks on a slow timer as a safety net.
+pub async fn announce_changes(
+    conn: zbus::Connection,
+    mut changes: broadcast::Receiver<protocol::Event>,
+) {
+    let mut last: Option<ChangeKey> = None;
     loop {
-        tick.tick().await;
+        match tokio::time::timeout(std::time::Duration::from_secs(5), changes.recv()).await {
+            Ok(Err(broadcast::error::RecvError::Closed)) => return,
+            Ok(Ok(_)) | Ok(Err(broadcast::error::RecvError::Lagged(_))) | Err(_) => {}
+        }
         let Ok(iface_ref) = conn
             .object_server()
             .interface::<_, MprisPlayer>(MPRIS_OBJECT_PATH)
@@ -380,20 +419,31 @@ pub async fn announce_changes(conn: zbus::Connection) {
         };
         let iface = iface_ref.get().await;
         let key = iface.change_key().await;
-        if last.as_ref() == Some(&key) {
+        let Some(prev) = last.replace(key.clone()) else {
             continue;
-        }
-        let first = last.is_none();
-        last = Some(key);
-        if first {
+        };
+        if prev == key {
             continue;
         }
         let ctxt = iface_ref.signal_context();
-        if let Err(e) = iface.metadata_changed(ctxt).await {
-            warn!("MPRIS metadata signal failed: {e}");
+        let mut sent = Vec::new();
+        if prev.track != key.track || prev.has_cover != key.has_cover {
+            sent.push(iface.metadata_changed(ctxt).await);
         }
-        if let Err(e) = iface.playback_status_changed(ctxt).await {
-            warn!("MPRIS playback status signal failed: {e}");
+        if prev.playing != key.playing || prev.track != key.track {
+            sent.push(iface.playback_status_changed(ctxt).await);
+        }
+        if prev.repeat != key.repeat {
+            sent.push(iface.loop_status_changed(ctxt).await);
+        }
+        if prev.shuffle != key.shuffle {
+            sent.push(iface.shuffle_changed(ctxt).await);
+        }
+        if prev.volume != key.volume {
+            sent.push(iface.volume_changed(ctxt).await);
+        }
+        for e in sent.into_iter().filter_map(Result::err) {
+            warn!("MPRIS PropertiesChanged signal failed: {e}");
         }
     }
 }
