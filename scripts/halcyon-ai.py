@@ -460,7 +460,7 @@ def cmd_ask(args):
     share, _, ui_hit = ui_best(q)
     ui_full = ui_hit is not None and share == 1 and len(set(_words(ui_hit["label"]))) >= 2
     # "what does Performance mode do", "what is X for": the person wants to know what a setting IS, not the clicks to reach it
-    if WHAT_INTENT.search(q) and not HOW_WORDS.search(q) and not general:
+    if WHAT_INTENT.search(q) and not HOW_WORDS.search(q) and not general and not ui_mentioned(q):
         hits = help_search(q)
         if hits and hits[0][0] >= HOWTO_MIN:
             ex = explain(q, hits)
