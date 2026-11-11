@@ -3160,12 +3160,7 @@ aifw_take_over() {
     done
     after=$(as_root systemctl show -p NRestarts --value ai-firewall.service 2>/dev/null)
     if [[ $steady -lt 3 || "$before" != "$after" ]]; then
-        as_root systemctl disable --now ai-firewall.service >/dev/null 2>&1 || true
-        local fallback
-        for fallback in ufw.service firewalld.service; do
-            if as_root systemctl is-enabled --quiet "$fallback"; then as_root systemctl start "$fallback" >/dev/null 2>&1 || true; fi
-        done
-        warn_later "ai-firewall did not stay running, so it was stopped and ufw / firewalld were started again. Check: journalctl -u ai-firewall"
+        warn_later "ai-firewall did not stay running, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
         return 1
     fi
     if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
@@ -3197,12 +3192,7 @@ aifw_install() {
     as_root systemctl daemon-reload || true
     try run_cmd "ai-firewall: starting" as_root systemctl enable --now ai-firewall.service
     as_root systemctl restart ai-firewall.service >/dev/null 2>&1 || true      # pick up a new build; filtering never stops (pinned links)
-    if [[ "$DRY_RUN" != "true" ]] && ! as_root systemctl is-active --quiet ai-firewall.service; then
-        warn_later "ai-firewall did not start, so ufw / firewalld were left as they were. Check: journalctl -u ai-firewall"
-        return 0
-    fi
-    if command -v ufw >/dev/null 2>&1; then as_root ufw --force disable >/dev/null 2>&1 || true; fi
-    as_root systemctl disable --now ufw.service firewalld.service >/dev/null 2>&1 || true
+    aifw_take_over || return 0
     log_success "ai-firewall is guarding this machine: the island page (>firewall in the launcher), Settings > Firewall, or  sudo ai-firewall top"
 }
 ufw_install() {

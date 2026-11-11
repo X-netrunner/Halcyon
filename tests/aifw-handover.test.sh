@@ -18,7 +18,6 @@ systemctl() {
             n=$(cat "$tmp/n" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$tmp/n"
             [[ " $ACTIVE " == *" $n "* ]] ;;
         show) cat "$tmp/restarts.$(cat "$tmp/n" 2>/dev/null || echo 0)" 2>/dev/null || echo 0 ;;
-        is-enabled) [[ "$*" == *ufw* ]] ;;
         *) echo "systemctl $*" >> "$log" ;;
     esac
 }
@@ -38,16 +37,14 @@ check "ufw and firewalld are turned off" "$(turned_off)" 2
 
 reset; ACTIVE=""
 aifw_take_over; check "dead firewall does not take over" "$?" 1
-check "dead firewall keeps ufw" "$(grep -c "disable --now ufw" "$log")" 0
-check "dead firewall is stopped" "$(grep -c "disable --now ai-firewall" "$log")" 1
-check "dead firewall hands back to ufw (Conflicts= had stopped it)" "$(grep -c "start ufw.service" "$log")" 1
+check "dead firewall keeps ufw" "$(turned_off)" 0
 
 reset; ACTIVE="1 2 3 5"
 aifw_take_over; check "flapping firewall (dropped at check 4) keeps ufw" "$?" 1
-check "flapping firewall keeps ufw" "$(grep -c "disable --now ufw" "$log")" 0
+check "flapping firewall keeps ufw" "$(turned_off)" 0
 
 reset; ACTIVE="1 2 3 4 5"; echo 3 > "$tmp/restarts.5"
 aifw_take_over; check "firewall that restarted meanwhile keeps ufw" "$?" 1
-check "restarted firewall keeps ufw" "$(grep -c "start ufw.service" "$log")" 1
+check "restarted firewall keeps ufw" "$(turned_off)" 0
 
 exit "$fail"
