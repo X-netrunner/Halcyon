@@ -140,12 +140,9 @@ fn logs_dir() -> String {
     "/root/logs".to_string()
 }
 
-fn load_cowrie(
-    logs: &str,
-) -> (
-    HashMap<String, CowrieData>,
-    Vec<(String, String, String, String)>,
-) {
+type LoginEvent = (String, String, String, String);
+
+fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<LoginEvent>) {
     let mut agg: HashMap<String, CowrieData> = HashMap::new();
     let mut login_events = Vec::new();
     let p = format!("{}/cowrie/cowrie.json", logs);
