@@ -34,7 +34,7 @@ browsers=(
   "vivaldi|Vivaldi|vivaldi-stable|vivaldi-stable.desktop|0" "qutebrowser|qutebrowser|qutebrowser|org.qutebrowser.qutebrowser.desktop|0"
 )
 files=(
-  "yazi|Yazi|yazi|yazi.desktop|1" "dolphin|Dolphin|dolphin|org.kde.dolphin.desktop|0" "nautilus|Files|nautilus|org.gnome.Nautilus.desktop|0"
+  "halcyon-fm|Halcyon Files|halcyon-fm|org.halcyon.FileManager.desktop|0" "yazi|Yazi|yazi|yazi.desktop|1" "dolphin|Dolphin|dolphin|org.kde.dolphin.desktop|0" "nautilus|Files|nautilus|org.gnome.Nautilus.desktop|0"
   "thunar|Thunar|thunar|thunar.desktop|0" "nemo|Nemo|nemo|nemo.desktop|0" "pcmanfm|PCManFM|pcmanfm|pcmanfm.desktop|0"
   "pcmanfm-qt|PCManFM-Qt|pcmanfm-qt|pcmanfm-qt.desktop|0" "caja|Caja|caja|caja.desktop|0" "ranger|Ranger|ranger||1" "lf|lf|lf||1" "nnn|nnn|nnn||1"
 )
