@@ -370,7 +370,7 @@ fn hypr_socket() -> Option<UnixStream> {
                 Some((m, p.to_string_lossy().into_owned()))
             })
             .collect();
-        v.sort_by(|a, b| b.0.cmp(&a.0));
+        v.sort_by_key(|x| std::cmp::Reverse(x.0));
         paths.extend(v.into_iter().map(|x| x.1));
     }
     for p in paths {

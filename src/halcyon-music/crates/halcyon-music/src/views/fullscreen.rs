@@ -550,7 +550,7 @@ mod tests {
         assert!(!near_top(-1.0));
         assert!(!near_top(f32::NAN));
         // The strip is smaller than the zone, so the buttons stay while the pointer is on them.
-        assert!(DRAG_STRIP < TOP_ZONE);
+        const _: () = assert!(DRAG_STRIP < TOP_ZONE);
     }
 
     #[test]

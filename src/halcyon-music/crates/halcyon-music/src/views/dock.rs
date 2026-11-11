@@ -62,6 +62,7 @@ pub fn account_left(window_width: f32) -> f32 {
 /// two dividers and the gaps between the groups. The two stretching parts (the song and the
 /// progress bar) share what is left; the tests check each keeps at least `MIN_STRETCH` at the
 /// smallest window.
+#[cfg(test)]
 pub const FIXED_WIDTH: f32 = 2.0 * PAD
     + (36.0 + 8.0 + 3.0 * NAV_BOX + 2.0 * 4.0) // account circle, gap, three pages
     + 2.0 * (10.0 + 1.0 + 10.0) // each divider with its gaps
@@ -69,6 +70,7 @@ pub const FIXED_WIDTH: f32 = 2.0 * PAD
     + (4.0 * ICON_BTN + PLAY_PX + 4.0 * 4.0) // transport
     + 12.0 // before the progress bar
     + (2.0 * ICON_BTN + 4.0); // queue and full screen
+#[cfg(test)]
 pub const MIN_STRETCH: f32 = 140.0;
 
 fn divider<'a, M: 'a>(palette: HalcyonPalette) -> Element<'a, M> {

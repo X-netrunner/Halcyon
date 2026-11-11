@@ -123,7 +123,7 @@ fn greeter(me: &str) -> i32 {
     }
     for n in 2..=6u32 {
         let ns = n.to_string();
-        if taken.iter().any(|t| *t == ns) {
+        if taken.contains(&ns) {
             continue;
         }
         if util::ok(

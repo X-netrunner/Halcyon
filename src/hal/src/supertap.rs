@@ -20,7 +20,7 @@ fn claim(lock: &Path) -> bool {
                     .and_then(|m| m.modified())
                     .ok()
                     .and_then(|t| t.elapsed().ok())
-                    .map_or(false, |age| age < Duration::from_millis(300));
+                    .is_some_and(|age| age < Duration::from_millis(300));
                 if fresh {
                     return false;
                 }

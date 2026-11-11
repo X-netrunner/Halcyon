@@ -60,8 +60,8 @@ fn entries<'a>(query: &str, r: &'a DetailedSearchResults) -> Vec<Entry<'a>> {
         .artists
         .iter()
         .position(|a| a.name.trim().to_lowercase() == q);
-    if let Some(i) = exact_artist {
-        out.push(artist(&r.artists[i]));
+    if let Some(a) = exact_artist.and_then(|i| r.artists.get(i)) {
+        out.push(artist(a));
     }
     for t in r.tracks.iter().take(MAX_SONGS) {
         out.push(Entry {

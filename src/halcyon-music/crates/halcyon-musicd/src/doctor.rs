@@ -86,25 +86,25 @@ pub fn run() -> anyhow::Result<ExitCode> {
     // Read once; `load_librespot_token` moves a corrupt file aside, so do not call it twice.
     let streaming = token_store::load_librespot_token();
 
-    #[allow(clippy::vec_init_then_push)]
-    let mut checks = Vec::new();
-    checks.push(check_runtime_dir());
-    checks.push(check_daemon_socket(&daemon));
-    checks.push(check_daemon_process(&daemon));
-    checks.push(check_daemon_version(&daemon));
-    checks.push(check_gui_version());
-    checks.push(check_state_file());
-    checks.push(check_systemd_unit(&daemon));
-    checks.push(check_audio_server());
-    checks.push(check_audio_sink());
-    checks.push(check_network());
-    checks.push(check_cache());
-    checks.push(check_account_name());
-    checks.push(check_connect_device());
-    checks.push(check_model());
-    checks.push(check_streaming_token(&streaming));
-    checks.push(check_session(&streaming));
-    checks.push(check_browsing_sign_in(&streaming));
+    let mut checks = vec![
+        check_runtime_dir(),
+        check_daemon_socket(&daemon),
+        check_daemon_process(&daemon),
+        check_daemon_version(&daemon),
+        check_gui_version(),
+        check_state_file(),
+        check_systemd_unit(&daemon),
+        check_audio_server(),
+        check_audio_sink(),
+        check_network(),
+        check_cache(),
+        check_account_name(),
+        check_connect_device(),
+        check_model(),
+        check_streaming_token(&streaming),
+        check_session(&streaming),
+        check_browsing_sign_in(&streaming),
+    ];
     checks.extend(check_endpoint_probes());
 
     let (mut pass, mut warn, mut fail) = (0usize, 0usize, 0usize);

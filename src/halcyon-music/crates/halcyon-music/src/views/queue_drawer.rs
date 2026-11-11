@@ -17,6 +17,7 @@ const ORBIT_PX: f32 = 264.0;
 
 /// `viz` is this frame's snapshot of the sound (beat swell and ripples). `calm` is true in the
 /// four new layouts (`frame::is_calm`).
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a, Message: Clone + 'static>(
     state: &'a PlayerState,
     palette: HalcyonPalette,

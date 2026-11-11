@@ -1744,10 +1744,12 @@ mod dock_home_tests {
         build(&HomeFeed::default(), &idle, true);
         build(&feed, &idle, false);
         // Songs up next: the list.
-        let mut playing = PlayerState::default();
-        playing.queue = songs.clone();
-        playing.queue_pos = 0;
-        playing.track = songs.first().cloned();
+        let playing = PlayerState {
+            queue: songs.clone(),
+            queue_pos: 0,
+            track: songs.first().cloned(),
+            ..Default::default()
+        };
         assert!(!crate::views::up_next::is_empty(&playing));
         build(&feed, &playing, false);
     }

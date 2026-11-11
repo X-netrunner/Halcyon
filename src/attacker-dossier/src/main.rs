@@ -32,7 +32,7 @@ impl Counter {
 
     fn most_common(&self, limit: usize) -> Vec<(String, u64)> {
         let mut v = self.items.clone();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|x| std::cmp::Reverse(x.1));
         if v.len() > limit {
             v.truncate(limit);
         }
@@ -140,12 +140,9 @@ fn logs_dir() -> String {
     "/root/logs".to_string()
 }
 
-fn load_cowrie(
-    logs: &str,
-) -> (
-    HashMap<String, CowrieData>,
-    Vec<(String, String, String, String)>,
-) {
+type LoginEvent = (String, String, String, String);
+
+fn load_cowrie(logs: &str) -> (HashMap<String, CowrieData>, Vec<LoginEvent>) {
     let mut agg: HashMap<String, CowrieData> = HashMap::new();
     let mut login_events = Vec::new();
     let p = format!("{}/cowrie/cowrie.json", logs);
@@ -290,7 +287,7 @@ fn main() {
         let total = c.sessions + c.logins.total() + (c.cmds.len() as u64) + r.total();
         rows.push((ip, total, c, r));
     }
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     for (ip, total, c, r) in rows {
         println!(

@@ -39,6 +39,7 @@ pub fn chip_tab(tab: LibraryTab) -> LibraryTab {
 }
 
 /// How many rows the list has for a chip. Playlists counts Liked Songs as its first row.
+#[cfg(test)]
 pub fn row_count(tab: LibraryTab, playlists: usize, albums: usize, artists: usize) -> usize {
     match chip_tab(tab) {
         LibraryTab::Albums => albums,
