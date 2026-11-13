@@ -29,7 +29,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// How long a cover takes to fade in.
-pub const FADE: Duration = Duration::from_millis(halcyon_music_core::tokens::motion::SLOW_MS);
+pub const FADE: Duration = Duration::from_millis(360);
 /// A failed cover is retried at most this often.
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 /// Decoded pixels kept in memory (least recently drawn are dropped first).

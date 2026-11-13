@@ -162,7 +162,7 @@ Item {
                             width: parent.width * Math.min(1, Math.max(0.02, modelData.frac))
                             height: parent.height; radius: 2
                             color: modelData.frac > 0.9 ? root.pal.bad : (modelData.frac > 0.75 ? root.pal.warn : root.pal.accent)
-                            Behavior on width { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic } }
+                            Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
                         }
                     }
                 }

@@ -36,7 +36,7 @@ Item {
             anchors.centerIn: root
             rotation: index * 360 / root.n
             property real lvl: root.level(index)
-            Behavior on lvl { NumberAnimation { duration: root.pal.dFast } }
+            Behavior on lvl { NumberAnimation { duration: 110 } }
             Rectangle {
                 x: root.cover / 2 + 9
                 y: -1.5

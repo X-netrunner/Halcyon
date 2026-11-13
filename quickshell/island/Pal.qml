@@ -393,7 +393,7 @@ Scope {
 
     // ---------- motion ----------
     // The motion set is the one the Caelestia shell uses (its "expressive" Material 3 tokens), which is what makes it feel fluid:
-    // movement and size changes use a spring that slips a little past its target and then settles within the 120-240 ms motion tokens (design/tokens.toml), while
+    // movement and size changes use a spring that slips a little past its target and then settles over about half a second (the 200 / 400 / 600 ms motion tokens in design/tokens.toml), while
     // fades and colour changes use a spring-less curve and are quicker. Everything in the island reads these, so tune them here.
     //   curveSoft   spatial spring (move, grow, slide). Overshoots about 8 %. Raise the second number for a bouncier feel (1.21 = Caelestia).
     //   curveCalm   no overshoot. A box joined to the screen border (frameOn) must not overshoot or it would pull away from the border
@@ -415,9 +415,9 @@ Scope {
     // squash and stretch on moving panels (Jelly.qml): Settings > Motion > "Jelly motion"; jellyAmt scales how much (1 = normal)
     property bool jelly: true
     property real jellyAmt: 1.0
-    readonly property int dFast: Math.round(Tok.motion.fast * motion)
-    readonly property int dMed: Math.round(Tok.motion.base * motion)
-    readonly property int dSlow: Math.round(Tok.motion.slow * motion)
+    readonly property int dFast: Math.round(Tok.motion.fast * motion)   // fades, hovers, colours (Caelestia: default effects 200)
+    readonly property int dMed: Math.round(Tok.motion.base * motion)    // small moves and resizes (fast spatial 350)
+    readonly property int dSlow: Math.round(Tok.motion.slow * motion)   // boxes opening, cards sliding, lists re-flowing (default spatial 500)
     // boxes folding back in: a touch quicker than they came out, and a gentle ease-in-out (starts soft, settles soft) instead of the sharp ease-out they open with
     readonly property int dClose: Math.round(Tok.motion.close * motion)
     readonly property var curveClose: [0.45, 0, 0.3, 1, 1, 1]

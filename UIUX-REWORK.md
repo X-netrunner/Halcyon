@@ -112,6 +112,8 @@ The screenshot's "database schema version 4 is newer than the supported version 
 
 ## Log
 
+- 2026-11-12: Motion back to the calmer h5 timing (**untested** on screen): tokens 200 / 400 / 600 ms (close 420), the per-element durations of commit `7e3bd42` undone, music app on its own 120 / 220 / 420 ms scale. Files: `design/tokens.toml`, `scripts/gen-tokens.py`, `Tokens.js`, `tokens.rs`, `Pal.qml`, 25 island files, music `animation.rs` / `art.rs` / `theme.rs` / `main.rs`. See `changelog.md`.
+
 - 2026-11-11 (later): Notes all-notes window and quick panel on the calm grammar (**untested** on screen). All notes: `CalmHeader` (glyph, "Notes", counts) with Organise / Clear completed / New note / Close as icon buttons; search is a pill; the footer chip row is gone (one quiet hint line). Quick panel (Super + N): `CalmHeader` ("Saved" / errors in its line), taller soft text box with Voice and Save as icons inside it, "All notes" as a small link on the Latest row, one short hint line. File: `NotesMenu.qml`.
 - 2026-11-11: Notes list rework (**untested**): stable id model so a tick no longer scrolls to the top or closes open rows, instant tick, floating hover action bar, AI row only when open, lighter filter chips, section hairlines, round checkbox, empty state, "New note" button (`NotesMenu.qml`). Moving stars rewritten with depth, halo, glint, shooting star (`BarStars.qml`). Screenshot / recording menus open at the pointer (`CursorSpot.qml`, `ShotMenu.qml`, `CaptureMenu.qml`, `shell.qml`, `Settings.qml`). Widgets can no longer stay stuck as "covered" (`shell.qml`). Parallel builds (`install.sh`).
 

@@ -4992,8 +4992,9 @@ mod tests {
     }
 
     #[test]
-    fn animations_stay_within_the_motion_tokens() {
-        const { assert!(theme::MAX_ANIMATION_MS <= 250) };
+    fn animations_stay_under_half_a_second() {
+        // The calm redesign trades the old 180 ms snap for slow, soft motion (still under half a second).
+        const { assert!(theme::MAX_ANIMATION_MS < 500) };
         assert!(art::FADE.as_millis() as u64 <= theme::MAX_ANIMATION_MS);
     }
 

@@ -16,11 +16,11 @@ use std::time::{Duration, Instant};
 /// these, so the whole interface moves with one rhythm.
 pub mod motion {
     /// Hover, press, small state changes.
-    pub const FAST_MS: u64 = halcyon_music_core::tokens::motion::FAST_MS;
+    pub const FAST_MS: u64 = 120;
     /// Most things: pills, toasts, the search notch, the sidebar.
-    pub const BASE_MS: u64 = halcyon_music_core::tokens::motion::BASE_MS;
+    pub const BASE_MS: u64 = 220;
     /// Page entrances and drawers.
-    pub const SLOW_MS: u64 = halcyon_music_core::tokens::motion::SLOW_MS;
+    pub const SLOW_MS: u64 = 420;
     /// A frame that takes longer than this to build or arrive is a dropped frame.
     pub const FRAME_BUDGET_MS: f32 = 16.0;
 }
@@ -551,7 +551,7 @@ mod tests {
     fn tokens_are_the_three_durations_from_the_plan() {
         assert_eq!(
             (motion::FAST_MS, motion::BASE_MS, motion::SLOW_MS),
-            (120, 180, 240)
+            (120, 220, 420)
         );
         assert_eq!(crate::theme::MAX_ANIMATION_MS, motion::SLOW_MS);
     }

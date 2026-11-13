@@ -72,7 +72,7 @@ ok('every id used by the QML processes is declared once', ['statusProc', 'logPro
 const upd = rd('update.sh'), ext = rd('scripts/update-extras.sh'), inst = rd('install.sh')
 ok('update.sh documents --ref and --unpin', /--ref <commit\|tag>/.test(upd) && /--unpin/.test(upd))
 ok('update-extras.sh documents --only, --ref, --unpin, --restore', /--only luna\|ai-antivirus\|ai-firewall/.test(ext) && /--ref <commit\|tag>/.test(ext) && /--unpin/.test(ext) && /--restore/.test(ext))
-ok('install.sh documents pins and leaves a pinned extra alone', /pins\.env/.test(inst) && (inst.match(/pinned at \$\{pin:0:7\}, left as it is/g) || []).length === 3)
+ok('install.sh documents pins and leaves a pinned extra alone', /pins\.env/.test(inst) && (inst.match(/pinned at \$\{pin:0:7\}, left as it is/g) || []).length === 4)   // LUNA, ai-firewall, ai-antivirus, Halcyon Files
 ok('install.sh installs the daily-check units', /halcyon-versions-check\.timer/.test(inst))
 ok('systemd units exist, timer is not enabled by default', fs.existsSync(path.join(root, 'systemd/halcyon-versions-check.timer')) && !/enable[^\n]*halcyon-versions-check/.test(inst))
 ok('docs/versions.md exists', fs.existsSync(path.join(root, 'docs/versions.md')))

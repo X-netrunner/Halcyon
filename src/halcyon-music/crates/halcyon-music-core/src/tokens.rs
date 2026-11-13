@@ -36,10 +36,10 @@ pub mod size {
 }
 
 pub mod motion {
-    pub const FAST_MS: u64 = 120;
-    pub const BASE_MS: u64 = 180;
-    pub const SLOW_MS: u64 = 240;
-    pub const CLOSE_MS: u64 = 160;
+    pub const FAST_MS: u64 = 200;
+    pub const BASE_MS: u64 = 400;
+    pub const SLOW_MS: u64 = 600;
+    pub const CLOSE_MS: u64 = 420;
     pub const EASE_OUT: [f32; 4] = [0.2, 0.0, 0.0, 1.0];
     pub const EASE_IN: [f32; 4] = [0.4, 0.0, 1.0, 1.0];
     pub const EASE_IN_OUT: [f32; 4] = [0.4, 0.0, 0.2, 1.0];

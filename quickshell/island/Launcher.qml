@@ -282,8 +282,8 @@ Item {
                 color: activeCat ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.20)) : (catMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : Qt.alpha(root.pal.text, root.pal.zen ? 0.04 : 0.03))
                 border.width: root.pal.bw
                 border.color: activeCat ? Qt.alpha(root.pal.accent, 0.45) : Qt.alpha(root.pal.lineSoft, 0.4)
-                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 Text {
                     id: catText
@@ -293,7 +293,7 @@ Item {
                     font.pixelSize: root.pal.zen ? 11 : 10
                     font.weight: activeCat ? Font.Medium : Font.Normal
                     color: activeCat ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : (catMa.containsMouse ? root.pal.text : root.pal.muted)
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 MouseArea {
@@ -847,7 +847,7 @@ Item {
             color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.surface, 0.85)
             border.width: root.pal.bw
             border.color: input.activeFocus ? root.pal.lineFocus : root.pal.line
-            Behavior on border.color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on border.color { ColorAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
             // soft glow while typing
             Rectangle {
@@ -858,7 +858,7 @@ Item {
                 border.width: 4
                 border.color: root.pal.accent
                 opacity: input.activeFocus && !root.pal.zen ? 0.07 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
 
             Text {
@@ -954,7 +954,7 @@ Item {
                 radius: 12
                 // new: just the word, quietly ("Apps"), as the mode is a fact and not a button
                 color: root.pal.zen ? "transparent" : Qt.alpha(root.pal.accent, 0.14)
-                Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
+                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
@@ -1062,7 +1062,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: root.pal.zen ? 9 : 7
                     scale: ma.pressed ? 0.94 : 1
-                    Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1073,7 +1073,7 @@ Item {
                         asynchronous: true
                         smooth: true
                         scale: cell.cur ? 1.08 : (ma.containsMouse ? 1.04 : 1)
-                        Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
                         width: cell.width - 8
@@ -1084,7 +1084,7 @@ Item {
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.zen ? 12 : 11
                         font.weight: cell.cur && !root.pal.zen ? Font.Medium : Font.Medium
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
                 MouseArea {
@@ -1149,7 +1149,7 @@ Item {
                     anchors.fill: parent
                     radius: 14
                     color: srow.cur ? Qt.alpha(root.pal.accent, 0.14) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 // the keyboard selection gets a second cue beside the tint, so it is findable while scanning the list
                 Rectangle {
@@ -1392,7 +1392,7 @@ Item {
                     color: openNow ? Qt.alpha(root.pal.accent, 0.25) : (infoMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent")
                     border.width: root.pal.zen && !openNow ? 0 : 1
                     border.color: openNow ? Qt.alpha(root.pal.accent, 0.55) : Qt.alpha(root.pal.lineSoft, 0.6)
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF02FD)

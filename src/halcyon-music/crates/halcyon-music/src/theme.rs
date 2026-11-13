@@ -54,7 +54,8 @@ pub mod type_size {
 }
 
 /// Longest one-shot animation in the app, in milliseconds. Everything is at or under this.
-pub const MAX_ANIMATION_MS: u64 = halcyon_music_core::tokens::motion::SLOW_MS;
+/// The calm redesign uses slower, softer motion than the old 180 ms snap.
+pub const MAX_ANIMATION_MS: u64 = 420;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Density {

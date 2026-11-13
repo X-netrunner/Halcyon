@@ -54,7 +54,7 @@ Item {
                 Behavior on scale {
                     SequentialAnimation {
                         PauseAnimation { duration: (dot.has && !ma.containsMouse && !ma.pressed) ? dot.index * 50 : 0 }
-                        NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.OutCubic }
+                        NumberAnimation { duration: 340; easing.type: Easing.OutCubic }
                     }
                 }
 

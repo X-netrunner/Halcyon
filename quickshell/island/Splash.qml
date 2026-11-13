@@ -66,7 +66,7 @@ Item {
     }
 
     NumberAnimation { id: anim; target: root; property: "p"; from: root.rev ? 1 : 0; to: root.rev ? 0 : 1; duration: root.duration; onFinished: root.end() }
-    NumberAnimation { id: skipAnim; target: root; property: "skipFade"; from: 0; to: 1; duration: root.pal.dMed; onFinished: root.end() }
+    NumberAnimation { id: skipAnim; target: root; property: "skipFade"; from: 0; to: 1; duration: 260; onFinished: root.end() }
 
     // ---- stage
     // (unlock: the stage melts away early, so the desktop is already visible while the stars are still flying and the mark is flaring)
