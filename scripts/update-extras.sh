@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Updates Halcyon's three companion programs to the newest main: LUNA, ai-antivirus, ai-firewall.
+# Updates Halcyon's companion programs to the newest main: LUNA, ai-antivirus, ai-firewall, Halcyon Files (halcyon-fm).
 # update.sh runs this when Halcyon itself is already current (when Halcyon has a new version, install.sh does the same work).
-# It only touches what you chose at install time (~/.local/state/island/install-choices.env: LUNA, ANTIVIRUS, FIREWALL=ai),
+# It only touches what you chose at install time (~/.local/state/island/install-choices.env: LUNA, ANTIVIRUS, FIREWALL=ai, FM),
 # and only rebuilds one when its source changed. The old build output is deleted first.
 #
 #   update-extras.sh            update what is installed and chosen
 #   update-extras.sh --force    rebuild even when nothing changed
 #   update-extras.sh --dry-run  say what would happen
-#   update-extras.sh --only luna|ai-antivirus|ai-firewall    only that one (repeat the option for two)
+#   update-extras.sh --only luna|ai-antivirus|ai-firewall|halcyon-fm    only that one (repeat the option for two)
 #   update-extras.sh --only luna --ref <commit|tag>          install exactly that version of that one (needs --only, one component).
 #                                                            The managed clone is checked out at it, built like an update, the stamp written;
 #                                                            the component is pinned (~/.local/state/halcyon/pins.env) so later updates leave it alone.
@@ -17,8 +17,8 @@
 #
 # A pinned component (pins.env) is skipped by every plain run. The Version Center (>versions) calls this script for all of it.
 # Sources: GitHub main, in ~/.local/src/<name>. Override with LUNA_SRC / AV_SRC / AIFW_SRC (a local folder is built as it is,
-# no git), or by putting ai-antivirus/ ai-firewall/ LUNA-AI/ folders next to the Halcyon folder (a bundle). With --ref the managed
-# clone is always used (a local folder has no history to pick from). Other repositories: LUNA_REPO / AV_REPO / AIFW_REPO.
+# no git), or by putting ai-antivirus/ ai-firewall/ LUNA-AI/ Filemanager/ folders next to the Halcyon folder (a bundle). With --ref the managed
+# clone is always used (a local folder has no history to pick from). Other repositories: LUNA_REPO / AV_REPO / AIFW_REPO / FM_REPO.
 set -uo pipefail
 
 FORCE=0 DRY=0 REF="" IGNORE_PINS=0 ONLY=() UNPIN=() RESTORE=""
@@ -28,8 +28,8 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1 ;;
     --ignore-pins) IGNORE_PINS=1 ;;
     -y|--yes|-q) ;;
-    --only) [ $# -ge 2 ] || { echo "--only needs luna, ai-antivirus or ai-firewall" >&2; exit 2; }
-            case "$2" in luna|ai-antivirus|ai-firewall) ONLY+=("$2") ;; *) echo "unknown component: $2" >&2; exit 2 ;; esac; shift ;;
+    --only) [ $# -ge 2 ] || { echo "--only needs luna, ai-antivirus, ai-firewall or halcyon-fm" >&2; exit 2; }
+            case "$2" in luna|ai-antivirus|ai-firewall|halcyon-fm) ONLY+=("$2") ;; *) echo "unknown component: $2" >&2; exit 2 ;; esac; shift ;;
     --ref)  [ $# -ge 2 ] && [[ "$2" != -* ]] || { echo "--ref needs a commit or a tag" >&2; exit 2; }; REF="$2"; shift ;;
     --restore) [ $# -ge 2 ] || { echo "--restore needs a component" >&2; exit 2; }; RESTORE="$2"; shift ;;
     --unpin) [ $# -ge 2 ] || { echo "--unpin needs a component" >&2; exit 2; }; UNPIN+=("$2"); shift ;;
@@ -55,6 +55,7 @@ AIFW_BIN="${AIFW_BIN:-/usr/local/bin/ai-firewall}"; AIFW_UNIT="${AIFW_UNIT:-/etc
 LUNA_REPO="${LUNA_REPO:-https://github.com/X-netrunner/LUNA-AI.git}"
 AV_REPO="${AV_REPO:-https://github.com/X-netrunner/ai-antivirus}"
 AIFW_REPO="${AIFW_REPO:-https://github.com/X-netrunner/ai-firewall.git}"
+FM_REPO="${FM_REPO:-https://github.com/X-netrunner/Filemanager.git}"
 choice() { [ -f "$CH" ] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$CH" | tail -n1 || true; }
 
 say()  { printf '   == %s\n' "$*"; }
@@ -63,7 +64,7 @@ warn() { printf '   ! %s\n' "$*" >&2; }
 run()  { printf '     $ %s\n' "$*"; [ "$DRY" = 1 ] || "$@"; }
 gnet() { timeout "$NET" git "$@"; }
 
-# ---- pins: one line per component, KEY="full commit"  (KEY = LUNA | ANTIVIRUS | FIREWALL, the names install-choices.env uses)
+# ---- pins: one line per component, KEY="full commit"  (KEY = LUNA | ANTIVIRUS | FIREWALL | FM, the names install-choices.env uses)
 pin_get() { [ -f "$PINS" ] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$PINS" | tail -n1 || true; }
 pin_del() { [ -f "$PINS" ] || return 0; local t; t="$(mktemp)"; grep -v "^$1=" "$PINS" > "$t"; cat "$t" > "$PINS"; rm -f "$t"; }
 pin_set() { mkdir -p "$HSTATE"; pin_del "$1"; printf '%s="%s"\n' "$1" "$2" >> "$PINS"; }
@@ -131,7 +132,7 @@ FAILED=0
 
 # ---------------------------------------------------------------- --unpin / --restore (no build)
 for c in ${UNPIN[@]+"${UNPIN[@]}"}; do
-  case "$c" in luna) pin_del LUNA ;; ai-antivirus) pin_del ANTIVIRUS ;; ai-firewall) pin_del FIREWALL ;; *) echo "unknown component: $c" >&2; exit 2 ;; esac
+  case "$c" in luna) pin_del LUNA ;; ai-antivirus) pin_del ANTIVIRUS ;; ai-firewall) pin_del FIREWALL ;; halcyon-fm) pin_del FM ;; *) echo "unknown component: $c" >&2; exit 2 ;; esac
   ok "$c: unpinned (the next update follows main)"
 done
 if [ "${#UNPIN[@]}" -gt 0 ] && [ "${#ONLY[@]}" -eq 0 ]; then exit 0; fi
@@ -146,6 +147,10 @@ do_restore() {
       run install -Dm755 "$p/luna" "$HOME/.local/bin/luna" || return 1
       [ "$DRY" = 1 ] || { cp -a "$p/stamp" "$STATE/luna-rev"; record_bin luna "$HOME/.local/bin/luna"; }
       for u in luna-daemon luna-wake; do systemctl --user is-active --quiet "$u.service" 2>/dev/null && run systemctl --user restart "$u.service"; done ;;
+    halcyon-fm)
+      [ -f "$p/halcyon-fm" ] || return 3
+      run install -Dm755 "$p/halcyon-fm" "$HOME/.local/bin/halcyon-fm" || return 1
+      [ "$DRY" = 1 ] || { cp -a "$p/stamp" "$STATE/fm-rev"; record_bin halcyon-fm "$HOME/.local/bin/halcyon-fm"; } ;;
     ai-firewall)
       [ -f "$p/$(basename "$AIFW_BIN")" ] || return 3
       run sudo install -Dm755 "$p/$(basename "$AIFW_BIN")" "$AIFW_BIN" || return 1
@@ -188,6 +193,35 @@ do_luna() {
     settle LUNA "$now"
     ok "LUNA updated to ${now:0:7}"
   else warn "LUNA did not build: the installed version stays"; FAILED=1; fi
+}
+
+# ---------------------------------------------------------------- Halcyon Files (the file manager, halcyon-fm)
+# Built like LUNA: a Cargo project that makes a program called halcyon-fm. An empty repository (no commits yet) is not a failure.
+do_fm() {
+  [ "$(choice FM)" = yes ] || return 0
+  say "Halcyon Files"
+  skip_pinned FM "Halcyon Files" && return 0
+  local d now heads rc local_dir st="$STATE/fm-rev" fbin="$HOME/.local/bin/halcyon-fm" lock=()
+  local_dir="$(pick "${FM_SRC:-}" Filemanager)"
+  if [ -z "$local_dir" ] && [ "$DRY" != 1 ]; then
+    heads="$(gnet ls-remote --heads "$FM_REPO" 2>/dev/null)"; rc=$?
+    if [ "$rc" -eq 0 ] && [ -z "$heads" ]; then ok "Halcyon Files: $FM_REPO has no commits yet, nothing to update"; return 0; fi
+  fi
+  d="$(sync_main Filemanager "$local_dir" "$FM_REPO")" || { warn "Halcyon Files: could not fetch ${REF:-main}"; FAILED=1; return 0; }
+  [ -f "$d/Cargo.toml" ] || { warn "Halcyon Files: no Cargo.toml in $d (it has to be a Cargo project)"; return 0; }
+  now="$(stamp_of "$d")"
+  if [ "$FORCE" = 0 ] && [ -x "$fbin" ] && [ "$(cat "$st" 2>/dev/null)" = "$now" ]; then settle FM "$now"; ok "Halcyon Files is up to date (${now:0:7})"; return 0; fi
+  if ! command -v cargo >/dev/null 2>&1; then warn "Halcyon Files: cargo is missing"; FAILED=1; return 0; fi
+  [ -n "$(git -C "$d" rev-parse HEAD 2>/dev/null)" ] && [ -z "$local_dir" ] && run git -C "$d" clean -fdxq
+  rm -rf "$BUILD/halcyon-fm"
+  keep_prev halcyon-fm "$st" "$fbin"
+  [ -f "$d/Cargo.lock" ] && lock=(--locked)
+  if run env CARGO_TARGET_DIR="$BUILD/halcyon-fm" cargo build --release ${lock[@]+"${lock[@]}"} --manifest-path "$d/Cargo.toml" \
+     && run install -Dm755 "$BUILD/halcyon-fm/release/halcyon-fm" "$fbin"; then
+    [ "$DRY" = 1 ] || { mkdir -p "$STATE"; printf '%s\n' "$now" > "$st"; record_bin halcyon-fm "$fbin"; rm -rf "$BUILD/halcyon-fm"; }
+    settle FM "$now"
+    ok "Halcyon Files updated to ${now:0:7}"
+  else warn "Halcyon Files did not build (or made no program called halcyon-fm): the installed version stays"; FAILED=1; fi
 }
 
 # ---------------------------------------------------------------- ai-antivirus (pacman package)
@@ -268,5 +302,6 @@ do_fw() {
 wanted luna && do_luna
 wanted ai-antivirus && do_av
 wanted ai-firewall && do_fw
+wanted halcyon-fm && do_fm
 
 [ "$FAILED" = 0 ]

@@ -2618,7 +2618,7 @@ Scope {
                                     height: Math.max(24, dflick.visibleArea.heightRatio * (parent.height - 16))
                                     radius: 1.5
                                     color: Qt.alpha(root.pal.text, dflick.moving ? 0.35 : 0.16)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                                 Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: root.pal.bw; border.color: root.pal.lineSoft }
                         CalmIconBtn { z: 6; anchors.top: parent.top; anchors.right: parent.right; anchors.topMargin: 8; anchors.rightMargin: 8; pal: root.pal; size: 30; glyph: 0xF0156; tip: "Close"; onClicked: root.optsOpen = false }

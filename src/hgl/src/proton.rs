@@ -1,6 +1,12 @@
 //! Proton runtime manager: GE-Proton (default) and Proton-CachyOS, checksum-verified, installed under $XDG_DATA_HOME/Halcyon/proton,
 //! the newest few kept, never a version a game is pinned to.
+//!
+//! Runtimes that are already on the machine through Steam are found too and can be used as they are: Valve's own Proton
+//! (steamapps/common/Proton ...), and anything in Steam's compatibilitytools.d (GE-Proton from ProtonUp-Qt, Proton-GE from a
+//! package, ...), plus the system-wide /usr/share/steam/compatibilitytools.d. hgl only ever installs, prunes or removes the ones
+//! in its own folder; the others are read, never changed. Turn it off with `hgl config proton_steam 0`.
 
+use crate::steam;
 use crate::store::{self, Conf};
 use crate::util::*;
 use std::fs;
@@ -47,29 +53,131 @@ pub fn family_of(name: &str) -> Option<Family> {
     }
 }
 
+/// Where a runtime lives, which decides whether hgl may remove it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Origin {
+    /// hgl's own folder: installed by hgl, pruned and removed by hgl
+    Halcyon,
+    /// a Steam install: steamapps/common/Proton ... or Steam's compatibilitytools.d (also Flatpak Steam)
+    Steam,
+    /// /usr/share/steam/compatibilitytools.d and the like (a distro package)
+    System,
+}
+
+impl Origin {
+    pub fn label(self) -> &'static str {
+        match self {
+            Origin::Halcyon => "halcyon",
+            Origin::Steam => "steam",
+            Origin::System => "system",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Runtime {
     pub name: String,
     pub path: PathBuf,
+    pub origin: Origin,
 }
 
-/// Installed runtimes, oldest first.
-pub fn installed() -> Vec<Runtime> {
-    let mut v = Vec::new();
-    if let Ok(rd) = fs::read_dir(proton_dir()) {
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
-                continue;
-            }
-            let p = e.path();
-            if p.join("proton").is_file() {
-                v.push(Runtime { name, path: p });
-            }
+/// Add every runtime folder directly inside `dir` (one that holds a `proton` script). `only_proton`: for steamapps/common, where
+/// every game lives too, take only the folders named Proton ... .
+fn scan_dir(dir: &Path, only_proton: bool, origin: Origin, v: &mut Vec<Runtime>) {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
         }
+        if only_proton && !name.to_ascii_lowercase().starts_with("proton") {
+            continue;
+        }
+        let p = e.path();
+        // is_file follows a symlink: a link in compatibilitytools.d to a runtime elsewhere counts
+        if p.join("proton").is_file() {
+            v.push(Runtime {
+                name,
+                path: p,
+                origin,
+            });
+        }
+    }
+}
+
+/// The runtimes in hgl's own folder.
+fn own_runtimes() -> Vec<Runtime> {
+    let mut v = Vec::new();
+    scan_dir(&proton_dir(), false, Origin::Halcyon, &mut v);
+    v
+}
+
+/// Folders where system packages put compatibility tools (the AUR's proton-ge-custom-bin, for one).
+fn system_tool_dirs() -> Vec<PathBuf> {
+    [
+        "/usr/share/steam/compatibilitytools.d",
+        "/usr/local/share/steam/compatibilitytools.d",
+        "/usr/lib/steam/compatibilitytools.d",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect()
+}
+
+/// Runtimes that Steam (or a distro package) put on the machine: Valve's Proton from every Steam library, the tools in each
+/// Steam root's compatibilitytools.d, and the system-wide tool folders.
+fn external_runtimes() -> Vec<Runtime> {
+    let mut v = Vec::new();
+    for root in steam::roots() {
+        scan_dir(&root.join("compatibilitytools.d"), false, Origin::Steam, &mut v);
+    }
+    for lib in steam::libraries() {
+        scan_dir(&lib.join("steamapps/common"), true, Origin::Steam, &mut v);
+    }
+    for d in system_tool_dirs() {
+        scan_dir(&d, false, Origin::System, &mut v);
+    }
+    v
+}
+
+/// `all` plus the external runtimes that are not already in it: a name hgl has wins, and so does the first of two externals with
+/// one name; a link in Steam's compatibilitytools.d that points back into hgl's folder (link-steam makes those) is the same
+/// runtime, not another.
+fn merge_external(mut all: Vec<Runtime>, external: Vec<Runtime>) -> Vec<Runtime> {
+    let real = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let mut seen: Vec<PathBuf> = all.iter().map(|r| real(&r.path)).collect();
+    for r in external {
+        let rp = real(&r.path);
+        if all.iter().any(|x| x.name == r.name) || seen.contains(&rp) {
+            continue;
+        }
+        seen.push(rp);
+        all.push(r);
+    }
+    all
+}
+
+/// Whether Steam's runtimes are used too (config `proton_steam`, on unless set to 0).
+pub fn use_steam(cfg: &Conf) -> bool {
+    cfg.flag("proton_steam", true)
+}
+
+/// Installed runtimes (hgl's own and, unless switched off, the ones from Steam), oldest first.
+pub fn installed() -> Vec<Runtime> {
+    let mut v = own_runtimes();
+    if use_steam(&Conf::load()) {
+        v = merge_external(v, external_runtimes());
     }
     v.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     v
+}
+
+/// Proton-Experimental and Hotfix move under a game's feet: never picked as the automatic runtime while a settled one exists.
+fn is_moving(name: &str) -> bool {
+    let l = name.to_ascii_lowercase();
+    l.contains("experimental") || l.contains("hotfix")
 }
 
 pub fn default_family(cfg: &Conf) -> Family {
@@ -78,7 +186,8 @@ pub fn default_family(cfg: &Conf) -> Family {
         .unwrap_or(Family::Ge)
 }
 
-/// The runtime a game with this pin uses: its pin, else the default, else the newest of the default family, else the newest of any.
+/// The runtime a game with this pin uses: its pin, else the default, else the newest of the default family, else the newest of any
+/// (Steam's Proton-Experimental and Hotfix last of all).
 pub fn resolve(pin: &str, cfg: &Conf) -> Option<Runtime> {
     let all = installed();
     if !pin.is_empty() {
@@ -93,6 +202,7 @@ pub fn resolve(pin: &str, cfg: &Conf) -> Option<Runtime> {
     all.iter()
         .rev()
         .find(|r| family_of(&r.name) == Some(fam))
+        .or_else(|| all.iter().rev().find(|r| !is_moving(&r.name)))
         .or_else(|| all.last())
         .cloned()
 }
@@ -484,7 +594,8 @@ pub fn prune(cfg: &Conf) -> Result<Vec<String>, String> {
     let keep = cfg.num("proton_keep", 3).max(1) as usize;
     let pinned = pinned_names();
     let def = cfg.get("proton_default").unwrap_or("").to_string();
-    let all = installed();
+    // only hgl's own folder: what Steam or a package put on the machine is not ours to delete
+    let all = own_runtimes();
     let mut removed = Vec::new();
     for fam in [Family::Ge, Family::Cachy] {
         let of: Vec<&Runtime> = all
@@ -510,10 +621,18 @@ pub fn remove(name: &str, cfg: &Conf) -> Result<(), String> {
     if !valid_runtime_name(name) {
         return Err(format!("not a runtime name: {name}"));
     }
-    let r = installed()
-        .into_iter()
-        .find(|r| r.name == name)
-        .ok_or_else(|| format!("{name} is not installed"))?;
+    let Some(r) = own_runtimes().into_iter().find(|r| r.name == name) else {
+        return Err(
+            match installed().into_iter().find(|r| r.name == name) {
+                Some(x) => format!(
+                    "{name} comes from {} ({}); hgl does not remove it: remove it there (Steam, ProtonUp-Qt or the package manager)",
+                    x.origin.label(),
+                    x.path.display()
+                ),
+                None => format!("{name} is not installed"),
+            },
+        );
+    };
     let users: Vec<String> = store::all_games()
         .into_iter()
         .filter(|g| g.proton == name)
@@ -580,7 +699,7 @@ fn steam_roots_for_tools() -> Vec<PathBuf> {
 }
 
 fn link_steam_one(name: &str) {
-    let Some(r) = installed().into_iter().find(|r| r.name == name) else {
+    let Some(r) = own_runtimes().into_iter().find(|r| r.name == name) else {
         return;
     };
     for d in steam_tool_dirs() {
@@ -607,7 +726,7 @@ fn unlink_steam_one(name: &str) {
 
 pub fn link_steam_all() -> usize {
     let mut n = 0;
-    for r in installed() {
+    for r in own_runtimes() {
         link_steam_one(&r.name);
         n += 1;
     }
@@ -615,7 +734,7 @@ pub fn link_steam_all() -> usize {
 }
 
 pub fn unlink_steam_all() {
-    for r in installed() {
+    for r in own_runtimes() {
         unlink_steam_one(&r.name);
     }
 }
@@ -658,6 +777,63 @@ mod tests {
         let plain = parse_releases(j, Family::Cachy, false);
         assert!(plain[0].tarball.ends_with("-x86_64.tar.xz"));
         assert!(plain[0].sum_url.ends_with("-x86_64.tar.xz.sha512sum"));
+    }
+
+
+    fn mk(dir: &Path, with_proton: bool) {
+        fs::create_dir_all(dir).unwrap_or_else(|e| panic!("{e}"));
+        if with_proton {
+            fs::write(dir.join("proton"), "#!/bin/sh\n").unwrap_or_else(|e| panic!("{e}"));
+        }
+    }
+
+    #[test]
+    fn steam_runtimes_are_found_once_and_never_games() {
+        let t = std::env::temp_dir().join(format!("hgl-proton-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&t);
+        let own = t.join("own");
+        let tools = t.join("steam/compatibilitytools.d");
+        let common = t.join("steam/steamapps/common");
+        mk(&own.join("GE-Proton10-4"), true);
+        mk(&tools.join("GE-Proton9-27"), true);
+        mk(&common.join("Proton 9.0 (Beta)"), true);
+        mk(&common.join("Proton - Experimental"), true);
+        mk(&common.join("Proton EasyAntiCheat Runtime"), false);
+        mk(&common.join("Hades"), true); // a game folder that happens to hold a file called proton
+        // what `hgl proton link-steam` makes: a link into hgl's own folder
+        let _ = symlink(own.join("GE-Proton10-4"), tools.join("GE-Proton10-4"));
+
+        let mut mine = Vec::new();
+        scan_dir(&own, false, Origin::Halcyon, &mut mine);
+        let mut ext = Vec::new();
+        scan_dir(&tools, false, Origin::Steam, &mut ext);
+        scan_dir(&common, true, Origin::Steam, &mut ext);
+        let all = merge_external(mine, ext);
+        let _ = fs::remove_dir_all(&t);
+
+        let mut names: Vec<&str> = all.iter().map(|r| r.name.as_str()).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "GE-Proton10-4",
+                "GE-Proton9-27",
+                "Proton - Experimental",
+                "Proton 9.0 (Beta)"
+            ]
+        );
+        let ge10 = all.iter().find(|r| r.name == "GE-Proton10-4");
+        assert_eq!(ge10.map(|r| r.origin), Some(Origin::Halcyon));
+        let valve = all.iter().find(|r| r.name == "Proton 9.0 (Beta)");
+        assert_eq!(valve.map(|r| r.origin), Some(Origin::Steam));
+    }
+
+    #[test]
+    fn experimental_is_not_the_automatic_pick() {
+        assert!(is_moving("Proton - Experimental"));
+        assert!(is_moving("Proton Hotfix"));
+        assert!(!is_moving("Proton 9.0 (Beta)"));
+        assert!(!is_moving("GE-Proton10-4"));
     }
 
     #[test]

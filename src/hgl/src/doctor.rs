@@ -521,7 +521,13 @@ pub fn run_checks() -> Vec<Check> {
     // runtimes
     let cfg = Conf::load();
     match proton::resolve("", &cfg) {
-        Some(r) => c.push(Check::ok("proton", "Proton runtime", &r.name)),
+        Some(r) => {
+            let detail = match r.origin {
+                proton::Origin::Halcyon => r.name.clone(),
+                o => format!("{} (from {})", r.name, o.label()),
+            };
+            c.push(Check::ok("proton", "Proton runtime", &detail))
+        }
         None => c.push(
             Check::bad("proton", "Proton runtime", Level::Fail, "none installed")
                 .cmd("@hgl-proton-install"),

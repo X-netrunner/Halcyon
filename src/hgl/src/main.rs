@@ -55,19 +55,20 @@ Run
   hgl fix <id> <finding>                  apply the fix triage offers
 
 Runtimes
-  hgl proton list [--json]                installed runtimes
+  hgl proton list [--json]                installed runtimes (hgl's own, and the ones Steam has: Valve's Proton, compatibilitytools.d)
   hgl proton available [--family ge|cachyos]
   hgl proton install [latest|<tag>] [--family ge|cachyos]
   hgl proton remove <name>
   hgl proton default <name>               hgl proton rollback
   hgl proton prune                        keep the newest 3 per family (never a pinned or default one)
   hgl proton link-steam [--off]           also show them in Steam's compatibility tool list
+  hgl proton use-steam [--off]            also use Proton that Steam already has (on by default; hgl never removes those)
 
 Machine
   hgl doctor [--fix] [--yes] [--json]     check Vulkan, 32-bit libraries, umu, gamemode, gamescope, mangohud
   hgl class [--json]                      this machine's gaming class: A high end, B mid range, C entry, D integrated graphics
   hgl suggest <id> [--apply] [--json]     the settings suggested for a game on this class (what hgl sets, and what to set in the game)
-  hgl config [<key> <value>]              global options (proton_family, proton_keep, game_weight, halcyon_weight, halcyon_core,
+  hgl config [<key> <value>]              global options (proton_family, proton_keep, proton_steam, game_weight, halcyon_weight, halcyon_core,
                                           games_dir, steamgriddb_key, epic_config, gogdl, gog_dirs ...)
 ";
 
@@ -874,18 +875,19 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                     .iter()
                     .map(|r| {
                         format!(
-                            "{{\"name\":{},\"path\":{},\"default\":{},\"pinned\":{},\"family\":{}}}",
+                            "{{\"name\":{},\"path\":{},\"default\":{},\"pinned\":{},\"family\":{},\"source\":{}}}",
                             json_str(&r.name),
                             json_str(&r.path.to_string_lossy()),
                             def.as_deref() == Some(r.name.as_str()),
                             pinned.contains(&r.name),
-                            json_str(proton::family_of(&r.name).map(|f| f.label()).unwrap_or("other"))
+                            json_str(proton::family_of(&r.name).map(|f| f.label()).unwrap_or("other")),
+                            json_str(r.origin.label())
                         )
                     })
                     .collect();
                 println!("[{}]", items.join(","));
             } else if all.is_empty() {
-                println!("No Proton installed. Run: hgl proton install latest");
+                println!("No Proton found (hgl's own or Steam's). Run: hgl proton install latest");
             } else {
                 for r in all.iter().rev() {
                     let d = if def.as_deref() == Some(r.name.as_str()) {
@@ -898,7 +900,11 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                     } else {
                         ""
                     };
-                    println!("{}{d}{p}", r.name);
+                    let o = match r.origin {
+                        proton::Origin::Halcyon => String::new(),
+                        other => format!("  (from {})", other.label()),
+                    };
+                    println!("{}{d}{p}{o}", r.name);
                 }
             }
         }
@@ -949,6 +955,19 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                 println!(
                     "{n} runtime(s) linked. Restart Steam to see them in its compatibility list."
                 );
+            }
+        }
+        "use-steam" => {
+            if a.has("off") {
+                cfg.set("proton_steam", "0")?;
+                println!("hgl now uses only the Proton it installed itself");
+            } else {
+                cfg.set("proton_steam", "1")?;
+                let n = proton::installed()
+                    .iter()
+                    .filter(|r| r.origin != proton::Origin::Halcyon)
+                    .count();
+                println!("hgl also uses the Proton that Steam has ({n} found)");
             }
         }
         other => return Err(format!("unknown proton subcommand '{other}'")),
@@ -1107,6 +1126,7 @@ fn cmd_config(rest: &[String]) -> Result<i32, String> {
         "proton_default",
         "proton_keep",
         "steam_link",
+        "proton_steam",
         "game_weight",
         "halcyon_weight",
         "halcyon_throttle",

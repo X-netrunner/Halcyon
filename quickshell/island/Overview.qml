@@ -606,8 +606,8 @@ Item {
     opacity: gestureActive ? Math.max(0.05, Math.min(1.0, gestureProgress)) : (open ? 1 : 0)
     scale: gestureActive ? (0.86 + 0.14 * Math.max(0.0, Math.min(1.15, gestureScale))) : 1.0
     visible: opacity > 0.01
-    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: ov.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: ov.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
+    Behavior on opacity { enabled: !ov.gestureActive; NumberAnimation { duration: 360; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+    Behavior on scale { enabled: !ov.gestureActive; NumberAnimation { duration: 400; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
 
     Keys.onPressed: e => {
         if (e.key === Qt.Key_Escape && ov.dragState === "drag") { ov.cancelDrag(); e.accepted = true }
@@ -765,7 +765,7 @@ Item {
             // the branch of a held leaf is cut: it retracts to the workspace, and grows back if the leaf returns
             readonly property bool cut: ov.dragIdx >= 0 && ov.dragIdx === modelData.b && (ov.dragState === "drag" || ov.dragState === "dock")
             property real link: cut ? 0 : 1
-            Behavior on link { NumberAnimation { duration: ov.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
+            Behavior on link { NumberAnimation { duration: 380; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
             readonly property real ex: sx + (ex0 - sx) * link
             readonly property real ey: sy + (ey0 - sy) * link
             readonly property real dx: (ex - sx) * 0.5
@@ -856,7 +856,7 @@ Item {
         readonly property real fy: sy + (ty - sy) * frac
         readonly property real dx: (fx - sx) * 0.5
         property real shown: live ? 1 : 0
-        Behavior on shown { NumberAnimation { duration: ov.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
+        Behavior on shown { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: ov.pal.curve } }
         opacity: shown
         visible: shown > 0.01
 
@@ -928,7 +928,7 @@ Item {
                 rotation: nd.isRoot ? 0 : (ov.rot[nd.index] || 0)
                 scale: (0.55 + 0.45 * nd.appear) * ((nd.isRoot && ov.held) ? 1.07 : (nd.beingDragged ? 1.06 : (nd.dropHot ? 1.08 : (ma.pressed ? 0.97 : (ma.containsMouse ? 1.05 : 1)))))
                 opacity: nd.beingDragged ? 0.92 : 1
-                Behavior on scale { NumberAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 // breathing glow behind the laptop node
                 Rectangle {
@@ -939,7 +939,7 @@ Item {
                     color: nd.tint
                     opacity: 0.06
                     scale: ov.held ? 1.12 : 1
-                    Behavior on scale { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite
                         running: false   // unslop: no breathing glow, the root sits still
@@ -959,8 +959,8 @@ Item {
                          : Qt.alpha(ov.pal.surface, 0.95)
                     border.width: nd.isRoot || nd.d.focused ? 1.5 : 1
                     border.color: Qt.alpha(nd.tint, nd.dropHot ? 1 : (nd.reachHot ? 0.7 : (nd.isRoot ? 0.7 : (nd.d.focused ? 0.95 : (ma.containsMouse ? 0.7 : 0.3)))))
-                    Behavior on color { ColorAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                    Behavior on border.color { ColorAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 // ---- laptop node: avatar + name + user@host + OS/model
@@ -1252,7 +1252,7 @@ Item {
         border.color: Qt.alpha(ov.pal.accent, 0.4)
         opacity: ov.toast !== "" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
         Text {
             id: toastTxt
             anchors.centerIn: parent
@@ -1289,7 +1289,7 @@ Item {
         width: 240
         spacing: 1
         opacity: ov.open ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+        Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
         readonly property real memFrac: ov.sysRes.total > 0 ? Math.min(1, ov.halRes.mem / ov.sysRes.total) : 0
         readonly property var procs: ov.halRes.top || []
@@ -1339,7 +1339,7 @@ Item {
                 radius: height / 2
                 color: ov.pal.accent
                 opacity: ov.compactSpecial && !ov.pal.calm ? 0.16 : 0     // the halo is a classic-look extra; the fill already says it is on
-                Behavior on opacity { NumberAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
             Rectangle {
                 id: tglBtn
@@ -1350,7 +1350,7 @@ Item {
                                          : (tglMa.containsMouse ? ov.pal.fillHover : ov.pal.fill)
                 border.width: ov.compactSpecial ? 1 : 0
                 border.color: Qt.alpha(ov.pal.accent, 0.55)
-                Behavior on color { ColorAnimation { duration: ov.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 Text {
                     id: tglTxt
                     anchors.centerIn: parent
@@ -1425,7 +1425,7 @@ Item {
                 color: ov.pal.surface
                 border.width: ov.pal.zen && !nameIn.activeFocus ? 0 : 1
                 border.color: nameIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
-                Behavior on border.color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 TextInput {
                     id: nameIn
                     anchors.fill: parent
@@ -1453,7 +1453,7 @@ Item {
                     color: ov.pal.surface
                     border.width: ov.pal.zen && !avIn.activeFocus ? 0 : 1
                     border.color: avIn.activeFocus ? ov.pal.accent : Qt.alpha(ov.pal.accent, 0.25)
-                    Behavior on border.color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     TextInput {
                         id: avIn
                         anchors.fill: parent
@@ -1477,7 +1477,7 @@ Item {
                     color: browseMa.containsMouse ? Qt.alpha(ov.pal.accent, 0.28) : Qt.alpha(ov.pal.accent, 0.14)
                     border.width: 1
                     border.color: Qt.alpha(ov.pal.accent, 0.45)
-                    Behavior on color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text { anchors.centerIn: parent; text: String.fromCodePoint(0xF024B) + "  Browse"; color: ov.pal.text; font.family: ov.pal.font; font.pixelSize: 12 }
                     MouseArea { id: browseMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ov.browseAvatar() }
                 }
@@ -1497,7 +1497,7 @@ Item {
                 Rectangle {
                     width: 78; height: 34; radius: 17
                     color: saveMa.containsMouse ? Qt.lighter(ov.pal.accent, 1.1) : ov.pal.accent
-                    Behavior on color { ColorAnimation { duration: ov.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text { anchors.centerIn: parent; text: "Save"; color: ov.pal.bg; font.family: ov.pal.uiFont; font.pixelSize: 12; font.weight: Font.Medium }
                     MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; onClicked: ov.saveProfile() }
                 }

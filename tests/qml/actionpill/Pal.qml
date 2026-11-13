@@ -2,9 +2,9 @@ import QtQuick
 QtObject {
     property int hitMin: 32
     property int focusRing: 2
-    property int dFast: 120
-    property int dMed: 180
-    property int dClose: 160
+    property int dFast: 200
+    property int dMed: 400
+    property int dClose: 420
     property var curveOut: [0.2, 0, 0, 1, 1, 1]
     property var curveIn: [0.4, 0, 1, 1, 1, 1]
     property color bg: "#14161f"

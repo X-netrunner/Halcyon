@@ -99,6 +99,10 @@
 #                          LUNA_MODELS="a b" picks others, LUNA_MODELS=none skips). Her daemon is never switched on for you.
 #   --luna-voice / --no-luna-voice  with LUNA: also give her a voice (scripts/luna-voice-setup.sh: the Kokoro model, about 330 MB from the
 #                          kokoro-onnx GitHub release, a small Python environment, her [voice] config). Asked after the LUNA question, default no.
+#   --halcyon-fm / --no-halcyon-fm  the extra: Halcyon Files, the file manager (https://github.com/X-netrunner/Filemanager), built from the
+#                          newest main (or FM_SRC=folder) into ~/.local/bin/halcyon-fm, and rebuilt on every install / update when main moved.
+#                          Asked on the first install and with --choose (default no), then remembered. It must be a Cargo project that builds
+#                          a program called halcyon-fm; once installed, the app picker offers it first as your file manager.
 #   --firewall ID          ai | ufw | none (default ufw). ai = ai-firewall (eBPF, replaces ufw, page in the Security center), built
 #                          from AIFW_SRC (default ~/.local/src/ai-firewall) or AIFW_REPO at AIFW_REV; needs nightly Rust + bpf-linker.
 #                          If it cannot be built, ufw stays and an installed copy is kept. Switching away from ai removes it.
@@ -161,6 +165,7 @@ VLM_DEFAULT_MODEL="gemma4:e2b-it-qat"                                  # scripts
 PICK_RENDERER=""      # auto | opengl | vulkan (see choose_renderer)
 INSTALL_PLYMOUTH=""; PLYMOUTH_ASKED=false      # the boot splash (see choose_plymouth); "" = not decided yet
 INSTALL_LUNA=false; LUNA_ASKED=false           # the LUNA extra (see choose_extras)
+INSTALL_FM=false; FM_ASKED=false               # the Halcyon Files extra (see choose_extras, install_halcyon_fm)
 INSTALL_LUNA_VOICE=false; LUNA_VOICE_ASKED=false   # her voice: Kokoro model (~330 MB) and a Python environment (scripts/luna-voice-setup.sh)
 PICK_FIREWALL=""                               # ai | ufw | none (see choose_apps); "" = not decided yet
 # ai-firewall source: a local checkout wins (AIFW_SRC), else this repository at AIFW_REV ("" = its default branch)
@@ -170,6 +175,9 @@ AIFW_SRC="${AIFW_SRC:-}"
 # LUNA follows the newest commit on main (every install.sh / update.sh run), or a local folder: LUNA_SRC=~/Projects/LUNA-AI
 LUNA_REPO="${LUNA_REPO:-https://github.com/X-netrunner/LUNA-AI.git}"
 LUNA_SRC="${LUNA_SRC:-}"
+# Halcyon Files (the file manager) follows the newest commit on main the same way, or a local folder: FM_SRC=~/Projects/Filemanager
+FM_REPO="${FM_REPO:-https://github.com/X-netrunner/Filemanager.git}"
+FM_SRC="${FM_SRC:-}"
 # the Security center's two modules (see choose_security): each one on or off on its own
 FIREWALL=ufw; FIREWALL_ASKED=false             # ai | ufw | none
 INSTALL_AV=false; AV_ASKED=false                # the ai-antivirus extra
@@ -177,12 +185,13 @@ AV_EXCEPTION=true                               # ai-antivirus: except this inst
 AIFW_SRC="${AIFW_SRC:-}"; AIFW_REPO="${AIFW_REPO:-}"; AIFW_REV="${AIFW_REV:-}"                  # where ai-firewall is built from
 AV_SRC="${AV_SRC:-${SYNAPSE_SRC:-}}"; AV_REPO="${AV_REPO:-${SYNAPSE_REPO:-}}"; AV_REV="${AV_REV:-${SYNAPSE_REV:-}}" # where ai-antivirus is built from
 [[ -n "$AV_SRC" || -n "$AV_REPO" ]] || AV_REPO="https://github.com/X-netrunner/ai-antivirus"   # nothing given: clone it into ~/.local/src/ai-antivirus
-# A bundle: ai-antivirus/, ai-firewall/ and LUNA-AI/ folders next to Halcyon/ are used instead of GitHub (nothing needs uploading).
-# Anything you set yourself (AV_SRC, AIFW_SRC, LUNA_SRC) wins. A local folder is never combined with a repository to clone.
+# A bundle: ai-antivirus/, ai-firewall/, LUNA-AI/ and Filemanager/ folders next to Halcyon/ are used instead of GitHub (nothing needs uploading).
+# Anything you set yourself (AV_SRC, AIFW_SRC, LUNA_SRC, FM_SRC) wins. A local folder is never combined with a repository to clone.
 BUNDLE_DIR="$(dirname "$RICE_SOURCE")"
 [[ -n "$AV_SRC" || ! -f "$BUNDLE_DIR/ai-antivirus/Cargo.toml" ]] || AV_SRC="$BUNDLE_DIR/ai-antivirus"
 [[ -n "$AIFW_SRC" || ! -f "$BUNDLE_DIR/ai-firewall/Cargo.toml" ]] || AIFW_SRC="$BUNDLE_DIR/ai-firewall"
 [[ -n "$LUNA_SRC" || ! -f "$BUNDLE_DIR/LUNA-AI/Cargo.toml" ]] || LUNA_SRC="$BUNDLE_DIR/LUNA-AI"
+[[ -n "$FM_SRC" || ! -f "$BUNDLE_DIR/Filemanager/Cargo.toml" ]] || FM_SRC="$BUNDLE_DIR/Filemanager"
 [[ -z "$AV_SRC" ]] || AV_REPO=""; [[ -z "$AIFW_SRC" ]] || AIFW_REPO=""
 SECURITY_MODEL="${SECURITY_MODEL:-}"   # the assistants' local model: empty = the one that fits this laptop (security_model_for_hardware), asked on a first install
 RES_MODE=""; RES_OFFSET=""; RES_PRESET=""; RES_LIMMODE=manual; RES_LIM_RAM=""; RES_LIM_CPU=""; RES_APPLY=false      # resource use (see choose_resources)
@@ -293,6 +302,8 @@ while [[ $# -gt 0 ]]; do
         --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
         --luna-voice)       INSTALL_LUNA_VOICE=true; LUNA_VOICE_ASKED=true ;;
         --no-luna-voice)    INSTALL_LUNA_VOICE=false; LUNA_VOICE_ASKED=true ;;
+        --halcyon-fm)       INSTALL_FM=true; FM_ASKED=true ;;
+        --no-halcyon-fm)    INSTALL_FM=false; FM_ASKED=true ;;
         --firewall)         shift; FIREWALL="${1:-}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
         --firewall=*)       FIREWALL="${1#--firewall=}"; FIREWALL_ASKED=true; [[ "$FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none" ;;
         --antivirus|--synapse)       INSTALL_AV=true; AV_ASKED=true ;;
@@ -1890,9 +1901,9 @@ choose_plymouth() {
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_plymouth
 
 # ---- extras: other projects by Halcyon's author, offered once (first install, or --choose), default no, then remembered.
-# Only LUNA for now; a project joins this list when it installs cleanly on someone else's machine.
+# LUNA and Halcyon Files; a project joins this list when it installs cleanly on someone else's machine.
 choose_extras() {
-    local s_l
+    local s_l s_f
     s_l=$(saved_choice LUNA)
     if [[ "$LUNA_ASKED" != "true" ]]; then
         if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$s_l" ) ]]; then
@@ -1917,7 +1928,18 @@ choose_extras() {
         LUNA_VOICE_ASKED=true
     fi
     [[ "$INSTALL_LUNA" != "true" ]] && INSTALL_LUNA_VOICE=false
-    log_info "Extras: LUNA $([[ "$INSTALL_LUNA" == true ]] && echo "yes (built in step 12)" || echo no)"
+    if [[ "$FM_ASKED" != "true" ]]; then
+        s_f=$(saved_choice FM)
+        if [[ "$AUTO_CONFIRM" != "true" && -t 0 && ( "$CHOOSE" == "true" || -z "$s_f" ) ]]; then
+            echo -e "\n  ${CYAN}${BOLD}Extra: Halcyon Files${RESET}  ${DIM}the Halcyon file manager (github.com/X-netrunner/Filemanager)${RESET}"
+            echo -e "   ${DIM}builds the newest main into ~/.local/bin/halcyon-fm and offers it first when you pick your file manager; updates follow main.${RESET}"
+            if confirm_no "  Install Halcyon Files?"; then INSTALL_FM=true; else INSTALL_FM=false; fi
+        elif [[ -n "$s_f" ]]; then
+            [[ "$s_f" == yes ]] && INSTALL_FM=true || INSTALL_FM=false
+        fi
+        FM_ASKED=true
+    fi
+    log_info "Extras: LUNA $([[ "$INSTALL_LUNA" == true ]] && echo "yes (built in step 12)" || echo no), Halcyon Files $([[ "$INSTALL_FM" == true ]] && echo "yes (built in step 12)" || echo no)"
 }
 [[ "$REMOVE_LOGIN" != "true" ]] && choose_extras
 
@@ -3250,7 +3272,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     if [[ "$INSTALL_APPS" == "true" || ${#APPLY_PICKS[@]} -gt 0 ]]; then user_setup default-apps ${APPLY_PICKS[@]+"${APPLY_PICKS[@]}"} || true; fi
     # remember what you chose, so update.sh (and the next install.sh) install the same things without asking
     [[ "$RES_APPLY" == "true" && -n "$RES_PRESET" ]] && { user_setup resource-seed "$RES_PRESET" "$RES_LIMMODE" "$RES_LIM_RAM" "$RES_LIM_CPU" || true; }
-    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "LUNA_VOICE=$([[ "$INSTALL_LUNA_VOICE" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" "SECURITY_MODEL=$SECURITY_MODEL" || true
+    user_setup save-choices "RESOURCE_MODE=$RES_MODE" "RESOURCE_OFFSET=$RES_OFFSET" "BROWSER=$PICK_BROWSER" "FILES=$PICK_FILES" "EDITOR=$PICK_EDITOR" "MUSIC=$PICK_MUSIC" "SYSMODE=$([[ "$SYSMODE" == true ]] && echo yes || echo no)" "SAFETY_CHECK=$([[ "$SAFETY" == true ]] && echo yes || echo no)" "LLM=$([[ "$INSTALL_LLM" == true ]] && echo yes || echo no)" "LLM_MODEL=$PICK_LLM_MODEL" "WHISPER=$([[ "$INSTALL_WHISPER" == true ]] && echo yes || echo no)" "WHISPER_MODEL=$PICK_WHISPER_MODEL" "VLM=$([[ "$INSTALL_VLM" == true ]] && echo yes || echo no)" "VLM_MODEL=$PICK_VLM_MODEL" "PROMPT=$PICK_PROMPT" "RENDERER=$PICK_RENDERER" "PLYMOUTH=$([[ "$INSTALL_PLYMOUTH" == true ]] && echo yes || echo no)" "LUNA=$([[ "$INSTALL_LUNA" == true ]] && echo yes || echo no)" "LUNA_VOICE=$([[ "$INSTALL_LUNA_VOICE" == true ]] && echo yes || echo no)" "FM=$([[ "$INSTALL_FM" == true ]] && echo yes || echo no)" "FIREWALL=$FIREWALL" "ANTIVIRUS=$([[ "$INSTALL_AV" == true ]] && echo yes || echo no)" "SECURITY_MODEL=$SECURITY_MODEL" || true
 elif [[ -n "$PICK_PROMPT" ]]; then
     user_setup save-choices "PROMPT=$PICK_PROMPT" ${PICK_RENDERER:+"RENDERER=$PICK_RENDERER"} ${LOCK_LOGIN_SAVE:+"LOCK_LOGIN=$LOCK_LOGIN_SAVE"} || true
 elif [[ -n "$PICK_RENDERER" ]]; then
@@ -3387,6 +3409,60 @@ install_luna_models() {
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna
 [[ "$INSTALL_LUNA" == "true" ]] && install_luna_models
 [[ "$INSTALL_LUNA" == "true" && "$INSTALL_LUNA_VOICE" == "true" ]] && install_luna_voice
+
+# ---- the Halcyon Files extra (the file manager), built the way LUNA is: the newest main of its repository (or FM_SRC), built as you
+# (outside the rice), the program copied to ~/.local/bin/halcyon-fm. It has to be a Cargo project that builds a program called
+# halcyon-fm. Skipped when that exact version is already installed. An empty repository (no commits yet) is not an error.
+install_halcyon_fm() {
+    local pin; pin=$(pin_of FM)
+    if [[ -n "$pin" ]]; then log_success "Halcyon Files: pinned at ${pin:0:7}, left as it is"; return 0; fi
+    local src="${FM_SRC:-$TARGET_HOME/.local/src/Filemanager}" stamp="$TARGET_HOME/.local/state/island/fm-rev" tgt="$TARGET_HOME/.cache/halcyon-build/halcyon-fm" now
+    local bin="$TARGET_HOME/.local/bin/halcyon-fm" app_dir="$TARGET_HOME/.local/share/applications" lock=()
+    rust_ok || { warn_later "Halcyon Files was not installed: it needs Rust ($(pkg_hint rust)), then ./install.sh --halcyon-fm"; return 0; }
+    if [[ -z "$FM_SRC" ]]; then
+        command -v git >/dev/null 2>&1 || install_pkgs git
+        if [[ ! -d "$src/.git" ]]; then
+            run_as_user_cmd "Halcyon Files: downloading" git clone --quiet "$FM_REPO" "$src" || { warn_later "Halcyon Files: could not clone $FM_REPO"; return 0; }
+        fi
+        # a managed clone: forced to the newest main (local edits and old build files go)
+        if ! run_as_user_cmd "Halcyon Files: newest main" bash -c 'git -C "$1" fetch --quiet origin main && git -C "$1" checkout --quiet -f -B main FETCH_HEAD && git -C "$1" clean -fdxq' _ "$src"; then
+            local heads
+            if heads=$(run_as_user git ls-remote --heads "$FM_REPO" 2>/dev/null) && [[ -z "$heads" ]]; then
+                log_info "Halcyon Files: $FM_REPO has no commits yet, nothing to build (./install.sh --halcyon-fm picks it up once it has)"
+            else
+                warn_later "Halcyon Files: could not fetch main from $FM_REPO"
+            fi
+            return 0
+        fi
+    fi
+    [[ -f "$src/Cargo.toml" ]] || { warn_later "Halcyon Files: no Cargo.toml in $src (it has to be a Cargo project)"; return 0; }
+    now=$(run_as_user git -C "$src" rev-parse HEAD 2>/dev/null || true)
+    [[ -n "$now" ]] || now="local-$(find "$src" -path "$src/target" -prune -o -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -1)"
+    if [[ -x "$bin" && "$(cat "$stamp" 2>/dev/null)" == "$now" ]]; then
+        log_success "Halcyon Files: this version is already installed (~/.local/bin/halcyon-fm)"; return 0
+    fi
+    [[ -f "$src/Cargo.lock" ]] && lock=(--locked)
+    run_as_user_cmd "Halcyon Files: building (a few minutes)" env CARGO_TARGET_DIR="$tgt" cargo build --release ${lock[@]+"${lock[@]}"} --manifest-path "$src/Cargo.toml" \
+        || { warn_later "Halcyon Files did not build (see the log). Try by hand: cd $src && cargo build --release"; return 0; }
+    if [[ "$DRY_RUN" != "true" && ! -x "$tgt/release/halcyon-fm" ]]; then
+        warn_later "Halcyon Files: the build made no program called halcyon-fm (the binary has to be named that: [[bin]] name = \"halcyon-fm\")"; return 0
+    fi
+    run_as_user_cmd "Halcyon Files: installing ~/.local/bin/halcyon-fm" install -Dm755 "$tgt/release/halcyon-fm" "$bin" || { warn_later "Halcyon Files: could not install the program"; return 0; }
+    if [[ "$DRY_RUN" != "true" ]]; then
+        # the menu entry the app picker looks for (org.halcyon.FileManager.desktop): the project's own when it ships one, else a plain one
+        run_as_user mkdir -p "$app_dir"
+        if [[ -f "$src/packaging/org.halcyon.FileManager.desktop" ]]; then
+            run_as_user install -m644 "$src/packaging/org.halcyon.FileManager.desktop" "$app_dir/org.halcyon.FileManager.desktop"
+        else
+            run_as_user bash -c 'printf "%s\n" "[Desktop Entry]" "Type=Application" "Name=Halcyon Files" "GenericName=File Manager" "Comment=Browse files and folders" "Exec=$2 %U" "Icon=system-file-manager" "Terminal=false" "Categories=System;FileTools;FileManager;" "MimeType=inode/directory;" "StartupNotify=true" > "$1"' _ "$app_dir/org.halcyon.FileManager.desktop" "$bin"
+        fi
+        [[ -x /usr/bin/update-desktop-database ]] && update-desktop-database "$app_dir" >/dev/null 2>&1 || true
+        run_as_user bash -c 'mkdir -p "$(dirname "$1")" && printf "%s\n" "$2" > "$1"' _ "$stamp" "$now" || true
+        run_as_user rm -rf "$tgt" || true
+    fi
+    log_success "Halcyon Files installed from ${FM_SRC:-main}: run 'halcyon-fm', or pick it as your file manager (./install.sh --choose)"
+}
+[[ "$INSTALL_FM" == "true" ]] && install_halcyon_fm
 
 # ---- the Security center's modules: ai-firewall and ai-antivirus. Each is built as you from a source folder (or a
 # pinned git revision), installed as root, and removed again when you switch it off. Neither needs the other.

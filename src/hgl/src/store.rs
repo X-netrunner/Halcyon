@@ -321,7 +321,7 @@ impl Conf {
     pub fn set(&mut self, k: &str, v: &str) -> Result<(), String> {
         self.pairs.retain(|(key, _)| key != k);
         self.pairs.push((k.to_string(), v.to_string()));
-        let mut s = String::from("# Halcyon game launcher options\n# proton_family=ge|cachyos  proton_default=<runtime>  proton_keep=3  steam_link=0|1\n# game_weight=800  halcyon_weight=20  halcyon_throttle=1  halcyon_core=<cpu number, empty = off>\n# games_dir=<where Epic and GOG games install>  steamgriddb_key=<API key for cover art>  epic_config=<legendary config folder>\n# gogdl=<gogdl program>  gog_dirs=<extra folders with GOG games, separated by :>\n");
+        let mut s = String::from("# Halcyon game launcher options\n# proton_family=ge|cachyos  proton_default=<runtime>  proton_keep=3  steam_link=0|1  proton_steam=0|1 (use Steam's Proton too)\n# game_weight=800  halcyon_weight=20  halcyon_throttle=1  halcyon_core=<cpu number, empty = off>\n# games_dir=<where Epic and GOG games install>  steamgriddb_key=<API key for cover art>  epic_config=<legendary config folder>\n# gogdl=<gogdl program>  gog_dirs=<extra folders with GOG games, separated by :>\n");
         for (k, v) in &self.pairs {
             if !v.is_empty() {
                 s.push_str(&format!("{k}={v}\n"));
