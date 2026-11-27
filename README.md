@@ -99,7 +99,7 @@ Lua). Arch-based distros (Arch, CachyOS, EndeavourOS, Manjaro...) are the refere
 As your normal user:
 
 ```bash
-curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
+curl -fsSLO https://raw.githubusercontent.com/X-netrunner/Halcyon/main/get.sh && bash get.sh
 ```
 
 It asks a few short questions (browser, file manager, editor, whether you want the optional extras) and asks for your password only when a

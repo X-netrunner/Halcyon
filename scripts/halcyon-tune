@@ -10,12 +10,15 @@
 #   halcyon-tune av-ai pause|resume      stop / start the AI Antivirus analyzer (the local model that explains alerts): scripts/av-ai-idle.sh
 #                                        pauses it while you work and resumes it when the computer has been idle for a while
 #   halcyon-tune pm <manager>            halcyon | power-profiles-daemon | tlp | auto-cpufreq | tuned: only this one may run
+#   halcyon-tune cool-on                 run cooler: turbo off, power-saving EPP, the quietest platform profile, CPU clock capped at 70 %
+#   halcyon-tune cool-off                put every one of those back to what it was before cool-on
 #
 # It takes no file names, no paths and no free text: every argument is checked against a fixed list below.
 [ "$(id -u)" -eq 0 ] || { echo "run via sudo" >&2; exit 1; }
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 SAVE=/run/halcyon-tune.saved          # /run is root-only: nobody else can plant or edit this file
+COOL=/run/halcyon-cool.saved
 declare -A S=()
 
 w() { [ -w "$2" ] && printf '%s' "$1" > "$2" 2>/dev/null; }      # w VALUE FILE : only ever writes to a sysfs / procfs file
@@ -37,15 +40,17 @@ sec_weight() {          # sec_weight WEIGHT : runtime only (gone at reboot), nev
   return 0
 }
 
-load_saved() {          # read KEY=VALUE lines. Never `source` the file.
+load_saved() {          # load_saved FILE : read KEY=VALUE lines. Never `source` the file.
   local k v
+  S=()
   while IFS='=' read -r k v; do
     [[ "$k" =~ ^[a-z0-9_.-]+$ ]] && S["$k"]=$v
-  done < "$SAVE"
+  done < "$1"
 }
 
 game_on() {
   [ -f "$SAVE" ] && return 0                                      # already on: keep what was saved the first time
+  cool_off                                                        # gaming wants the full clock: the saved values below are the real ones
   local d i
   {
     echo "gov=$(rd /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
@@ -76,7 +81,7 @@ game_on() {
 
 game_off() {
   [ -f "$SAVE" ] || return 0
-  load_saved; rm -f "$SAVE"
+  load_saved "$SAVE"; rm -f "$SAVE"
   local d i
   for d in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do w "${S[gov]:-powersave}" "$d"; done
   [ -n "${S[epp]:-}" ] && for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w "${S[epp]}" "$d"; done
@@ -97,6 +102,61 @@ game_off() {
   for u in ${S[paused]:-}; do                                     # only names from SEC_PAUSE, whatever the file says
     for p in "${SEC_PAUSE[@]}"; do [ "$u" = "$p" ] && systemctl start "$u" >/dev/null 2>&1; done
   done
+  return 0
+}
+
+# Cool mode: the CPU runs slower and quieter so the machine heats up less (scripts/cool.sh). Not while gaming, which wants the opposite.
+cool_on() {
+  [ -f "$SAVE" ] && { echo "Gaming mode is on: turn it off first" >&2; exit 5; }
+  [ -f "$COOL" ] && return 0
+  local d c max min cur cap pick p
+  {
+    echo "epp=$(rd /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference)"
+    echo "plat=$(rd /sys/firmware/acpi/platform_profile)"
+    echo "boost=$(rd /sys/devices/system/cpu/cpufreq/boost)"
+    echo "notb=$(rd /sys/devices/system/cpu/intel_pstate/no_turbo)"
+    for d in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+      c=${d%/cpufreq}; echo "max_${c##*/}=$(rd "$d/scaling_max_freq")"
+    done
+    for d in /sys/class/drm/card[0-9]*/device/power_dpm_force_performance_level; do
+      c=${d%/device/*}; echo "gpu_${c##*/}=$(rd "$d")"
+    done
+  } > "$COOL"
+  for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w power "$d"; done
+  for p in quiet low-power cool; do
+    [[ " $(rd /sys/firmware/acpi/platform_profile_choices) " == *" $p "* ]] && { pick=$p; break; }
+  done
+  [ -n "${pick:-}" ] && w "$pick" /sys/firmware/acpi/platform_profile
+  w 0 /sys/devices/system/cpu/cpufreq/boost
+  w 1 /sys/devices/system/cpu/intel_pstate/no_turbo
+  for d in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+    max=$(rd "$d/cpuinfo_max_freq"); min=$(rd "$d/cpuinfo_min_freq"); cur=$(rd "$d/scaling_max_freq")
+    [[ "$max" =~ ^[0-9]+$ && "$min" =~ ^[0-9]+$ ]] || continue
+    cap=$(( max * 70 / 100 )); (( cap < min )) && cap=$min
+    [[ "$cur" =~ ^[0-9]+$ ]] && (( cur < cap )) && continue
+    w "$cap" "$d/scaling_max_freq"
+  done
+  for d in /sys/class/drm/card*/device/power_dpm_force_performance_level; do [ "$(rd "$d")" = auto ] && w low "$d"; done
+  return 0
+}
+
+cool_off() {
+  [ -f "$COOL" ] || return 0
+  load_saved "$COOL"
+  local d c
+  [ -n "${S[boost]:-}" ] && w "${S[boost]}" /sys/devices/system/cpu/cpufreq/boost
+  [ -n "${S[notb]:-}" ] && w "${S[notb]}" /sys/devices/system/cpu/intel_pstate/no_turbo
+  for d in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+    c=${d%/cpufreq}; c=${c##*/}
+    [[ "${S[max_$c]:-}" =~ ^[0-9]+$ ]] && w "${S[max_$c]}" "$d/scaling_max_freq"
+  done
+  [ -n "${S[epp]:-}" ] && for d in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do w "${S[epp]}" "$d"; done
+  [ -n "${S[plat]:-}" ] && w "${S[plat]}" /sys/firmware/acpi/platform_profile
+  for d in /sys/class/drm/card[0-9]*/device/power_dpm_force_performance_level; do
+    c=${d%/device/*}; c=${c##*/}
+    [[ "${S[gpu_$c]:-}" =~ ^[a-z_]+$ ]] && [ "$(rd "$d")" = low ] && w "${S[gpu_$c]}" "$d"
+  done
+  rm -f "$COOL"
   return 0
 }
 
@@ -156,11 +216,14 @@ pm() {
   fi
 }
 
+exec 9>/run/halcyon-tune.lock && flock 9
 case "${1:-}" in
   game-on)  game_on ;;
   game-off) game_off ;;
   av-ai)    case "${2:-}" in pause|resume) av_ai "$2" ;; *) echo "usage: halcyon-tune av-ai pause|resume" >&2; exit 2 ;; esac ;;
   wifi-ps)  case "${2:-}" in on|off) wifi_ps "$2" ;; *) echo "usage: halcyon-tune wifi-ps on|off" >&2; exit 2 ;; esac ;;
+  cool-on)  cool_on ;;
+  cool-off) cool_off ;;
   pm)       case "${2:-}" in halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned) pm "$2" ;; *) echo "unknown power manager" >&2; exit 2 ;; esac ;;
-  *)        echo "usage: halcyon-tune game-on | game-off | av-ai pause|resume | wifi-ps on|off | pm <halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned>" >&2; exit 2 ;;
+  *)        echo "usage: halcyon-tune game-on | game-off | cool-on | cool-off | av-ai pause|resume | wifi-ps on|off | pm <halcyon|power-profiles-daemon|tlp|auto-cpufreq|tuned>" >&2; exit 2 ;;
 esac

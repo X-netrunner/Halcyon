@@ -65,8 +65,8 @@ Item {
         swipeAnim.to = dir * width * 1.1
         swipeAnim.start()
     }
-    NumberAnimation { id: swipeAnim; target: card; property: "swipeX"; duration: card.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1]; onFinished: collapse.start() }
-    NumberAnimation { id: swipeBack; target: card; property: "swipeX"; to: 0; duration: card.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
+    NumberAnimation { id: swipeAnim; target: card; property: "swipeX"; duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1]; onFinished: collapse.start() }
+    NumberAnimation { id: swipeBack; target: card; property: "swipeX"; to: 0; duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: card.pal.curve }
     property bool closing: false
     property bool expired: false
 

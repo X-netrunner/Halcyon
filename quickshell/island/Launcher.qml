@@ -110,6 +110,13 @@ Item {
         return x
     }
     // same entries in the same order? then the model is left alone (replacing it rebuilds every delegate)
+    property var prevCmds: []
+    property var prevApps: []
+    property string lastListMode: ""
+    function wasShown(list, id) {
+        for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return true
+        return false
+    }
     function sameList(a, b) {
         if (a.length !== b.length) return false
         for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
@@ -136,7 +143,7 @@ Item {
         "calendar", "notes", "notesall", "study", "luna", "clipboard", "screenshot", "capture", "music", "music-doctor", "lyrics", "queue", "ask", "do", "calc", "tool-colorpick", "tool-measure", "tool-wifi-qr", "tool-updates-now", "tool-updates-run", "tool-snippets", "tool-windows", "tool-mixer", "tool-zoom", "tool-vpn", "record", "extradim", "caffeine", "dnd", "notifications", "apps",
         "security", "firewall", "firewall-dashboard", "exceptions",
         "gamecenter", "games", "games-stop",
-        "power", "gaming", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
+        "power", "gaming", "cool", "profile-auto", "profile-power-saver", "profile-balanced", "profile-performance", "lock", "suspend", "logout", "reboot", "shutdown"
     ]
     // ">"  = adaptive: your most used commands first (usage.log, "cmd:<id>", decayed like the apps), topped up from cmdCore while
     //        you have used fewer than cmdShort; ">." = every command, grouped by category. Words or a category chip search them all.
@@ -207,6 +214,7 @@ Item {
         { id: "games-stop", name: "Stop the game", desc: "Stop the running game completely (no leftover wine processes); Halcyon goes back to normal", glyph: 0xF04DB, kw: "game stop quit kill close running", cat: "games" },
         { id: "power", name: "Power options", desc: "Lock, sleep, log out, restart, shut down", glyph: 0xF0425, kw: "session", cat: "power" },
         { id: "gaming", name: "Gaming mode", desc: "Performance profile, effects off, helpers stopped (toggle)", glyph: 0xF0297, kw: "game fast performance snappy", cat: "power" },
+        { id: "cool", name: "Cool mode", desc: "Turbo off and the CPU capped at 70 % so the computer runs cooler and quieter (toggle)", glyph: 0xF0717, kw: "cool temperature heat hot fan quiet thermal cpu", cat: "power" },
         { id: "caffeine", name: "Caffeine (keep screen awake)", desc: "No dimming, idle lock or idle sleep until you turn it off (toggle)", glyph: 0xF0176, kw: "coffee awake sleep idle lock inhibit stay on", cat: "tools" },
         { id: "apps", name: "Background apps", desc: "Spotify, Discord ... running without a window: open or quit them", glyph: 0xF003B, kw: "running tray spotify discord quit close processes", cat: "tools" },
         { id: "routing", name: "App routing on / off", desc: "Send Spotify to the music workspace and Discord to communication when they open (toggle)", glyph: 0xF0A2D, kw: "spotify discord music communication workspace automatic move", cat: "desktop" },
@@ -282,8 +290,8 @@ Item {
                 color: activeCat ? (root.pal.zen ? root.pal.chosenFill : Qt.alpha(root.pal.accent, 0.20)) : (catMa.containsMouse ? Qt.alpha(root.pal.text, 0.08) : Qt.alpha(root.pal.text, root.pal.zen ? 0.04 : 0.03))
                 border.width: root.pal.bw
                 border.color: activeCat ? Qt.alpha(root.pal.accent, 0.45) : Qt.alpha(root.pal.lineSoft, 0.4)
-                Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
-                Behavior on border.color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                 Text {
                     id: catText
@@ -293,7 +301,7 @@ Item {
                     font.pixelSize: root.pal.zen ? 11 : 10
                     font.weight: activeCat ? Font.Medium : Font.Normal
                     color: activeCat ? (root.pal.zen ? root.pal.chosenText : root.pal.accent) : (catMa.containsMouse ? root.pal.text : root.pal.muted)
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
 
                 MouseArea {
@@ -518,10 +526,16 @@ Item {
             if (gr === 0) continue
             if (gm.fav) gr += byName ? 0.5 : 10          // favourites first (the star on the row, or Ctrl+F, toggles it); among commands only within their tier
             var why = gm.running ? "Running now" : (gm.status === "attention" ? "Needs attention: " + (gm.statusReason || "see hgl show " + gm.id) : "Enter to play")
-            out.push({ c: { id: "game:" + gm.id, name: gm.name || gm.id, desc: why, glyph: 0xF0297, kw: "", cat: "games", fav: !!gm.fav }, r: gr, i: -1000 + gi })
+            var gname = gm.name || gm.id
+            var old = gameRowCache[gm.id]
+            var row = (old && old.name === gname && old.desc === why && old.fav === !!gm.fav) ? old
+                    : { id: "game:" + gm.id, name: gname, desc: why, glyph: 0xF0297, kw: "", cat: "games", fav: !!gm.fav }
+            gameRowCache[gm.id] = row
+            out.push({ c: row, r: gr, i: -1000 + gi })
         }
         return out
     }
+    property var gameRowCache: ({})
 
     // star / unstar a game (hgl set <id> fav on|off); the list is re-read so it moves at once
     property string favSel: ""             // the game just starred stays selected while the list re-sorts
@@ -613,7 +627,11 @@ Item {
             cmdTucked = shortList ? Math.max(0, total - outc.length) : 0
             var ncmd = outc.map(function (o) { return o.c })
             infoIdx = -1
-            if (!sameList(ncmd, cmdResults)) cmdResults = ncmd
+            if (!sameList(ncmd, cmdResults)) {
+                prevCmds = lastListMode === "cmd" ? cmdResults : []
+                cmdResults = ncmd
+            }
+            lastListMode = "cmd"
             var sel = 0
             if (favSel !== "") for (var fi = 0; fi < ncmd.length; fi++) if (ncmd[fi].id === favSel) { sel = fi; break }
             cmdList.currentIndex = sel
@@ -662,7 +680,11 @@ Item {
             out = used
         }
         var nres = out.map(function (o) { return o.e })
-        if (!sameList(nres, results)) results = nres
+        if (!sameList(nres, results)) {
+            prevApps = lastListMode === "apps" ? results : []
+            results = nres
+        }
+        lastListMode = "apps"
         grid.currentIndex = 0
     }
 
@@ -792,6 +814,7 @@ Item {
         if (active) {
             stagger = true
             staggerT.restart()
+            lastListMode = ""
             var had = query
             input.text = ""
             query = ""
@@ -847,7 +870,7 @@ Item {
             color: root.pal.zen ? root.pal.field : Qt.alpha(root.pal.surface, 0.85)
             border.width: root.pal.bw
             border.color: input.activeFocus ? root.pal.lineFocus : root.pal.line
-            Behavior on border.color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on border.color { ColorAnimation { duration: 180; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
             // soft glow while typing
             Rectangle {
@@ -858,7 +881,7 @@ Item {
                 border.width: 4
                 border.color: root.pal.accent
                 opacity: input.activeFocus && !root.pal.zen ? 0.07 : 0
-                Behavior on opacity { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             }
 
             Text {
@@ -954,7 +977,7 @@ Item {
                 radius: 12
                 // new: just the word, quietly ("Apps"), as the mode is a fact and not a button
                 color: root.pal.zen ? "transparent" : Qt.alpha(root.pal.accent, 0.14)
-                Behavior on width { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
+                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
                 Text {
                     id: badgeTxt
                     anchors.centerIn: parent
@@ -1046,7 +1069,7 @@ Item {
                     Translate { y: (1 - cell.appear) * 22 },
                     Scale { origin.x: cell.width / 2; origin.y: cell.height / 2; xScale: 0.86 + 0.14 * cell.appear; yScale: 0.86 + 0.14 * cell.appear }
                 ]
-                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) enterSeq.start(); else cell.appear = 1 }
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05 && !root.wasShown(root.prevApps, cell.modelData.id)) enterSeq.start(); else cell.appear = 1 }
                 SequentialAnimation {
                     id: enterSeq
                     PauseAnimation { duration: root.stagger ? Math.round((60 + Math.min(cell.index, 30) * 14) * root.speedK) : 0 }
@@ -1062,7 +1085,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: root.pal.zen ? 9 : 7
                     scale: ma.pressed ? 0.94 : 1
-                    Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on scale { NumberAnimation { duration: 170; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
 
                     Image {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -1073,7 +1096,7 @@ Item {
                         asynchronous: true
                         smooth: true
                         scale: cell.cur ? 1.08 : (ma.containsMouse ? 1.04 : 1)
-                        Behavior on scale { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                     Text {
                         width: cell.width - 8
@@ -1084,7 +1107,7 @@ Item {
                         font.family: root.pal.uiFont
                         font.pixelSize: root.pal.zen ? 12 : 11
                         font.weight: cell.cur && !root.pal.zen ? Font.Medium : Font.Medium
-                        Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                        Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     }
                 }
                 MouseArea {
@@ -1134,7 +1157,7 @@ Item {
                 property real appear: 0
                 opacity: Math.min(1, srow.appear * 1.6)
                 transform: Translate { y: (1 - srow.appear) * 16 }
-                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) sEnter.start(); else srow.appear = 1 }
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05 && !root.wasShown(root.prevApps, srow.modelData.id)) sEnter.start(); else srow.appear = 1 }
                 SequentialAnimation {
                     id: sEnter
                     PauseAnimation { duration: root.stagger ? Math.round((40 + Math.min(srow.index, 12) * 22) * root.speedK) : 0 }
@@ -1149,7 +1172,7 @@ Item {
                     anchors.fill: parent
                     radius: 14
                     color: srow.cur ? Qt.alpha(root.pal.accent, 0.14) : (sma.containsMouse ? Qt.alpha(root.pal.text, 0.05) : "transparent")
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                 }
                 // the keyboard selection gets a second cue beside the tint, so it is findable while scanning the list
                 Rectangle {
@@ -1256,7 +1279,7 @@ Item {
                 property real appear: 0
                 opacity: Math.min(1, crow.appear * 1.6)
                 transform: Translate { x: (1 - crow.appear) * 22 }
-                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05) cEnter.start(); else crow.appear = 1 }
+                Component.onCompleted: { if (root.pal && root.pal.motion > 0.05 && !root.wasShown(root.prevCmds, crow.modelData.id)) cEnter.start(); else crow.appear = 1 }
                 SequentialAnimation {
                     id: cEnter
                     PauseAnimation { duration: root.stagger ? Math.round((40 + Math.min(crow.index, 14) * 24) * root.speedK) : 0 }
@@ -1392,7 +1415,7 @@ Item {
                     color: openNow ? Qt.alpha(root.pal.accent, 0.25) : (infoMa.containsMouse ? Qt.alpha(root.pal.text, 0.10) : "transparent")
                     border.width: root.pal.zen && !openNow ? 0 : 1
                     border.color: openNow ? Qt.alpha(root.pal.accent, 0.55) : Qt.alpha(root.pal.lineSoft, 0.6)
-                    Behavior on color { ColorAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                    Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                     Text {
                         anchors.centerIn: parent
                         text: String.fromCodePoint(0xF02FD)

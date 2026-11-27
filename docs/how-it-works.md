@@ -56,10 +56,10 @@ Python 3 is still used, on purpose, for features that only run when you use them
 
 ## Install in one line (curl)
 ```bash
-curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
+curl -fsSLO https://raw.githubusercontent.com/X-netrunner/Halcyon/main/get.sh && bash get.sh
 ```
 
-That is the `get.sh` of the newest release, not whatever is on the branch today, and it installs that same release (`HALCYON_REF=HEAD` for the unreleased newest, `HALCYON_REF=v1.2.3` to pin). Each release also lists `get.sh` and `install.sh` in `SHA256SUMS`, so you can download and check them first.
+It installs the newest version of the main branch, the one `update.sh` follows (`HALCYON_REF=v1.2.3` to pin a version, `HALCYON_REF=release` for the newest tag).
 `get.sh` downloads Halcyon with git into `~/.config/Halcyon` (a git checkout, so `update.sh` updates it in place later) and runs `install.sh`; it is downloaded to a file first and then run (piping it straight into `bash` still works, but an antivirus such as ai-antivirus stops a download piped into a shell, see [antivirus.md](antivirus.md)); with no terminal at all it runs `--yes`. Options go after `get.sh` and reach `install.sh` unchanged: `bash get.sh --yes --no-sysmode --browser zen`. `--dry-run` downloads to `~/.cache/halcyon-get` and only shows what it would do. If Halcyon is already a git checkout there, `get.sh` hands over to `update.sh`; if it is a plain copy, the newest version is installed over it (the old copy is saved in `~/.config/Halcyon-backups`, your own files are kept). `HALCYON_REPO` / `HALCYON_DIR` point it at a fork / another folder. Run as your normal user, never root.
 
 ## Install (one script)

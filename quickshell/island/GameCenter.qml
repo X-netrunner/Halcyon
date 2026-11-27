@@ -72,13 +72,22 @@ Scope {
     function show(t) {
         tab = (t === "runtimes" || t === "doctor" || t === "stores") ? t : "library"
         search = ""; note = ""; protonOpen = false; logOpen = false; confirmRemove = false; pickerOpen = false
+        foldT.stop(); folding = false; foldedClose = false
         open = true
         reloadAll()
         if (tab === "doctor") loadChecks()
         if (tab === "stores") loadStores()
         Qt.callLater(function () { root.focusRequested(root.tab === "library" ? "search" : "panel") })
     }
-    function hide() { open = false; confirmRemove = false; pickerOpen = false; optsOpen = false }
+    property bool folding: false
+    property bool foldedClose: false
+    Timer { id: foldT; interval: root.pal ? root.pal.dFold : 170; onTriggered: { root.folding = false; root.foldedClose = true; root.open = false } }
+    function hide() {
+        confirmRemove = false; pickerOpen = false
+        if (open && optsOpen && tab === "library" && !deskMode) { optsOpen = false; folding = true; foldT.restart(); return }
+        if (folding) return
+        open = false; optsOpen = false
+    }
     function close() { hide() }
     function toggle() { if (open) hide(); else show("library") }
     function toggleTo(t) { if (open && tab === t) hide(); else show(t) }      // the same page's entry pressed again closes the window
@@ -686,7 +695,7 @@ Scope {
                 readonly property real target: (ready && root.open) ? 1 : 0
                 property real reveal: 0
                 onTargetChanged: reveal = target
-                Behavior on reveal { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                Behavior on reveal { NumberAnimation { duration: (root.foldedClose && !root.open) ? root.pal.dMed - root.pal.dFold : root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.open ? root.pal.curve : root.pal.curveClose } }
                 Component.onCompleted: {
                     ready = true; argsIn.text = root.argsSeed
                     Qt.callLater(function () { if (root.pickerOpen) root.focusRequested("picker"); else if (root.tab === "library") sin.forceActiveFocus(); else qp.forceActiveFocus() })
@@ -1742,7 +1751,7 @@ Scope {
                     // how far the window slides left: half the card, but never so far that it leaves the screen or the card does
                     readonly property real shiftBy: beside ? Math.max(Math.max(0, cardW + 20 - room), Math.min((cardW + gap) / 2, room - 12)) : 0
                     property real prog: (root.optsOpen && beside && root.tab === "library") ? 1 : 0
-                    Behavior on prog { NumberAnimation { duration: root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                    Behavior on prog { NumberAnimation { duration: root.folding ? root.pal.dFold : root.pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: root.folding ? root.pal.curveClose : root.pal.curve } }
                 }
                 Item {
                     id: sideHost
@@ -1761,7 +1770,7 @@ Scope {
                         opacity: root.optsOpen ? 1 : 0
                         // beside the window it slides out from under it, to the right; over the window it slides in from the right
                         transform: Translate { x: (optSide.beside ? -1 : 1) * (1 - drawer.opacity) * 36 }
-                        Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pal.curve } }
+                        Behavior on opacity { NumberAnimation { duration: root.folding ? root.pal.dFold : root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: root.folding ? root.pal.curveClose : root.pal.curve } }
                         radius: root.pal.rLg
                         // solid, not glass: the card has to stay readable over the dimmed desktop (pal.box() is see-through in the zen look)
                         color: Qt.alpha(root.pal.surface, 1)
@@ -2618,7 +2627,7 @@ Scope {
                                     height: Math.max(24, dflick.visibleArea.heightRatio * (parent.height - 16))
                                     radius: 1.5
                                     color: Qt.alpha(root.pal.text, dflick.moving ? 0.35 : 0.16)
-                                    Behavior on color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on color { ColorAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
                                 Rectangle { anchors.fill: parent; radius: drawer.radius; color: "transparent"; border.width: root.pal.bw; border.color: root.pal.lineSoft }
                         CalmIconBtn { z: 6; anchors.top: parent.top; anchors.right: parent.right; anchors.topMargin: 8; anchors.rightMargin: 8; pal: root.pal; size: 30; glyph: 0xF0156; tip: "Close"; onClicked: root.optsOpen = false }

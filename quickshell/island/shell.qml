@@ -1296,6 +1296,8 @@ ShellRoot {
     QuickTerm {
         id: quickTerm
         pal: pal
+        onOpenChanged: if (!open) root.guardSpecial()
+        onFocusedChanged: if (!focused) root.guardSpecial()
         customZone: root.boxZones.term !== null
         spot: root.boxSpots.term
         origin: DS.originOf(root.opt, "term", root.boxSpots.term)
@@ -1316,6 +1318,7 @@ ShellRoot {
     QuickChat {
         id: quickChat
         pal: pal
+        onOpenChanged: if (!open) root.guardSpecial()
         spot: root.boxSpots.term
         origin: DS.originOf(root.opt, "term", root.boxSpots.term)
         stars: root.opt.stars !== false && root.opt.starsTerm !== false
@@ -1351,6 +1354,7 @@ ShellRoot {
     Calendar {
         id: calendar
         pal: pal
+        onOpenChanged: if (!open) root.guardSpecial()
         enabled: root.opt.calOn !== false
         notifyOn: root.opt.calNotify !== false
         focusOn: root.opt.calFocus === true
@@ -1372,6 +1376,7 @@ ShellRoot {
     NotesMenu {
         id: notesMenu
         pal: pal
+        onOpenChanged: if (!open) root.guardSpecial()
         opt: root.opt
         spot: DS.cornerFor(root.opt, "term", root.boxSpots.term)      // beside the console: the side it is on follows its tag
         stars: root.opt.stars !== false && root.opt.starsCheatsheet !== false
@@ -2222,7 +2227,10 @@ ShellRoot {
     }
 
     // ---- special workspaces: music / communication start their app the first time (scripts/special.sh)
+    property double specialGuardUntil: 0
+    function guardSpecial() { if (activeSpecial === "") specialGuardUntil = Date.now() + 600 }
     function toggleSpecial(name) {
+        specialGuardUntil = 0
         if (name === "music" || name === "communication")
             Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/special.sh", name])
         else
@@ -2231,12 +2239,21 @@ ShellRoot {
 
     // ---- app routing: when a window of a known app (Routes.js) opens, move it to its special workspace and show it.
     // `hyprctl clients` is read shortly after every new window (the class of some apps is set a moment late), and again
-    // a little later. Windows that were open when the island started are left alone, and so is a window you move yourself.
-    function routeSoon() { routeT.restart(); routeT2.restart() }
-    function pollClients() { if (!clientsProc.running) clientsProc.running = true }
+    // a little later. Windows that were open when the island restarted are left alone, and so is a window you move yourself;
+    // on the island's first start of a login they are routed too (apps that autostart before the island).
+    function routeSoon() { routeT.restart(); routeT2.restart(); routeT3.restart() }
+    function pollClients() { if (routeReady && !clientsProc.running) clientsProc.running = true }
+    property bool routeReady: false
     Timer { id: routeT; interval: 700; onTriggered: root.pollClients() }
     Timer { id: routeT2; interval: 2800; onTriggered: root.pollClients() }
-    Timer { interval: 1500; running: true; onTriggered: root.pollClients() }      // seeds the list at start
+    Timer { id: routeT3; interval: 7000; onTriggered: root.pollClients() }
+    Timer { interval: 1500; running: true; onTriggered: routeStartProc.running = true }
+    property bool routeAtStart: false
+    Process {
+        id: routeStartProc
+        command: ["sh", "-c", "f=\"${XDG_RUNTIME_DIR:-/tmp}/halcyon-island-started-$(id -u)\"; [ -e \"$f\" ] && echo again || { : > \"$f\"; echo first; }"]
+        stdout: StdioCollector { onStreamFinished: { root.routeAtStart = text.trim() === "first"; root.routeReady = true; root.pollClients() } }
+    }
     Process {
         id: clientsProc
         command: ["hyprctl", "clients", "-j"]
@@ -2252,15 +2269,18 @@ ShellRoot {
         var quiet = (Date.now() - startedAt) < 45000
         for (var i = 0; i < cl.length; i++) {
             var c = cl[i]
-            if (routed[c.address]) { keep[c.address] = true; continue }
-            var app = Routes.appForClass(c["class"])
+            var tries = routed[c.address]
+            if (tries === true || tries >= 3) { keep[c.address] = true; continue }
+            var app = Routes.appForClass(c["class"]) || (!c["class"] && /^Spotify/.test(c.title || "") ? Routes.appForClass("spotify") : null)
             if (!app) continue
             keep[c.address] = true
-            if (!routeSeeded || !routeApps) continue
+            if ((!routeSeeded && !routeAtStart) || !routeApps) continue
             var wsName = c.workspace ? c.workspace.name : ""
             if (wsName === "special:" + app.ws) continue
+            keep[c.address] = (tries || 0) + 1
             hypr("hl.dsp.window.move({ workspace = \"special:" + app.ws + "\", window = \"address:" + c.address + "\" })")
-            if (!quiet && routeShow) { showWs = app.ws; showT.restart() }
+            if (!quiet && routeShow && !tries) { showWs = app.ws; showT.restart() }
+            if (!routeT2.running) routeT2.restart()
         }
         routed = keep
         routeSeeded = true
@@ -2386,6 +2406,7 @@ ShellRoot {
         case "settings": settingsWin.toggle(); break
         case "power": powerMenu.toggle(); break
         case "gaming": setGaming(!gaming); break
+        case "cool": Quickshell.execDetached(["bash", Quickshell.env("HOME") + "/.config/Halcyon/scripts/cool.sh", "toggle"]); break
         case "caffeine": setCaffeine(!caffeine, 0); break
         case "apps": appsWin.togglePin(9000); break
         case "routing": routeApps = !routeApps; saveSettings(); break
@@ -3038,8 +3059,13 @@ ShellRoot {
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            if (event.name === "activespecial")
+            if (event.name === "activespecial") {
                 root.activeSpecial = event.data.split(",")[0].replace("special:", "")
+                if (root.activeSpecial !== "" && Date.now() < root.specialGuardUntil) {
+                    root.specialGuardUntil = 0
+                    root.hypr("hl.dsp.workspace.toggle_special(\"" + root.activeSpecial + "\")")
+                }
+            }
             else if (event.name === "openwindow")
                 root.routeSoon()
             if (root.compactEvents[event.name] === 1)
@@ -4212,7 +4238,9 @@ ShellRoot {
         property bool extHover: false      // the wake spot (ActivationZone) has the pointer
         function syncHover() { setHover(zoneHover || panelHover || extHover) }
         readonly property bool open: hovering
-        readonly property real reveal: hovering ? 1 : 0
+        readonly property real reveal: (hovering || panel.flyFolding) ? 1 : 0
+        property bool afterFold: false
+        onHoveringChanged: if (hovering) afterFold = false
         // hover mode: touching the corner opens it and leaving closes it. click mode: click the corner to open / close it.
         // auto-hide on closes it when the pointer leaves, in both modes
         // after it closes, a pointer that is still sitting in the corner must not re-open it by itself: enter events that come from
@@ -4309,7 +4337,8 @@ ShellRoot {
 
             // with the border: no fade / zoom, the box slides out from under the border it is attached to
             property real slide: corner.reveal
-            Behavior on slide { NumberAnimation { duration: corner.open ? pal.dSlow : pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: corner.open ? pal.curve : pal.curveClose } }
+            onFlyFoldingChanged: if (flyFolding) corner.afterFold = true
+            Behavior on slide { NumberAnimation { duration: corner.open ? pal.dSlow : (corner.afterFold ? pal.dClose - pal.dFold : pal.dClose); easing.type: Easing.BezierSpline; easing.bezierCurve: corner.open ? pal.curve : pal.curveClose } }
             opacity: root.frameOn ? 1 : corner.reveal
             visible: root.frameOn ? slide > 0.002 : opacity > 0.01
             scale: root.frameOn ? 1 : 0.97 + 0.03 * corner.reveal
@@ -4320,7 +4349,7 @@ ShellRoot {
             }
             transformOrigin: corner.oSide ? (corner.atR ? Item.Right : Item.Left) : corner.oVert ? (corner.atB ? Item.Bottom : Item.Top)
                            : (corner.atB ? (corner.atR ? Item.BottomRight : Item.BottomLeft) : (corner.atR ? Item.TopRight : Item.TopLeft))
-            Behavior on opacity { NumberAnimation { duration: pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+            Behavior on opacity { NumberAnimation { duration: (corner.afterFold && !corner.open) ? pal.dMed - pal.dFold : pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
             Behavior on scale { NumberAnimation { duration: pal.dSlow; easing.type: Easing.BezierSpline; easing.bezierCurve: pal.curve } }
 
             onWordsToggled: root.setOpt("utilWords", !root.opt.utilWords)

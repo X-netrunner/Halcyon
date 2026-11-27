@@ -15,7 +15,7 @@ cliphist) for Fedora 43-45. It is the maintained successor of solopasha/hyprland
 
 ```bash
 sudo dnf install git curl
-curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
+curl -fsSLO https://raw.githubusercontent.com/X-netrunner/Halcyon/main/get.sh && bash get.sh
 ```
 
 or from a checkout: `./install.sh` (`./install.sh --dry-run` first).

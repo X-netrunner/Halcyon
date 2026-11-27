@@ -23,10 +23,10 @@ title = 18
 display = 24
 
 [motion]
-fast = 120
-base = 180
-slow = 240
-close = 160
+fast = 200
+base = 400
+slow = 600
+close = 420
 ease_out = [0.2, 0.0, 0.0, 1.0]
 ease_in = [0.4, 0.0, 1.0, 1.0]
 ease_in_out = [0.4, 0.0, 0.2, 1.0]

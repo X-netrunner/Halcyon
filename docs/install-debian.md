@@ -23,7 +23,7 @@ so. It used to offer a Hyprland PPA, but that PPA does not exist.
 
 ```bash
 sudo apt update && sudo apt install git curl
-curl -fsSLO https://github.com/X-netrunner/Halcyon/releases/latest/download/get.sh && bash get.sh
+curl -fsSLO https://raw.githubusercontent.com/X-netrunner/Halcyon/main/get.sh && bash get.sh
 ```
 
 or from a checkout: `./install.sh` (`./install.sh --dry-run` first shows what it would do).

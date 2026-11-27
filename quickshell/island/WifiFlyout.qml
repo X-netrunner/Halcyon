@@ -32,8 +32,9 @@ Item {
     clip: attached && prog < 0.999
     visible: prog > 0.002
 
+    property bool quick: false
     property real prog: shown ? 1 : 0
-    Behavior on prog { NumberAnimation { duration: root.shown ? root.pal.dSlow : root.pal.dClose; easing.type: Easing.BezierSpline; easing.bezierCurve: root.shown ? root.pal.curve : root.pal.curveClose } }
+    Behavior on prog { NumberAnimation { duration: root.shown ? root.pal.dSlow : (root.quick ? root.pal.dFold : root.pal.dClose); easing.type: Easing.BezierSpline; easing.bezierCurve: root.shown ? root.pal.curve : root.pal.curveClose } }
 
     Glass {
         id: card

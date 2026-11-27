@@ -158,6 +158,7 @@ PREBUILT=true                                  # use the helper binaries from th
 PACKAGES=true; SKIP_DRIVERS=false; SKIP_AUR=false; UPGRADE=auto; SKIP_TUNE=false
 SYSMODE=true; SYSMODE_ASKED=false; [[ "${SKIP_SYSMODE:-0}" = 1 ]] && { SYSMODE=false; SYSMODE_ASKED=true; }
 SAFETY=true; SAFETY_ASKED=false             # the safety check is on by default (answer n, or --no-safety-check, to skip it)
+AI_ASKED_NOW=false
 INSTALL_LLM=false; PICK_LLM_MODEL=""; LLM_ASKED=false # local AI performance advisor with Ollama
 INSTALL_WHISPER=false; PICK_WHISPER_MODEL=""; WHISPER_ASKED=false   # speech-to-text for voice notes (whisper.cpp + a ggml model)
 INSTALL_VLM=false; PICK_VLM_MODEL=""; VLM_ASKED=false                # picture descriptions for Notes (a vision model in Ollama)
@@ -265,15 +266,15 @@ while [[ $# -gt 0 ]]; do
         --no-sysmode)       SYSMODE=false; SYSMODE_ASKED=true ;;
         --safety-check)     SAFETY=true; SAFETY_ASKED=true ;;
         --no-safety-check)  SAFETY=false; SAFETY_ASKED=true ;;
-        --llm)              INSTALL_LLM=true; LLM_ASKED=true ;;
-        --llm=*)            INSTALL_LLM=true; PICK_LLM_MODEL="${1#--llm=}"; LLM_ASKED=true ;;
+        --llm)              INSTALL_LLM=true; LLM_ASKED=true; AI_ASKED_NOW=true ;;
+        --llm=*)            INSTALL_LLM=true; PICK_LLM_MODEL="${1#--llm=}"; LLM_ASKED=true; AI_ASKED_NOW=true ;;
         --no-llm)           INSTALL_LLM=false; LLM_ASKED=true ;;
         --whisper)          INSTALL_WHISPER=true; WHISPER_ASKED=true ;;
         --whisper=*)        INSTALL_WHISPER=true; PICK_WHISPER_MODEL="${1#--whisper=}"; WHISPER_ASKED=true
                             [[ "$PICK_WHISPER_MODEL" =~ ^(tiny|base|small)$ ]] || die "--whisper=MODEL needs tiny, base or small (see --help)" ;;
         --no-whisper)       INSTALL_WHISPER=false; WHISPER_ASKED=true ;;
-        --vlm)              INSTALL_VLM=true; VLM_ASKED=true ;;
-        --vlm=*)            INSTALL_VLM=true; PICK_VLM_MODEL="${1#--vlm=}"; VLM_ASKED=true
+        --vlm)              INSTALL_VLM=true; VLM_ASKED=true; AI_ASKED_NOW=true ;;
+        --vlm=*)            INSTALL_VLM=true; PICK_VLM_MODEL="${1#--vlm=}"; VLM_ASKED=true; AI_ASKED_NOW=true
                             [[ "$PICK_VLM_MODEL" =~ ^[A-Za-z0-9._:/@+-]{1,100}$ ]] || die "--vlm=MODEL needs an Ollama model name such as qwen2.5vl:3b (see --help)" ;;
         --no-vlm)           INSTALL_VLM=false; VLM_ASKED=true ;;
         --browser)          shift; PICK_BROWSER="${1:-}"; [[ -n "$PICK_BROWSER" ]] || die "--browser needs a name (see --help)" ;;
@@ -298,7 +299,7 @@ while [[ $# -gt 0 ]]; do
         --no-plymouth)      INSTALL_PLYMOUTH=false; PLYMOUTH_ASKED=true ;;
         --firewall)         shift; PICK_FIREWALL="${1:-}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
         --firewall=*)       PICK_FIREWALL="${1#--firewall=}"; [[ "$PICK_FIREWALL" =~ ^(ai|ufw|none)$ ]] || die "--firewall needs ai, ufw or none (see --help)" ;;
-        --luna)             INSTALL_LUNA=true; LUNA_ASKED=true ;;
+        --luna)             INSTALL_LUNA=true; LUNA_ASKED=true; AI_ASKED_NOW=true ;;
         --no-luna)          INSTALL_LUNA=false; LUNA_ASKED=true ;;
         --luna-voice)       INSTALL_LUNA_VOICE=true; LUNA_VOICE_ASKED=true ;;
         --no-luna-voice)    INSTALL_LUNA_VOICE=false; LUNA_VOICE_ASKED=true ;;
@@ -628,6 +629,10 @@ fi
 
 # your saved answers (see "your choices" below); defined here so the summary shows them instead of the defaults
 CHOICES_FILE="$TARGET_HOME/.local/state/island/install-choices.env"
+# Settings > AI > AI features off (~/.local/state/island/ai-off): Ollama is not installed, started or fed models, unless this run
+# was asked for it with --llm, --vlm or --luna.
+AI_OFF=false
+[[ -e "$TARGET_HOME/.local/state/island/ai-off" && "$AI_ASKED_NOW" != "true" ]] && AI_OFF=true
 PINS_FILE="$TARGET_HOME/.local/state/halcyon/pins.env"
 # pin_of KEY -> the commit LUNA / ANTIVIRUS / FIREWALL is pinned at (empty = follows main); written by the Version Center / update-extras.sh --ref
 pin_of() { [[ -f "$PINS_FILE" ]] && sed -n "s/^$1=\"\(.*\)\"\$/\1/p" "$PINS_FILE" | tail -n1 || true; }
@@ -2096,6 +2101,7 @@ if [[ "$PACKAGES" == "true" ]]; then
     OLLAMA_READY=false
     setup_ollama() {
         [[ "$OLLAMA_READY" == "true" ]] && return 0
+        [[ "$AI_OFF" == "true" ]] && return 1
         ollama_bin="$(run_as_user which ollama 2>/dev/null || which ollama 2>/dev/null || echo "")"
         if [[ -z "$ollama_bin" ]]; then
             if [[ "$DISTRO_FAMILY" == "arch" || "$DISTRO_FAMILY" == "fedora" ]]; then
@@ -2131,7 +2137,8 @@ EOF
         OLLAMA_READY=true
     }
     # ---- Local AI Advisor (Ollama)
-    if [[ "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
+    [[ "$AI_OFF" == "true" ]] && log_info "AI features are off (Settings > AI): Ollama and its models are left alone"
+    if [[ "$AI_OFF" != "true" && "$INSTALL_LLM" == "true" && -n "$PICK_LLM_MODEL" && "$PICK_LLM_MODEL" != "none" ]]; then
         log_info "Local AI Advisor: setting up Ollama + model ${PICK_LLM_MODEL}"
         setup_ollama
         if [[ "$DRY_RUN" != "true" ]]; then
@@ -2143,7 +2150,7 @@ EOF
     # ---- Notes: the picture-describing vision model, only because you said yes above. The model is downloaded here; Settings >
     # Notes > "Describe pictures" is switched on in step 12 (once the Halcyon files are in place), and only when the download worked.
     VLM_PULLED=false
-    if [[ "$INSTALL_VLM" == "true" && -n "$PICK_VLM_MODEL" ]]; then
+    if [[ "$AI_OFF" != "true" && "$INSTALL_VLM" == "true" && -n "$PICK_VLM_MODEL" ]]; then
         log_info "Notes: setting up Ollama + the picture model ${PICK_VLM_MODEL}"
         setup_ollama
         if [[ "$DRY_RUN" == "true" ]]; then
@@ -3355,6 +3362,7 @@ upgrade_luna_roles() {
 install_luna_models() {
     local cfg="$TARGET_HOME/.config/luna/luna.toml" want="" m have="" pulled=0 failed=0 present
     if [[ "${LUNA_MODELS:-}" == "none" ]]; then log_info "LUNA models: skipped (LUNA_MODELS=none)"; return 0; fi
+    if [[ "$AI_OFF" == "true" ]]; then log_info "LUNA models: skipped (AI features are off in Settings > AI)"; return 0; fi
     if [[ -n "${LUNA_MODELS:-}" ]]; then want="$LUNA_MODELS"
     else
         want="$LUNA_MODELS_DEFAULT"
@@ -3645,7 +3653,7 @@ av_grant_access() {
 
 # the assistants' model (firewall Ask, antivirus Ask): pulled once when Ollama is there; both pick it up by themselves
 pull_security_model() {
-    [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none ]] || return 0
+    [[ -n "$SECURITY_MODEL" && "$SECURITY_MODEL" != none && "$AI_OFF" != "true" ]] || return 0
     command -v ollama >/dev/null 2>&1 || { log_info "Security assistants: no Ollama, so they answer from the doctor and status instead"; return 0; }
     run_as_user ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx -e "$SECURITY_MODEL" -e "$SECURITY_MODEL:latest" && return 0
     try run_as_user_cmd "Security assistants: downloading $SECURITY_MODEL (one time)" ollama pull "$SECURITY_MODEL"

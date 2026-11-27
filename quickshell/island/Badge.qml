@@ -21,7 +21,7 @@ Item {
     implicitWidth: dot ? dotSize : Math.max(size, num.implicitWidth + Math.round(size * 0.6))
     width: implicitWidth
     height: implicitHeight
-    Behavior on width { NumberAnimation { duration: root.pal.dFast; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
+    Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.88, 0.34, 1, 1, 1] } }
 
     // subtle theme glow
     Rectangle {
@@ -53,6 +53,6 @@ Item {
     SequentialAnimation {
         id: pop
         NumberAnimation { target: root; property: "scale"; to: 1.22; duration: 90; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] }
-        NumberAnimation { target: root; property: "scale"; to: 1.0; duration: root.pal.dMed; easing.type: Easing.OutCubic }
+        NumberAnimation { target: root; property: "scale"; to: 1.0; duration: 160; easing.type: Easing.OutCubic }
     }
 }

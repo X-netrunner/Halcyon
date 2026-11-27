@@ -174,10 +174,10 @@ pub fn installed() -> Vec<Runtime> {
     v
 }
 
-pub fn default_family(cfg: &Conf) -> Family {
-    cfg.get("proton_family")
-        .and_then(Family::parse)
-        .unwrap_or(Family::Ge)
+/// Proton-Experimental and Hotfix move under a game's feet: never picked as the automatic runtime while a settled one exists.
+fn is_moving(name: &str) -> bool {
+    let l = name.to_ascii_lowercase();
+    l.contains("experimental") || l.contains("hotfix")
 }
 
 pub fn default_family(cfg: &Conf) -> Family {
@@ -202,6 +202,7 @@ pub fn resolve(pin: &str, cfg: &Conf) -> Option<Runtime> {
     all.iter()
         .rev()
         .find(|r| family_of(&r.name) == Some(fam))
+        .or_else(|| all.iter().rev().find(|r| !is_moving(&r.name)))
         .or_else(|| all.last())
         .cloned()
 }
@@ -620,10 +621,18 @@ pub fn remove(name: &str, cfg: &Conf) -> Result<(), String> {
     if !valid_runtime_name(name) {
         return Err(format!("not a runtime name: {name}"));
     }
-    let r = installed()
-        .into_iter()
-        .find(|r| r.name == name)
-        .ok_or_else(|| format!("{name} is not installed"))?;
+    let Some(r) = own_runtimes().into_iter().find(|r| r.name == name) else {
+        return Err(
+            match installed().into_iter().find(|r| r.name == name) {
+                Some(x) => format!(
+                    "{name} comes from {} ({}); hgl does not remove it: remove it there (Steam, ProtonUp-Qt or the package manager)",
+                    x.origin.label(),
+                    x.path.display()
+                ),
+                None => format!("{name} is not installed"),
+            },
+        );
+    };
     let users: Vec<String> = store::all_games()
         .into_iter()
         .filter(|g| g.proton == name)
@@ -690,7 +699,7 @@ fn steam_roots_for_tools() -> Vec<PathBuf> {
 }
 
 fn link_steam_one(name: &str) {
-    let Some(r) = installed().into_iter().find(|r| r.name == name) else {
+    let Some(r) = own_runtimes().into_iter().find(|r| r.name == name) else {
         return;
     };
     for d in steam_tool_dirs() {

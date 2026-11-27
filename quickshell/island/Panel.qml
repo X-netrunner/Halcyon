@@ -36,6 +36,7 @@ Glass {
     readonly property bool wifiFlyShown: flyout && active && wifiVerbose && wifiLog.length > 0 && (menu === "wifi" || wifiWorking)
     readonly property bool focusFlyShown: flyout && focusOpen && shown("Focus") && !wifiFlyShown
     readonly property bool flyShown: focusFlyShown || wifiFlyShown
+    readonly property bool flyFolding: !active && (focusFly.visible || wifiFly.visible)
     readonly property real flyGap: focusFly.attached ? 0 : 8             // joined to the box: no gap
     readonly property real flyExtra: focusFly.width + 8                  // how much room the card needs beside the box
     property real mic: 0
@@ -359,6 +360,7 @@ Glass {
         id: focusFly
         pal: root.pal
         shown: root.focusFlyShown
+        quick: !root.active
         toLeft: root.flyLeft
         atBottom: root.flyBottom
         joinV: root.joinV
@@ -382,6 +384,7 @@ Glass {
         id: wifiFly
         pal: root.pal
         shown: root.wifiFlyShown
+        quick: !root.active
         toLeft: root.flyLeft
         atBottom: root.flyBottom
         joinV: root.joinV
@@ -795,11 +798,13 @@ Glass {
             spacing: 8
             z: 1
             visible: root.classic && root.shown("Mic")
-            RoundBtn {
-                pal: root.pal
-                size: 36
+            Chip {
+                Layout.preferredWidth: 36; Layout.preferredHeight: 36
+                pal: root.pal; padX: 0; label: ""
                 glyph: String.fromCodePoint(root.micMuted ? 0xF036D : 0xF036C)
-                opacity: root.micMuted ? 0.55 : 1
+                tipAlign: "left"
+                tip: root.micMuted ? "Microphone muted  ·  click to unmute" : "Microphone on  ·  click to mute"
+                on: !root.micMuted
                 onClicked: root.toggleMic()
             }
             Chip {
@@ -903,10 +908,10 @@ Glass {
             Layout.fillWidth: true
             spacing: 8
             visible: root.classic && root.shown("Power")
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto"; on: root.autoPower; onClicked: root.setAuto() }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Saver"; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Balanced"; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
-            Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
+            Chip { Layout.fillWidth: true; pal: root.pal; label: "Auto"; tipAlign: "left"; tip: root.powerModes[0].tip; on: root.autoPower; onClicked: root.setAuto() }
+            Chip { Layout.fillWidth: true; pal: root.pal; label: "Saver"; tip: root.powerModes[1].tip; on: root.profile === "power-saver"; onClicked: root.setProfile("power-saver") }
+            Chip { Layout.fillWidth: true; pal: root.pal; label: "Balanced"; tip: root.powerModes[2].tip; on: root.profile === "balanced"; onClicked: root.setProfile("balanced") }
+            Chip { Layout.fillWidth: true; pal: root.pal; label: "Perf"; tipAlign: "right"; tip: root.powerModes[3].tip; on: root.profile === "performance"; onClicked: root.setProfile("performance") }
         }
 
         // power mode as four named tiles (Tiles); the words used to be in the hover bubble only, which made the row read as four

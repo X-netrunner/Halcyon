@@ -502,7 +502,7 @@ Item {
                                     maskThresholdMin: 0.5
                                     maskSpreadAtMin: 1.0
                                     opacity: img.status === Image.Ready ? 1 : 0
-                                    Behavior on opacity { NumberAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
 
                                 // edge: a fine light line, the wallpaper's own accent when it is the one in use
@@ -514,7 +514,7 @@ Item {
                                     border.width: cd.isCurrent ? 2 : 1
                                     border.color: cd.isCurrent ? (cd.cols.length > 0 ? cd.cols[0] : (root.pal ? root.pal.accent : "#8aadf4"))
                                                   : Qt.alpha(root.pal ? root.pal.text : "#ffffff", cd.isFront ? 0.30 : 0.12)
-                                    Behavior on border.color { ColorAnimation { duration: root.pal.dMed; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
+                                    Behavior on border.color { ColorAnimation { duration: 200; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.34, 0.8, 0.34, 1, 1, 1] } }
                                 }
 
                                 // "in use" badge

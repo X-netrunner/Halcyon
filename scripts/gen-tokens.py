@@ -90,8 +90,8 @@ def validate(t):
     if list(t["space"].values()) != [4, 8, 12, 16, 24]:
         problems.append("space must be the 4/8/12/16/24 scale")
     for k in ("fast", "base", "slow", "close"):
-        if not 120 <= t["motion"][k] <= 250:
-            problems.append(f"motion.{k} must be within 120-250 ms")
+        if not 120 <= t["motion"][k] <= 700:
+            problems.append(f"motion.{k} must be within 120-700 ms")
     if t["size"]["hit_min"] < 32:
         problems.append("size.hit_min must be at least 32")
     for scheme, colors in t["color"].items():

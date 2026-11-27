@@ -900,7 +900,11 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                     } else {
                         ""
                     };
-                    println!("{}{d}{p}", r.name);
+                    let o = match r.origin {
+                        proton::Origin::Halcyon => String::new(),
+                        other => format!("  (from {})", other.label()),
+                    };
+                    println!("{}{d}{p}{o}", r.name);
                 }
             }
         }
@@ -951,6 +955,19 @@ fn cmd_proton(rest: &[String]) -> Result<i32, String> {
                 println!(
                     "{n} runtime(s) linked. Restart Steam to see them in its compatibility list."
                 );
+            }
+        }
+        "use-steam" => {
+            if a.has("off") {
+                cfg.set("proton_steam", "0")?;
+                println!("hgl now uses only the Proton it installed itself");
+            } else {
+                cfg.set("proton_steam", "1")?;
+                let n = proton::installed()
+                    .iter()
+                    .filter(|r| r.origin != proton::Origin::Halcyon)
+                    .count();
+                println!("hgl also uses the Proton that Steam has ({n} found)");
             }
         }
         other => return Err(format!("unknown proton subcommand '{other}'")),
